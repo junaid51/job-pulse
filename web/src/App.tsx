@@ -13,7 +13,7 @@ export function App() {
   // The tab lives in the URL hash so reload and back both behave.
   const [tab, setTab] = useState<Tab>(() =>
     (['jobs', 'notifications', 'settings'] as const).find(
-      (candidate) => location.hash === `#/${candidate}`) ?? 'jobs')
+      (candidate) => location.hash.startsWith(`#/${candidate}`)) ?? 'jobs')
   useEffect(() => { location.hash = `#/${tab}` }, [tab])
 
   const [push, setPush] = useState<PushState>('off')

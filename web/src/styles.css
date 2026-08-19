@@ -423,3 +423,36 @@ mark.hit {
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border-bottom: 1px solid var(--line);
 }
+
+/* profile editor: tap-first term pickers */
+.sheet { max-height: 88dvh; overflow-y: auto; }
+.f-group { display: flex; flex-direction: column; gap: 8px; }
+.f-label {
+  font-size: 11px; font-weight: 650; letter-spacing: 0.5px;
+  text-transform: uppercase; color: var(--muted);
+}
+.f-group small { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+.picker { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; cursor: text; }
+.pick {
+  padding: 7px 13px; border-radius: 9px;
+  border: 1px solid var(--line); background: transparent;
+  font-size: 13px; font-weight: 550; color: var(--muted);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.pick:hover { color: var(--on-surface); }
+.pick.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.pick .x { margin-left: 7px; font-size: 10px; opacity: 0.65; }
+.picker.danger .pick.on {
+  background: rgba(217, 72, 72, 0.1); color: var(--danger);
+}
+.sheet input.pick-input {
+  flex: 1; min-width: 130px; height: 33px; padding: 0 3px;
+  border: none; border-radius: 0; background: transparent;
+}
+.sheet input.pick-input::placeholder { color: var(--muted); opacity: 0.75; }
+
+/* iOS Safari zooms into any focused input below 16px; on touch screens give
+   every text input real size instead of fighting the zoom with viewport caps. */
+@media (pointer: coarse) {
+  .sheet input, .search input, .place input, .adopt input { font-size: 16px; }
+}
