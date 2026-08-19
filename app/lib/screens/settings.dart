@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api.dart';
 import '../models.dart';
 import '../providers.dart';
+import '../push.dart';
 import '../widgets/states.dart';
 
 /// Settings: the search profiles, and where the backend is.
@@ -64,7 +65,16 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          // TODO(M4): show the FCM registration token here, with a copy button.
+          _SectionHeader('Notifications'),
+          _InfoRow(
+            label: 'Push',
+            value: switch (ref.watch(pushProvider)) {
+              AsyncData(value: true) => 'On',
+              AsyncData(value: false) => 'Off — permission or configuration missing',
+              AsyncError() => 'Off',
+              _ => 'Setting up…',
+            },
+          ),
           const SizedBox(height: 24),
         ],
       ),

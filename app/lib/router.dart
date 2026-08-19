@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'providers.dart';
+import 'push.dart';
 import 'screens/jobs.dart';
 import 'screens/notifications.dart';
 import 'screens/settings.dart';
@@ -39,6 +40,9 @@ class _Shell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Watching starts the push pipeline (permission, token, registration) as a
+    // side effect of the shell existing; the value itself is shown in Settings.
+    ref.watch(pushProvider);
     final unread = ref.watch(unreadProvider);
 
     return Scaffold(
