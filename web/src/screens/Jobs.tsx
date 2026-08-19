@@ -1,8 +1,9 @@
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { api, describeError, type Job, type JobPage, type JobSort } from '../api'
+import { api, describeError, type JobSort } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
-import { invalidate, useQuery } from '../hooks'
+import { invalidate } from '../query'
 
 async function refreshFeeds() {
   try { await api.poll() } catch { /* the cron's endpoint; refetch regardless */ }
@@ -11,12 +12,12 @@ async function refreshFeeds() {
 }
 
 export function Jobs({ goToSettings }: { goToSettings: () => void }) {
-  const profiles = useQuery('profiles', api.profiles)
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
   const [selected, setSelected] = useState<number | null>(null)
 
   let body
   if (profiles.error) {
-    body = <ErrorState message={describeError(profiles.error)} onRetry={profiles.refetch} />
+    body = <ErrorState message={describeError(profiles.error)} onRetry={() => profiles.refetch()} />
   } else if (!profiles.data) {
     body = <Loading />
   } else if (profiles.data.length === 0) {
@@ -73,15 +74,13 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedPlace(place.trim()), 250)
-    return () => clearTimeout(timer)
-  }, [place])
-
-  // Debounce typing so each keystroke does not become a request.
-  useEffect(() => {
     const timer = setTimeout(() => setDebounced(query.trim()), 250)
     return () => clearTimeout(timer)
   }, [query])
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedPlace(place.trim()), 250)
+    return () => clearTimeout(timer)
+  }, [place])
 
   // "/" focuses search from anywhere — unless something is already being typed.
   useEffect(() => {
@@ -102,44 +101,27 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
   const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
   const term = tokens.filter((t) => !t.startsWith('@')).join(' ')
   const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
-
   const searching = term !== '' || atTokens.length > 0
-  const first = useQuery<JobPage>(
-    searching
-      ? `jobs:search:${term}@${locations.join(',')}`
-      : `jobs:${profileId}:${sort}@${locations.join(',')}`,
-    () => (searching ? api.searchJobs(term, locations) : api.jobs(profileId, sort, locations)),
-  )
 
-  // Later pages live beside the cached first page and reset whenever it
-  // changes — a refetch (pull, refresh button) starts the feed over.
-  const [more, setMore] = useState<Job[]>([])
-  const [next, setNext] = useState<string | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
-  useEffect(() => {
-    setMore([])
-    setNext(first.data?.next ?? null)
-  }, [first.data])
+  const feed = useInfiniteQuery({
+    queryKey: ['jobs', searching ? 'search' : profileId, searching ? term : sort, locations],
+    queryFn: ({ pageParam }) => searching
+      ? api.searchJobs(term, locations, pageParam)
+      : api.jobs(profileId, sort, locations, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next ?? undefined,
+  })
 
   const sentinel = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const node = sentinel.current
-    if (!node || !next) return
+    if (!node || !feed.hasNextPage) return
     const observer = new IntersectionObserver((entries) => {
-      if (!entries[0].isIntersecting || loadingMore) return
-      setLoadingMore(true)
-      const fetchPage = searching
-        ? api.searchJobs(term, locations, next)
-        : api.jobs(profileId, sort, locations, next)
-      fetchPage
-        .then((page) => { setMore((old) => [...old, ...page.jobs]); setNext(page.next) })
-        .catch(() => setNext(null)) // stop asking; pull-to-refresh starts over
-        .finally(() => setLoadingMore(false))
+      if (entries[0].isIntersecting && !feed.isFetchingNextPage) feed.fetchNextPage()
     }, { rootMargin: '600px' })
     observer.observe(node)
     return () => observer.disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [next, loadingMore, searching, debounced, debouncedPlace, profileId, sort])
+  }, [feed.hasNextPage, feed.isFetchingNextPage, feed])
 
   // What caused each row: the search term while searching, the profile's
   // positive keywords otherwise. Aliases match server-side without highlight —
@@ -148,12 +130,14 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     ? (term ? [term] : [])
     : keywords.filter((keyword) => !keyword.startsWith('-'))
 
+  const rows = feed.data?.pages.flatMap((page) => page.jobs) ?? null
+
   let list
-  if (first.error) {
-    list = <ErrorState message={describeError(first.error)} onRetry={first.refetch} />
-  } else if (!first.data) {
+  if (feed.error) {
+    list = <ErrorState message={describeError(feed.error)} onRetry={() => feed.refetch()} />
+  } else if (!rows) {
     list = <SkeletonList />
-  } else if (first.data.jobs.length === 0) {
+  } else if (rows.length === 0) {
     list = searching || debouncedPlace
       ? <Empty title="Nothing here" detail={debouncedPlace
           ? `No ${searching ? 'results' : 'matches'} in “${debouncedPlace}” — shorthands like uae and uk are understood.`
@@ -169,13 +153,16 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
           />
         )
   } else {
-    const rows = [...first.data.jobs, ...more]
     list = (
       <>
         <div className="list">
           {rows.map((job) => <JobRow key={job.id} job={job} actions highlight={highlight} />)}
         </div>
-        {next && <div ref={sentinel} className="sentinel">{loadingMore ? <span className="spinner" /> : null}</div>}
+        {feed.hasNextPage && (
+          <div ref={sentinel} className="sentinel">
+            {feed.isFetchingNextPage ? <span className="spinner" /> : null}
+          </div>
+        )}
       </>
     )
   }

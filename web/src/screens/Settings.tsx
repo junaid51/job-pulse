@@ -2,14 +2,15 @@ import { useState } from 'react'
 import { API, api, describeError, deviceId, type Profile, type ProfileInput } from '../api'
 import { Loading } from '../components/States'
 import { providerLabel, shortAgo } from '../format'
-import { invalidate, useQuery } from '../hooks'
+import { useQuery } from '@tanstack/react-query'
+import { invalidate } from '../query'
 import { enablePush, type PushState } from '../push'
 
 const splitList = (raw: string) =>
   raw.split(',').map((v) => v.trim()).filter(Boolean)
 
 export function Settings({ push, setPush }: { push: PushState; setPush: (s: PushState) => void }) {
-  const profiles = useQuery('profiles', api.profiles)
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
   const [editing, setEditing] = useState<Profile | 'new' | null>(null)
 
   const afterSave = () => {
@@ -79,7 +80,7 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
 }
 
 function Boards() {
-  const boards = useQuery('boards', api.boards)
+  const boards = useQuery({ queryKey: ['boards'], queryFn: api.boards })
   if (boards.error) return <p className="state-detail pad">{describeError(boards.error)}</p>
   if (!boards.data) return <Loading />
   const failing = boards.data.filter((b) => b.last_error)

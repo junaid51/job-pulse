@@ -3,10 +3,11 @@ import { api, describeError } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, SkeletonList } from '../components/States'
 import { RefreshIcon } from './Jobs'
-import { invalidate, useQuery } from '../hooks'
+import { useQuery } from '@tanstack/react-query'
+import { invalidate } from '../query'
 
 export function Notifications() {
-  const feed = useQuery('notifications', api.notifications)
+  const feed = useQuery({ queryKey: ['notifications'], queryFn: api.notifications })
   const marked = useRef(false)
 
   // Opening the screen marks the feed read. The dots stay for this viewing —
@@ -20,7 +21,7 @@ export function Notifications() {
 
   let body
   if (feed.error) {
-    body = <ErrorState message={describeError(feed.error)} onRetry={feed.refetch} />
+    body = <ErrorState message={describeError(feed.error)} onRetry={() => feed.refetch()} />
   } else if (!feed.data) {
     body = <SkeletonList />
   } else if (feed.data.events.length === 0) {

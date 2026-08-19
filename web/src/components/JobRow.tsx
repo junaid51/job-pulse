@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
 import { api, type Job } from '../api'
 import { providerLabel, shortAgo } from '../format'
-import { invalidate } from '../hooks'
+import { invalidate } from '../query'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
