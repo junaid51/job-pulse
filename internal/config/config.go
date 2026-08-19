@@ -18,18 +18,21 @@ type Config struct {
 	PollInterval time.Duration
 	// CompaniesFile lists the boards to poll.
 	CompaniesFile string
+	// FirebaseCredentials is a service account JSON file. Empty means push
+	// notifications are logged rather than sent.
+	FirebaseCredentials string
 }
 
 // Load reads the environment. It never fails: a missing variable means "use
 // the local development default", which is what running from a clone should do.
-//
-// TODO(M4): GOOGLE_APPLICATION_CREDENTIALS.
 func Load() Config {
 	return Config{
 		DatabaseURL:   env("DATABASE_URL", "postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable"),
 		Addr:          ":" + env("PORT", "8080"),
 		PollInterval:  duration("POLL_INTERVAL", 15*time.Minute),
 		CompaniesFile: env("COMPANIES_FILE", "companies.txt"),
+		// The same variable the Google libraries read, so there is one name for it.
+		FirebaseCredentials: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
 	}
 }
 

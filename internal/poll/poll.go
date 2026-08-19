@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/junaid51/job-pulse/internal/match"
+	"github.com/junaid51/job-pulse/internal/notify"
 	"github.com/junaid51/job-pulse/internal/providers"
 )
 
@@ -36,9 +37,9 @@ type Stats struct {
 }
 
 // Run polls immediately, then every interval until ctx is cancelled.
-func Run(ctx context.Context, pool *pgxpool.Pool, interval time.Duration) {
+func Run(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier, interval time.Duration) {
 	// Poll at startup so a fresh clone has jobs without waiting a quarter hour.
-	logCycle(ctx, pool)
+	logCycle(ctx, pool, notifier)
 
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -47,14 +48,14 @@ func Run(ctx context.Context, pool *pgxpool.Pool, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			logCycle(ctx, pool)
+			logCycle(ctx, pool, notifier)
 		}
 	}
 }
 
-func logCycle(ctx context.Context, pool *pgxpool.Pool) {
+func logCycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) {
 	start := time.Now()
-	stats, err := Cycle(ctx, pool)
+	stats, err := Cycle(ctx, pool, notifier)
 	if err != nil {
 		if !errors.Is(err, ErrBusy) && !errors.Is(err, context.Canceled) {
 			slog.Error("poll cycle failed", "error", err)
@@ -73,7 +74,7 @@ func logCycle(ctx context.Context, pool *pgxpool.Pool) {
 // Cycle polls every company once. One board failing never stops the others: the
 // error is recorded on the row and the next cycle tries again fifteen minutes
 // later, which is why polling needs no retry queue.
-func Cycle(ctx context.Context, pool *pgxpool.Pool) (Stats, error) {
+func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (Stats, error) {
 	if !running.TryLock() {
 		return Stats{}, ErrBusy
 	}
@@ -89,6 +90,10 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool) (Stats, error) {
 	}
 
 	stats := Stats{Companies: len(companies)}
+
+	// Matched jobs are collected across every board and notified once at the end,
+	// so a profile that matches something at four companies gets one push.
+	matched := map[int64][]providers.Job{}
 
 	var (
 		mu   sync.Mutex
@@ -111,39 +116,56 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool) (Stats, error) {
 				return
 			}
 			stats.NewJobs += newJobs
-			stats.NewMatches += newMatches
+			stats.NewMatches += len(newMatches)
+			for _, m := range newMatches {
+				matched[m.profileID] = append(matched[m.profileID], m.job)
+			}
 		}()
 	}
 	wg.Wait()
 
-	return stats, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return stats, err
+	}
+	notifyProfiles(ctx, notifier, profiles, matched)
+
+	return stats, nil
 }
 
-func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []profile) (int, int, error) {
+// notifyProfiles sends one push per profile that gained something this cycle.
+func notifyProfiles(ctx context.Context, notifier *notify.Notifier, profiles []profile, matched map[int64][]providers.Job) {
+	for _, p := range profiles {
+		if jobs := matched[p.id]; len(jobs) > 0 {
+			notifier.Notify(ctx, p.name, jobs)
+		}
+	}
+}
+
+func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []profile) (int, []newMatch, error) {
 	fetch, ok := providers.All[c.Provider]
 	if !ok {
 		// Unreachable while companies.txt is validated on load, but a bad row
 		// should not panic the cycle.
-		return 0, 0, errors.New("unknown provider " + c.Provider)
+		return 0, nil, errors.New("unknown provider " + c.Provider)
 	}
 
 	jobs, err := fetch(ctx, c.Slug)
 	if err != nil {
 		slog.Warn("board fetch failed", "provider", c.Provider, "slug", c.Slug, "error", err)
 		recordResult(ctx, pool, c, err)
-		return 0, 0, err
+		return 0, nil, err
 	}
 
 	newJobs, err := insertJobs(ctx, pool, c, jobs)
 	if err != nil {
 		recordResult(ctx, pool, c, err)
-		return 0, 0, err
+		return 0, nil, err
 	}
 
 	newMatches, err := insertMatches(ctx, pool, newJobs, profiles)
 	if err != nil {
 		recordResult(ctx, pool, c, err)
-		return 0, 0, err
+		return 0, nil, err
 	}
 
 	recordResult(ctx, pool, c, nil)
@@ -164,12 +186,17 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 		return nil, nil
 	}
 
+	// Some boards (Lever, Ashby) do not name the company, so fill it in on the
+	// struct itself — the same value must reach both the insert and, through
+	// storedJob, the notification that names the company.
+	for i := range jobs {
+		if jobs[i].Company == "" {
+			jobs[i].Company = c.displayName()
+		}
+	}
+
 	batch := &pgx.Batch{}
 	for _, j := range jobs {
-		company := j.Company
-		if company == "" {
-			company = c.displayName()
-		}
 		// A missing date must be NULL, not the zero time.
 		var posted any
 		if !j.PostedAt.IsZero() {
@@ -180,7 +207,7 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 			values ($1, $2, $3, $4, $5, $6, $7, $8)
 			on conflict (provider, external_id) do nothing
 			returning id`,
-			c.Provider, j.ExternalID, company, j.Title, j.Location, j.Remote, j.URL, posted)
+			c.Provider, j.ExternalID, j.Company, j.Title, j.Location, j.Remote, j.URL, posted)
 	}
 
 	// Every queued result must be consumed before Close, so errors surface here
@@ -203,36 +230,47 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 	return stored, nil
 }
 
-// insertMatches records which profiles each new job satisfies.
-//
-// TODO(M4): the matches created here are what a push notification summarises.
-func insertMatches(ctx context.Context, pool *pgxpool.Pool, jobs []storedJob, profiles []profile) (int, error) {
+// newMatch is a job that matched a profile for the first time — one line of a
+// notification.
+type newMatch struct {
+	profileID int64
+	job       providers.Job
+}
+
+// insertMatches records which profiles each new job satisfies and returns the
+// rows that were genuinely new, which is what a notification summarises.
+func insertMatches(ctx context.Context, pool *pgxpool.Pool, jobs []storedJob, profiles []profile) ([]newMatch, error) {
 	batch := &pgx.Batch{}
+	var queued []newMatch
 	for _, j := range jobs {
 		for _, p := range profiles {
 			if match.Matches(p.criteria, j.job) {
 				batch.Queue(`
 					insert into matches (profile_id, job_id) values ($1, $2)
 					on conflict do nothing`, p.id, j.id)
+				queued = append(queued, newMatch{profileID: p.id, job: j.job})
 			}
 		}
 	}
 	if batch.Len() == 0 {
-		return 0, nil
+		return nil, nil
 	}
 
 	results := pool.SendBatch(ctx, batch)
 	defer results.Close()
 
-	matched := 0
-	for range batch.Len() {
+	var inserted []newMatch
+	for i := range queued {
 		tag, err := results.Exec()
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
-		matched += int(tag.RowsAffected())
+		// Zero rows means the match already existed, so it is not news.
+		if tag.RowsAffected() > 0 {
+			inserted = append(inserted, queued[i])
+		}
 	}
-	return matched, nil
+	return inserted, nil
 }
 
 // recordResult stores the outcome so a board that quietly stops working is
@@ -251,14 +289,15 @@ func recordResult(ctx context.Context, pool *pgxpool.Pool, c Company, cause erro
 }
 
 // profile is a search profile as the poller needs it: an id to write matches
-// against and the criteria to compare.
+// against, a name for the notification, and the criteria to compare.
 type profile struct {
 	id       int64
+	name     string
 	criteria match.Criteria
 }
 
 func loadProfiles(ctx context.Context, pool *pgxpool.Pool) ([]profile, error) {
-	rows, err := pool.Query(ctx, `select id, keywords, locations, remote_only from profiles order by id`)
+	rows, err := pool.Query(ctx, `select id, name, keywords, locations, remote_only from profiles order by id`)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +306,7 @@ func loadProfiles(ctx context.Context, pool *pgxpool.Pool) ([]profile, error) {
 	var profiles []profile
 	for rows.Next() {
 		var p profile
-		if err := rows.Scan(&p.id, &p.criteria.Keywords, &p.criteria.Locations, &p.criteria.RemoteOnly); err != nil {
+		if err := rows.Scan(&p.id, &p.name, &p.criteria.Keywords, &p.criteria.Locations, &p.criteria.RemoteOnly); err != nil {
 			return nil, err
 		}
 		profiles = append(profiles, p)
