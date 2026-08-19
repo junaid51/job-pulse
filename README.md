@@ -20,9 +20,10 @@ account. Still to come: the Firebase Messaging wiring inside the app, which
 needs a Firebase project. Until then the app shows new matches when you open it
 or pull to refresh.
 
-The app analyzes clean, its widget tests pass and it builds for web. iOS has not
-been built yet — that needs Xcode locally — and the Android Gradle build is
-deferred.
+The app is a PWA: one Flutter codebase compiled to the web, installed via Add to
+Home Screen, with push notifications working on iPhone that way — no Apple
+Developer account needed. The native iOS and Android shells were deliberately
+dropped; `flutter create .` regenerates them if ever wanted.
 
 ## Stack
 
@@ -36,7 +37,7 @@ layer: handlers and the poller take a `*pgxpool.Pool` and run their own queries.
 ```bash
 docker compose up -d          # PostgreSQL on :5432
 go run ./cmd/jobpulse         # migrates, polls, serves on :8080
-cd app && flutter run         # Android, iOS or web
+cd app && flutter run -d chrome
 ```
 
 Migrations run automatically on startup, so there is no separate migrate step
