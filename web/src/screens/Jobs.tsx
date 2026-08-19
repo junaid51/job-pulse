@@ -11,6 +11,7 @@ async function refreshFeeds() {
   try { await api.poll() } catch { /* the cron's endpoint; refetch regardless */ }
   invalidate('jobs')
   invalidate('notifications')
+  invalidate('profiles') // the chips carry unread counts
 }
 
 export function Jobs({ goToSettings }: { goToSettings: () => void }) {
@@ -49,7 +50,8 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
           </div>
         )}
         <JobList profileId={profile?.id ?? null} keywords={profile?.keywords ?? []}
-          profileName={profile?.name ?? ''} onCreateProfile={newSearch} />
+          profileName={profile?.name ?? ''} onCreateProfile={newSearch}
+          onSavedSearch={setSelected} />
       </>
     )
   }
@@ -70,9 +72,10 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
 // profileId is null when no profile exists yet: the feed has nothing to show,
 // but the search bar still covers the whole corpus — browsing must not wait
 // for a profile to be created.
-function JobList({ profileId, keywords, profileName, onCreateProfile }: {
+function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSearch }: {
   profileId: number | null; keywords: string[]; profileName: string
   onCreateProfile: () => void
+  onSavedSearch: (id: number) => void
 }) {
   const [sort, setSort] = useState<JobSort>('posted')
   const [query, setQuery] = useState('')
@@ -153,9 +156,11 @@ function JobList({ profileId, keywords, profileName, onCreateProfile }: {
   // window reaches the last few rows, ask for the next page.
   const lastIndex = windowed[windowed.length - 1]?.index ?? -1
   useEffect(() => {
-    if (!rows || lastIndex < rows.length - 8) return
+    // Placeholder rows belong to the previous query — their cursor must not
+    // be replayed against the new one.
+    if (!rows || feed.isPlaceholderData || lastIndex < rows.length - 8) return
     if (feed.hasNextPage && !feed.isFetchingNextPage) feed.fetchNextPage()
-  }, [lastIndex, rows, feed.hasNextPage, feed.isFetchingNextPage, feed])
+  }, [lastIndex, rows, feed.isPlaceholderData, feed.hasNextPage, feed.isFetchingNextPage, feed])
 
   let list
   if (feed.error) {
@@ -215,7 +220,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile }: {
         {feed.isFetchingNextPage && (
           <div className="sentinel"><span className="spinner" /></div>
         )}
-        {!feed.hasNextPage && (
+        {!feed.hasNextPage && !feed.isPlaceholderData && (
           <p className="feed-end">
             That's all — {rows.length} {rows.length === 1 ? 'job' : 'jobs'} in {scope}
           </p>
@@ -262,10 +267,11 @@ function JobList({ profileId, keywords, profileName, onCreateProfile }: {
                 keywords: term ? [term] : [],
                 locations,
                 remote_only: false,
-              }).then(() => {
+              }).then((r) => {
                 invalidate('profiles')
                 invalidate('jobs')
                 // Land on the saved search's own feed: the loop closes here.
+                onSavedSearch(r.profile.id)
                 setQuery('')
                 setPlace('')
                 showToast('Saved — new matches will notify you. Edit it in Settings.')
