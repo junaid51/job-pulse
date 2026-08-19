@@ -124,6 +124,19 @@ func TestLocationAliases(t *testing.T) {
 		t.Error(`locations=[ksa] should match "Riyadh, Saudi Arabia"`)
 	}
 
+	// "United Kingdom" does not contain the letters "uk"; the alias has to
+	// bridge it, exactly as with the Emirates.
+	for _, location := range []string{"Remote, United Kingdom", "London", "London, UK"} {
+		if !Matches(Criteria{Locations: []string{"UK"}},
+			providers.Job{Title: "Engineer", Location: location}) {
+			t.Errorf("locations=[UK] should match %q", location)
+		}
+	}
+	if !Matches(Criteria{Locations: []string{"usa"}},
+		providers.Job{Title: "Engineer", Location: "Remote, United States"}) {
+		t.Error(`locations=[usa] should match "Remote, United States"`)
+	}
+
 	// Aliases are for locations only; a keyword named like one stays literal.
 	if Matches(Criteria{Keywords: []string{"uae"}},
 		providers.Job{Title: "Engineer, Dubai team", Location: ""}) {
