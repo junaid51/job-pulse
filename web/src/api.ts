@@ -108,9 +108,10 @@ export const api = {
   deleteProfile: (id: number) =>
     request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
 
-  jobs: (profileId: number, sort: JobSort = 'posted', cursor?: string) =>
+  jobs: (profileId: number, sort: JobSort = 'posted', locations: string[] = [], cursor?: string) =>
     request<{ jobs: Job[]; next_cursor?: string }>(
       `/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}` +
+      locations.map((l) => `&location=${encodeURIComponent(l)}`).join('') +
       (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
     ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
 

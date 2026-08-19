@@ -68,7 +68,14 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
   const [sort, setSort] = useState<JobSort>('posted')
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [place, setPlace] = useState('')
+  const [debouncedPlace, setDebouncedPlace] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedPlace(place.trim()), 250)
+    return () => clearTimeout(timer)
+  }, [place])
 
   // Debounce typing so each keystroke does not become a request.
   useEffect(() => {
@@ -89,16 +96,19 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // "@place" tokens filter by location, through the same alias dictionary the
-  // matcher uses — "designer @dubai", or "@uae" alone.
+  // The location box filters every view; "@place" tokens typed into search do
+  // the same, through the same alias dictionary the matcher uses.
   const tokens = debounced.split(/\s+/).filter(Boolean)
-  const locations = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
+  const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
   const term = tokens.filter((t) => !t.startsWith('@')).join(' ')
+  const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
 
-  const searching = term !== '' || locations.length > 0
+  const searching = term !== '' || atTokens.length > 0
   const first = useQuery<JobPage>(
-    searching ? `jobs:search:${term}@${locations.join(',')}` : `jobs:${profileId}:${sort}`,
-    () => (searching ? api.searchJobs(term, locations) : api.jobs(profileId, sort)),
+    searching
+      ? `jobs:search:${term}@${locations.join(',')}`
+      : `jobs:${profileId}:${sort}@${locations.join(',')}`,
+    () => (searching ? api.searchJobs(term, locations) : api.jobs(profileId, sort, locations)),
   )
 
   // Later pages live beside the cached first page and reset whenever it
@@ -120,7 +130,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
       setLoadingMore(true)
       const fetchPage = searching
         ? api.searchJobs(term, locations, next)
-        : api.jobs(profileId, sort, next)
+        : api.jobs(profileId, sort, locations, next)
       fetchPage
         .then((page) => { setMore((old) => [...old, ...page.jobs]); setNext(page.next) })
         .catch(() => setNext(null)) // stop asking; pull-to-refresh starts over
@@ -129,7 +139,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     observer.observe(node)
     return () => observer.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [next, loadingMore, searching, debounced, profileId, sort])
+  }, [next, loadingMore, searching, debounced, debouncedPlace, profileId, sort])
 
   // What caused each row: the search term while searching, the profile's
   // positive keywords otherwise. Aliases match server-side without highlight —
@@ -144,8 +154,10 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
   } else if (!first.data) {
     list = <SkeletonList />
   } else if (first.data.jobs.length === 0) {
-    list = searching
-      ? <Empty title={`Nothing for “${debounced}”`} detail="Search covers every live job. Tip: @place filters by location — designer @dubai." />
+    list = searching || debouncedPlace
+      ? <Empty title="Nothing here" detail={debouncedPlace
+          ? `No ${searching ? 'results' : 'matches'} in “${debouncedPlace}” — shorthands like uae and uk are understood.`
+          : 'Search covers every live job the boards currently list.'} />
       : sort === 'applied'
         ? <Empty title="Nothing marked applied" detail="The check on a job row records where you've applied." />
         : (
@@ -184,6 +196,18 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
             ? <button className="clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>
             : <kbd>/</kbd>}
         </div>
+        <div className="place">
+          <PinIcon />
+          <input
+            value={place}
+            onChange={(event) => setPlace(event.target.value)}
+            placeholder="Location"
+            aria-label="Filter by location"
+          />
+          {place && (
+            <button className="clear" onClick={() => setPlace('')} aria-label="Clear location">✕</button>
+          )}
+        </div>
         {searching ? null : (
           <div className="segment" role="tablist" aria-label="View">
             <button role="tab" aria-selected={sort === 'posted'}
@@ -203,6 +227,16 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
       </div>
       {list}
     </>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </svg>
   )
 }
 
