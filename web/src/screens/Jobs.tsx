@@ -89,9 +89,10 @@ function JobList({ profileId }: { profileId: number }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const searching = debounced !== ''
   const jobs = useQuery(
-    `jobs:${profileId}:${sort}:${debounced}`,
-    () => api.jobs(profileId, sort, debounced),
+    searching ? `jobs:search:${debounced}` : `jobs:${profileId}:${sort}`,
+    () => (searching ? api.searchJobs(debounced) : api.jobs(profileId, sort)),
   )
 
   let list
@@ -101,7 +102,7 @@ function JobList({ profileId }: { profileId: number }) {
     list = <SkeletonList />
   } else if (jobs.data.length === 0) {
     list = debounced
-      ? <Empty title={`Nothing for “${debounced}”`} detail="Search covers title, company and location within this profile's matches." />
+      ? <Empty title={`Nothing for “${debounced}”`} detail="Search covers title, company and location across every job the boards currently list." />
       : (
         <Empty
           title="Nothing matched yet"
@@ -123,13 +124,14 @@ function JobList({ profileId }: { profileId: number }) {
             ref={searchRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search matches"
+            placeholder="Search all jobs"
             aria-label="Search matches"
           />
           {query
             ? <button className="clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>
             : <kbd>/</kbd>}
         </div>
+        {searching ? null : (
         <div className="segment" role="tablist" aria-label="Sort">
           <button role="tab" aria-selected={sort === 'posted'}
             className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
@@ -140,6 +142,7 @@ function JobList({ profileId }: { profileId: number }) {
             Matched
           </button>
         </div>
+        )}
       </div>
       {list}
     </>

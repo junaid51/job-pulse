@@ -75,10 +75,16 @@ export const api = {
   deleteProfile: (id: number) =>
     request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
 
-  jobs: (profileId: number, sort: JobSort = 'posted', q = '') =>
-    request<{ jobs: Job[] }>(
-      `/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}&q=${encodeURIComponent(q)}`,
-    ).then((r) => r.jobs ?? []),
+  jobs: (profileId: number, sort: JobSort = 'posted') =>
+    request<{ jobs: Job[] }>(`/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}`)
+      .then((r) => r.jobs ?? []),
+
+  /** Searches every stored job, not just one profile's matches — a search bar
+   *  that hides jobs because they missed your keywords answers the wrong
+   *  question. */
+  searchJobs: (q: string) =>
+    request<{ jobs: Job[] }>(`/api/jobs?limit=50&q=${encodeURIComponent(q)}`)
+      .then((r) => r.jobs ?? []),
 
   notifications: () =>
     request<{ notifications: MatchEvent[]; unread: number }>('/api/notifications?limit=50')

@@ -39,3 +39,6 @@ ashby              railway      Railway
 careerjet          software+engineer|dubai|en_AE  Careerjet
 careerjet          designer|dubai|en_AE           Careerjet
 careerjet          developer|dubai|en_AE          Careerjet
+careerjet          frontend||en_AE                Careerjet
+careerjet          react||en_AE                   Careerjet
+careerjet          ui+ux+designer||en_AE          Careerjet

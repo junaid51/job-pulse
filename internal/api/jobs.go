@@ -38,11 +38,6 @@ const (
 // whatever page the client happens to hold.
 func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		profileID, err := strconv.ParseInt(r.URL.Query().Get("profile_id"), 10, 64)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "profile_id is required")
-			return
-		}
 		limit := intParam(r, "limit", defaultLimit, maxLimit)
 
 		sort := r.URL.Query().Get("sort")
@@ -54,6 +49,20 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
+
+		// With a search term and no profile, the query runs over everything
+		// stored — a search bar that silently hides jobs because they missed
+		// your profile keywords answers a different question than the one asked.
+		if r.URL.Query().Get("profile_id") == "" && search != "" {
+			searchAllJobs(w, r, pool, search, limit)
+			return
+		}
+
+		profileID, err := strconv.ParseInt(r.URL.Query().Get("profile_id"), 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "profile_id is required unless q is set")
+			return
+		}
 
 		// Offset pagination repeats rows on a feed that grows at the head, so this
 		// is a cursor.
@@ -140,6 +149,40 @@ func parseCursor(raw string) (time.Time, int64, error) {
 		return time.Time{}, 0, fmt.Errorf("cursor id must be a number: %w", err)
 	}
 	return at, jobID, nil
+}
+
+// searchAllJobs is the profile-free search: every live job, newest first.
+func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, search string, limit int) {
+	rows, err := pool.Query(r.Context(), `
+		select id, provider, company, title, location, remote, url,
+		       posted_at, first_seen_at, null::timestamptz
+		from jobs
+		where title ilike '%' || $1 || '%'
+		   or company ilike '%' || $1 || '%'
+		   or location ilike '%' || $1 || '%'
+		order by posted_at desc nulls last, id desc
+		limit $2`, search, limit)
+	if err != nil {
+		serverError(w, "searching jobs", err)
+		return
+	}
+	defer rows.Close()
+
+	jobs := []job{}
+	for rows.Next() {
+		var j job
+		if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
+			&j.Remote, &j.URL, &j.PostedAt, &j.MatchedAt, &j.SeenAt); err != nil {
+			serverError(w, "reading jobs", err)
+			return
+		}
+		jobs = append(jobs, j)
+	}
+	if err := rows.Err(); err != nil {
+		serverError(w, "reading jobs", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
 }
 
 func intParam(r *http.Request, name string, def, max int) int {
