@@ -42,3 +42,4 @@ careerjet          developer|dubai|en_AE          Careerjet
 careerjet          frontend||en_AE                Careerjet
 careerjet          react||en_AE                   Careerjet
 careerjet          ui+ux+designer||en_AE          Careerjet
+smartrecruiters    Namshi       Namshi
