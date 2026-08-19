@@ -72,3 +72,26 @@ class EmptyView extends StatelessWidget {
     );
   }
 }
+
+/// Wraps a full-screen state (empty, error) so a RefreshIndicator above it
+/// still works: pull-to-refresh needs a scrollable descendant, and an empty
+/// list is exactly when you want to pull.
+class RefreshableState extends StatelessWidget {
+  const RefreshableState({required this.child, super.key});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: SizedBox(
+          height: constraints.maxHeight,
+          width: constraints.maxWidth,
+          child: child,
+        ),
+      ),
+    );
+  }
+}

@@ -91,7 +91,7 @@ GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
 POST   /api/notifications/seen                     mark the feed read
 
 POST   /api/devices                                {token, platform} — FCM registration
-POST   /api/poll                                   poll now; returns 202
+POST   /api/poll                                   run a cycle now; returns its stats
 ```
 
 Creating or editing a profile backfills it against every job already stored, so

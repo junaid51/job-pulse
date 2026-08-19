@@ -52,8 +52,9 @@ class _Jobs extends ConsumerWidget {
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
-              // Ask for a fresh poll and refetch. The cycle keeps running after
-              // the server answers, so anything it finds lands on the next pull.
+              // Poll, then refetch. The server runs the cycle before answering,
+              // so the spinner holds for the few seconds it takes and the
+              // refetch genuinely includes whatever was just found.
               try {
                 await ref.read(apiProvider).poll();
               } on Object {
@@ -63,15 +64,20 @@ class _Jobs extends ConsumerWidget {
               await ref.read(jobsProvider(profile.id).future);
             },
             child: switch (jobs) {
-              AsyncError(:final error) => ErrorView(
-                message: describeError(error),
-                onRetry: () => ref.invalidate(jobsProvider(profile.id)),
+              AsyncError(:final error) => RefreshableState(
+                child: ErrorView(
+                  message: describeError(error),
+                  onRetry: () => ref.invalidate(jobsProvider(profile.id)),
+                ),
               ),
-              AsyncData(:final value) when value.isEmpty => const EmptyView(
-                title: 'Nothing matched yet',
-                detail: 'The next poll may find something. Pull down to check now.',
+              AsyncData(:final value) when value.isEmpty => const RefreshableState(
+                child: EmptyView(
+                  title: 'Nothing matched yet',
+                  detail: 'The next poll may find something. Pull down to check now.',
+                ),
               ),
               AsyncData(:final value) => ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 24),
                 itemCount: value.length,
                 separatorBuilder: (_, _) => const Divider(),
