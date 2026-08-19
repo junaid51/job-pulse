@@ -9,8 +9,10 @@ three screens. The design and its deliberate omissions are in
 ## Status
 
 **Milestone 1 — foundations.** The backend starts, applies its schema and serves
-`/healthz`; the Flutter app builds and runs. There are no providers, no polling,
-no matching, no notifications and no UI yet — those are M2–M4.
+`/healthz`. The Flutter app is a boot placeholder: it analyzes clean, its smoke
+test passes, and it builds for web. iOS needs Xcode locally and has not been
+built yet; the Android Gradle build is deferred. There are no providers, no
+polling, no matching, no notifications and no UI — those are M2-M4.
 
 ## Stack
 

@@ -153,8 +153,12 @@ Notes:
 - `companies` has a composite natural key. No surrogate id needed since jobs
   denormalize the company display name.
 
-Migrations: `golang-migrate`, plain `.sql` files in `migrations/`.
-Queries: `sqlc` from `internal/db/queries.sql` → typed Go. `pgx` pool.
+Migrations: `golang-migrate` over plain `.sql` files in `migrations/`, embedded
+into the binary and applied at startup — so there is no migrate CLI to install
+and no separate step to forget.
+Queries: hand-written SQL on a `pgx` pool, at the call site that needs it. There
+is a small number of queries in this project, so keeping the SQL explicit beats
+introducing code generation.
 
 ---
 
@@ -288,8 +292,8 @@ one piece that degrades gracefully.
 
 ## 7. HTTP API
 
-Chi, `encoding/json`, plain `http.HandlerFunc`. No DTO layer — sqlc's structs
-are the JSON shapes.
+Chi, `encoding/json`, plain `http.HandlerFunc`. No DTO layer — the struct a
+query scans into is the JSON shape.
 
 ```
 GET    /api/profiles
@@ -360,7 +364,7 @@ provider and refetches. Never trust a notification body as data you then store.
 job-pulse/
   cmd/jobpulse/main.go          flags, wiring, ticker + server
   internal/api/                 router.go, handlers.go
-  internal/db/                  queries.sql, sqlc generated code
+  internal/db/                  pgx pool + migration runner
   internal/providers/           providers.go + one file per provider
   internal/match/match.go
   internal/notify/fcm.go
@@ -368,15 +372,15 @@ job-pulse/
   migrations/                   0001_init.up.sql / .down.sql
   companies.txt                 seed list: "greenhouse stripe"
   docker-compose.yml            postgres only
-  Makefile                      migrate, sqlc, run, seed
+  Makefile                      up, run, test, seed
   app/                          Flutter
 ```
 
 ```bash
 git clone … && cd job-pulse
 docker compose up -d          # postgres
-make migrate && make seed     # schema + companies.txt
-go run ./cmd/jobpulse         # API on :8080, polls immediately then every 15m
+make seed                     # load companies.txt
+go run ./cmd/jobpulse         # migrates, serves :8080, polls every 15m
 cd app && flutter run
 ```
 
@@ -394,7 +398,7 @@ knows or cares.
 
 | Weekend | Work |
 |---|---|
-| 1 | Migrations, sqlc, Greenhouse + Lever, poll loop, `/api/jobs`. Verify new-job detection against a real board. |
+| 1 | Migrations, Greenhouse + Lever, poll loop, `/api/jobs`. Verify new-job detection against a real board. |
 | 2 | Remaining four providers, matching, profiles CRUD, `companies.txt` seeding. |
 | 3 | Flutter: three screens, API client, theme. |
 | 4 | FCM both ends, `seen_at` plumbing, README. |
@@ -420,10 +424,10 @@ migration.
 config schemas — all to avoid editing a 20-line map. Six providers, one
 `map[string]Provider`. A seventh is one file plus one line.
 
-**Repository pattern / service layer / hexagonal boundaries.** sqlc already
-generates a typed data access layer. Wrapping it in interfaces so I can swap
-Postgres for a database I will never use is pure ceremony. Handlers call
-queries directly.
+**Repository pattern / service layer / hexagonal boundaries.** Handlers and the
+poller take the `pgx` pool and run their own SQL, so every query is visible where
+it is used. Wrapping that in interfaces so I can swap Postgres for a database I
+will never use is pure ceremony.
 
 **A separate worker process, queue, or scheduler.** Six providers × ~100
 companies every 15 minutes is a few hundred HTTP requests an hour. A goroutine
