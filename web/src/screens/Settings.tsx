@@ -152,7 +152,7 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
         <label>Keywords
           <input value={keywords} onChange={(e) => setKeywords(e.target.value)}
             placeholder="go, backend, platform" />
-          <small>Comma separated. Any one of them in the title is a match.</small>
+          <small>Comma separated; any one matches. Prefix with - to exclude: designer, -senior</small>
         </label>
         <label>Locations
           <input value={locations} onChange={(e) => setLocations(e.target.value)}

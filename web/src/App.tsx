@@ -21,6 +21,17 @@ export function App() {
   const feed = useQuery('notifications', api.notifications)
   const unread = feed.data?.unread ?? 0
 
+  // The count on the app icon itself — iOS 16.4+ Home-Screen apps and desktop
+  // PWAs support the Badging API; everywhere else this is a silent no-op.
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (n: number) => Promise<void>
+      clearAppBadge?: () => Promise<void>
+    }
+    if (unread > 0) nav.setAppBadge?.(unread)?.catch(() => {})
+    else nav.clearAppBadge?.()?.catch(() => {})
+  }, [unread])
+
   return (
     <div className="frame">
       <main>

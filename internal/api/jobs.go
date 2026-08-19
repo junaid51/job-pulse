@@ -18,9 +18,11 @@ type job struct {
 	Location  string     `json:"location"`
 	Remote    bool       `json:"remote"`
 	URL       string     `json:"url"`
+	Salary    string     `json:"salary"`
 	PostedAt  *time.Time `json:"posted_at"`
 	MatchedAt time.Time  `json:"matched_at"`
 	SeenAt    *time.Time `json:"seen_at"`
+	Applied   bool       `json:"applied"`
 }
 
 const (
@@ -88,11 +90,13 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 		rows, err := pool.Query(r.Context(), `
 			select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
-			       j.posted_at, m.created_at, m.seen_at
+			       j.salary, j.posted_at, m.created_at, m.seen_at,
+			       m.applied_at is not null
 			from matches m
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = $6
 			where m.profile_id = $1
+			  and m.hidden_at is null
 			  and ($2::timestamptz is null or (m.created_at, j.id) < ($2, $3::bigint))
 			  and ($5 = '' or j.title ilike '%' || $5 || '%'
 			       or j.company ilike '%' || $5 || '%'
@@ -109,7 +113,8 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		for rows.Next() {
 			var j job
 			if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
-				&j.Remote, &j.URL, &j.PostedAt, &j.MatchedAt, &j.SeenAt); err != nil {
+				&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
+				&j.Applied); err != nil {
 				serverError(w, "reading jobs", err)
 				return
 			}
@@ -156,7 +161,7 @@ func parseCursor(raw string) (time.Time, int64, error) {
 func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, search string, limit int) {
 	rows, err := pool.Query(r.Context(), `
 		select id, provider, company, title, location, remote, url,
-		       posted_at, first_seen_at, null::timestamptz
+		       salary, posted_at, first_seen_at, null::timestamptz, false
 		from jobs
 		where title ilike '%' || $1 || '%'
 		   or company ilike '%' || $1 || '%'
@@ -173,7 +178,8 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 	for rows.Next() {
 		var j job
 		if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
-			&j.Remote, &j.URL, &j.PostedAt, &j.MatchedAt, &j.SeenAt); err != nil {
+			&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
+			&j.Applied); err != nil {
 			serverError(w, "reading jobs", err)
 			return
 		}

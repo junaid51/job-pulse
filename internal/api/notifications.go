@@ -35,11 +35,13 @@ func listNotifications(pool *pgxpool.Pool) http.HandlerFunc {
 		rows, err := pool.Query(r.Context(), `
 			select m.profile_id, p.name,
 			       j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
-			       j.posted_at, m.created_at, m.seen_at
+			       j.salary, j.posted_at, m.created_at, m.seen_at,
+			       m.applied_at is not null
 			from matches m
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = $4
-			where $1::timestamptz is null or (m.created_at, j.id) < ($1, $2::bigint)
+			where m.hidden_at is null
+			  and ($1::timestamptz is null or (m.created_at, j.id) < ($1, $2::bigint))
 			order by m.created_at desc, j.id desc
 			limit $3`, at, atID, limit, deviceID(r))
 		if err != nil {
@@ -53,7 +55,8 @@ func listNotifications(pool *pgxpool.Pool) http.HandlerFunc {
 			var n notification
 			if err := rows.Scan(&n.ProfileID, &n.ProfileName,
 				&n.Job.ID, &n.Job.Provider, &n.Job.Company, &n.Job.Title, &n.Job.Location,
-				&n.Job.Remote, &n.Job.URL, &n.Job.PostedAt, &n.Job.MatchedAt, &n.Job.SeenAt); err != nil {
+				&n.Job.Remote, &n.Job.URL, &n.Job.Salary, &n.Job.PostedAt, &n.Job.MatchedAt,
+				&n.Job.SeenAt, &n.Job.Applied); err != nil {
 				serverError(w, "reading notifications", err)
 				return
 			}
@@ -68,7 +71,7 @@ func listNotifications(pool *pgxpool.Pool) http.HandlerFunc {
 		if err := pool.QueryRow(r.Context(), `
 			select count(*) from matches m
 			join profiles p on p.id = m.profile_id and p.owner = $1
-			where m.seen_at is null`, deviceID(r)).Scan(&unread); err != nil {
+			where m.seen_at is null and m.hidden_at is null`, deviceID(r)).Scan(&unread); err != nil {
 			serverError(w, "counting unread", err)
 			return
 		}

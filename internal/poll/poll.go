@@ -308,11 +308,11 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 			posted = j.PostedAt
 		}
 		batch.Queue(`
-			insert into jobs (provider, external_id, slug, company, title, location, remote, url, posted_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			insert into jobs (provider, external_id, slug, company, title, location, remote, url, salary, posted_at)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			on conflict (provider, external_id) do nothing
 			returning id`,
-			c.Provider, j.ExternalID, c.Slug, j.Company, j.Title, j.Location, j.Remote, j.URL, posted)
+			c.Provider, j.ExternalID, c.Slug, j.Company, j.Title, j.Location, j.Remote, j.URL, j.Salary, posted)
 	}
 
 	// Every queued result must be consumed before Close, so errors surface here

@@ -9,6 +9,8 @@ export interface Job {
   location: string
   remote: boolean
   url: string
+  salary: string
+  applied: boolean
   posted_at: string | null
   matched_at: string
   seen_at: string | null
@@ -116,6 +118,13 @@ export const api = {
 
   // Best effort: a deployed backend reserves this for its cron and answers 401.
   poll: () => request<unknown>('/api/poll', { method: 'POST' }),
+
+  /** Hides a job from this device's feeds for good. */
+  hideJob: (id: number) => request<void>(`/api/jobs/${id}/hide`, { method: 'POST' }),
+
+  /** Flips the applied state; answers with the new one. */
+  toggleApplied: (id: number) =>
+    request<{ applied: boolean }>(`/api/jobs/${id}/applied`, { method: 'POST' }),
 }
 
 /** A message worth putting on screen. */
