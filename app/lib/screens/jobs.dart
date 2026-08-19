@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../api.dart';
+import '../api.dart' show describeError;
 import '../models.dart';
 import '../providers.dart';
 import '../widgets/job_tile.dart';
@@ -16,7 +16,16 @@ class JobsScreen extends ConsumerWidget {
     final profiles = ref.watch(profilesProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Jobs')),
+      appBar: AppBar(
+        title: const Text('Jobs'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh, size: 22),
+            onPressed: () => refreshFeeds(ref),
+          ),
+        ],
+      ),
       body: switch (profiles) {
         AsyncError(:final error) => ErrorView(
           message: describeError(error),
@@ -52,15 +61,7 @@ class _Jobs extends ConsumerWidget {
         Expanded(
           child: RefreshIndicator(
             onRefresh: () async {
-              // Poll, then refetch. The server runs the cycle before answering,
-              // so the spinner holds for the few seconds it takes and the
-              // refetch genuinely includes whatever was just found.
-              try {
-                await ref.read(apiProvider).poll();
-              } on Object {
-                // A failed poll is not worth blocking a refresh over.
-              }
-              ref.invalidate(jobsProvider(profile.id));
+              await refreshFeeds(ref);
               await ref.read(jobsProvider(profile.id).future);
             },
             child: switch (jobs) {

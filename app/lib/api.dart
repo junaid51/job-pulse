@@ -31,8 +31,10 @@ class JobPulseApi {
           Dio(
             BaseOptions(
               baseUrl: baseUrl ?? defaultApiBaseUrl(),
-              connectTimeout: const Duration(seconds: 10),
-              receiveTimeout: const Duration(seconds: 30),
+              // Generous on purpose: a free host that has gone to sleep takes
+              // up to a minute to wake, and the first request is the alarm.
+              connectTimeout: const Duration(seconds: 60),
+              receiveTimeout: const Duration(seconds: 60),
               contentType: Headers.jsonContentType,
             ),
           );
@@ -126,7 +128,9 @@ String describeError(Object error) {
   if (error is DioException) {
     return switch (error.type) {
       DioExceptionType.connectionError ||
-      DioExceptionType.connectionTimeout => 'Cannot reach the backend.',
+      DioExceptionType.connectionTimeout =>
+        'Cannot reach the backend. On free hosting it may just be waking up — '
+            'try again in a moment.',
       DioExceptionType.receiveTimeout ||
       DioExceptionType.sendTimeout => 'The backend took too long to answer.',
       DioExceptionType.badResponse =>
