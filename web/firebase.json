@@ -4,10 +4,10 @@
     "ignore": ["firebase.json"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
-      { "source": "/firebase-messaging-sw.js",
+      { "source": "**",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
-      { "source": "/index.html",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+      { "source": "/assets/**",
+        "headers": [{ "key": "Cache-Control", "value": "max-age=31536000, immutable" }] }
     ]
   }
 }
