@@ -32,10 +32,15 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
       <h2 className="section-h">Search profiles</h2>
       {profiles.error ? <p className="state-detail pad">{describeError(profiles.error)}</p> : null}
       {!profiles.data && !profiles.error && <Loading />}
-      {profiles.data?.length === 0 && <p className="state-detail pad">None yet. Use + to add one.</p>}
+      {profiles.data?.length === 0 && <p className="state-detail pad">Nothing watching the boards yet.</p>}
       {profiles.data?.map((profile) => (
         <ProfileRow key={profile.id} profile={profile} onEdit={() => setEditing(profile)} onChanged={afterSave} />
       ))}
+      {profiles.data && (
+        <div className="pad">
+          <button className="btn-tonal wide" onClick={() => setEditing('new')}>+ New search</button>
+        </div>
+      )}
 
       <h2 className="section-h">Notifications</h2>
       <div className="kv"><span>Push</span><span className="kv-value">{describePush(push)}</span></div>
