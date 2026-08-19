@@ -13,8 +13,12 @@ is new, matches it against search profiles and serves them over REST; the app ha
 its three screens and an Apply button on every job. A live cycle over the boards
 in `companies.txt` takes about three seconds.
 
-Still to come (M4): push notifications. Until then the app shows new matches when
-you open it or pull to refresh.
+The backend half of push notifications (M4) is in: the poller sends one FCM
+summary per profile per cycle, or logs what it would have sent when
+`GOOGLE_APPLICATION_CREDENTIALS` is unset — so a clone still needs no Google
+account. Still to come: the Firebase Messaging wiring inside the app, which
+needs a Firebase project. Until then the app shows new matches when you open it
+or pull to refresh.
 
 The app analyzes clean, its widget tests pass and it builds for web. iOS has not
 been built yet — that needs Xcode locally — and the Android Gradle build is
@@ -86,6 +90,7 @@ GET    /api/jobs?profile_id=1&limit=50&cursor=…    matched jobs, newest first
 GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
 POST   /api/notifications/seen                     mark the feed read
 
+POST   /api/devices                                {token, platform} — FCM registration
 POST   /api/poll                                   poll now; returns 202
 ```
 
@@ -133,6 +138,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | `PORT`           | `8080`                                                                 |                                |
 | `POLL_INTERVAL`  | `15m`                                                                  | Go duration, e.g. `90s`, `1h`  |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
+| `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
 | `POSTGRES_PORT`  | `5432`                                                                 | host port published by Compose |
 
 ## Layout
