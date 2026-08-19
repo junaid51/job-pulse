@@ -4,7 +4,7 @@
 import { initializeApp } from 'firebase/app'
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
 import { api } from './api'
-import { invalidate } from './hooks'
+import { invalidate } from './query'
 
 // Public client identifiers (also mirrored in the service worker). A fork
 // points these at its own project.

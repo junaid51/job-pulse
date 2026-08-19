@@ -1,6 +1,6 @@
+import { useQuery } from '@tanstack/react-query'
 import React, { useEffect, useState } from 'react'
 import { api } from './api'
-import { useQuery } from './hooks'
 import { initPush, type PushState } from './push'
 import { Jobs } from './screens/Jobs'
 import { Notifications } from './screens/Notifications'
@@ -18,7 +18,7 @@ export function App() {
   const [push, setPush] = useState<PushState>('off')
   useEffect(() => { initPush().then(setPush) }, [])
 
-  const feed = useQuery('notifications', api.notifications)
+  const feed = useQuery({ queryKey: ['notifications'], queryFn: api.notifications })
   const unread = feed.data?.unread ?? 0
 
   // The count on the app icon itself — iOS 16.4+ Home-Screen apps and desktop
