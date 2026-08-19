@@ -35,7 +35,19 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final feed = ref.watch(notificationsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(
+        title: const Text('Notifications'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh, size: 22),
+            onPressed: () {
+              _marked = false;
+              refreshFeeds(ref);
+            },
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           _marked = false;
