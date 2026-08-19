@@ -1,0 +1,12 @@
+# Boards to poll: "provider slug [display name]".
+#
+# The slug is whatever identifies the company on that provider — the last part of
+# its careers URL. Every line below was checked against the live API.
+#
+# provider         slug         display name
+greenhouse         stripe       Stripe
+lever              spotify      Spotify
+ashby              openai       OpenAI
+smartrecruiters    Visa         Visa
+workable           blueground   Blueground
+recruitee          channable    Channable

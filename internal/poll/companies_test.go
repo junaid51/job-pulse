@@ -1,0 +1,57 @@
+package poll
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestParseCompanies(t *testing.T) {
+	file := `
+# a comment
+greenhouse stripe Stripe
+lever      spotify
+
+  ashby openai OpenAI Inc
+`
+	companies, err := ParseCompanies(strings.NewReader(file))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []Company{
+		{Provider: "greenhouse", Slug: "stripe", Name: "Stripe"},
+		{Provider: "lever", Slug: "spotify", Name: ""},
+		{Provider: "ashby", Slug: "openai", Name: "OpenAI Inc"}, // name may contain spaces
+	}
+	if len(companies) != len(want) {
+		t.Fatalf("parsed %d companies, want %d: %+v", len(companies), len(want), companies)
+	}
+	for i := range want {
+		if companies[i] != want[i] {
+			t.Errorf("company %d = %+v, want %+v", i, companies[i], want[i])
+		}
+	}
+}
+
+func TestParseCompaniesRejectsBadLines(t *testing.T) {
+	tests := map[string]string{
+		"unknown provider": "monster stripe",
+		"missing slug":     "greenhouse",
+	}
+	for name, line := range tests {
+		t.Run(name, func(t *testing.T) {
+			if _, err := ParseCompanies(strings.NewReader(line)); err == nil {
+				t.Errorf("ParseCompanies(%q) succeeded, want an error", line)
+			}
+		})
+	}
+}
+
+func TestDisplayNameFallsBackToSlug(t *testing.T) {
+	if got := (Company{Slug: "spotify"}).displayName(); got != "spotify" {
+		t.Errorf("displayName() = %q, want %q", got, "spotify")
+	}
+	if got := (Company{Slug: "spotify", Name: "Spotify"}).displayName(); got != "Spotify" {
+		t.Errorf("displayName() = %q, want %q", got, "Spotify")
+	}
+}

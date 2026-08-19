@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/junaidkhan/job-pulse/internal/api"
 	"github.com/junaidkhan/job-pulse/internal/config"
 	"github.com/junaidkhan/job-pulse/internal/db"
+	"github.com/junaidkhan/job-pulse/internal/poll"
 )
 
 func main() {
@@ -46,6 +48,14 @@ func run() error {
 	}
 	defer pool.Close()
 
+	// companies.txt is the source of truth for which boards get polled, so it is
+	// reloaded on every start.
+	count, err := poll.SyncCompanies(ctx, pool, cfg.CompaniesFile)
+	if err != nil {
+		return err
+	}
+	slog.Info("companies loaded", "count", count, "file", cfg.CompaniesFile)
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           api.NewRouter(pool),
@@ -53,7 +63,13 @@ func run() error {
 		WriteTimeout:      30 * time.Second,
 	}
 
-	// TODO(M2): start the poller goroutine here, cancelled by the same ctx.
+	var poller sync.WaitGroup
+	poller.Add(1)
+	go func() {
+		defer poller.Done()
+		poll.Run(ctx, pool, cfg.PollInterval)
+	}()
+	slog.Info("poller started", "interval", cfg.PollInterval.String())
 
 	errs := make(chan error, 1)
 	go func() {
@@ -72,5 +88,10 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	err = srv.Shutdown(shutdownCtx)
+
+	// The poller shares ctx, so it is already winding down; wait so an in-flight
+	// cycle finishes its writes before the pool closes.
+	poller.Wait()
+	return err
 }
