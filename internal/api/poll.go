@@ -1,9 +1,7 @@
 package api
 
 import (
-	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -12,18 +10,23 @@ import (
 	"github.com/junaid51/job-pulse/internal/poll"
 )
 
-// triggerPoll starts a cycle and returns immediately. A full cycle can take
-// tens of seconds, which is far too long to hold a pull-to-refresh open, so the
-// app refetches /api/jobs once this returns.
+// triggerPoll runs a cycle and returns its stats. It is deliberately
+// synchronous: the caller is pull-to-refresh, and "fetch now" means the refetch
+// that follows must actually see what the cycle found. A cycle over the
+// configured boards takes a few seconds, which is exactly what a refresh
+// spinner is for.
 func triggerPoll(pool *pgxpool.Pool, notifier *notify.Notifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Detached from the request: the cycle must outlive this response.
-		ctx := context.WithoutCancel(r.Context())
-		go func() {
-			if _, err := poll.Cycle(ctx, pool, notifier); err != nil && !errors.Is(err, poll.ErrBusy) {
-				slog.Error("manual poll failed", "error", err)
-			}
-		}()
-		writeJSON(w, http.StatusAccepted, map[string]string{"status": "polling"})
+		stats, err := poll.Cycle(r.Context(), pool, notifier)
+		if errors.Is(err, poll.ErrBusy) {
+			// The scheduled poller got there first; its results are just as good.
+			writeJSON(w, http.StatusOK, map[string]string{"status": "already polling"})
+			return
+		}
+		if err != nil {
+			serverError(w, "polling", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, stats)
 	}
 }

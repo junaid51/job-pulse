@@ -43,19 +43,24 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           await ref.read(notificationsProvider.future);
         },
         child: switch (feed) {
-          AsyncError(:final error) => ErrorView(
-            message: describeError(error),
-            onRetry: () => ref.invalidate(notificationsProvider),
+          AsyncError(:final error) => RefreshableState(
+            child: ErrorView(
+              message: describeError(error),
+              onRetry: () => ref.invalidate(notificationsProvider),
+            ),
           ),
-          AsyncData(:final value) when value.events.isEmpty => const EmptyView(
-            title: 'No matches yet',
-            detail: 'When a poll finds a job that fits one of your profiles, it shows up here.',
+          AsyncData(:final value) when value.events.isEmpty => const RefreshableState(
+            child: EmptyView(
+              title: 'No matches yet',
+              detail: 'When a poll finds a job that fits one of your profiles, it shows up here.',
+            ),
           ),
           AsyncData(:final value) => Builder(
             builder: (context) {
               // Fire and forget once the feed is on screen.
               WidgetsBinding.instance.addPostFrameCallback((_) => _markSeenOnce(value.unread));
               return ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 24),
                 itemCount: value.events.length,
                 separatorBuilder: (_, _) => const Divider(),
