@@ -29,23 +29,29 @@ func Matches(c Criteria, j providers.Job) bool {
 	if len(c.Locations) > 0 && !locationMatches(j.Location, c.Locations) {
 		return false
 	}
-	return len(c.Keywords) == 0 || containsAnyFold(j.Title, c.Keywords)
+	return len(c.Keywords) == 0 || keywordMatches(j.Title, c.Keywords)
 }
 
-// locationAliases expands the shorthand people type into the strings job boards
-// actually write: "uae" has to find "Dubai" and "Dubai, United Arab Emirates".
-// Deliberately a tiny curated map, not a geocoder — an entry earns its place by
-// a real search having missed real jobs. Every expansion must be long enough to
-// be a safe substring ("us" would match Australia).
-var locationAliases = map[string][]string{
-	"uae":   {"united arab emirates", "dubai", "abu dhabi", "sharjah"},
-	"ksa":   {"saudi arabia", "saudi", "riyadh", "jeddah"},
-	"saudi": {"saudi arabia", "riyadh", "jeddah"},
-	// "uk" earned its place the same way "uae" did: a real profile matched two
-	// jobs while fifty said "United Kingdom" — which does not contain "uk".
-	"uk":  {"united kingdom", "london"},
-	"usa": {"united states", "new york"},
-	"us":  {"united states"},
+// keywordMatches is containsAnyFold plus the role-alias expansion: a keyword is
+// tried literally first, then through its dictionary entry, so "frontend" also
+// finds "React Engineer". See aliases.go.
+func keywordMatches(title string, wanted []string) bool {
+	title = strings.ToLower(title)
+	for _, w := range wanted {
+		w = strings.ToLower(strings.TrimSpace(w))
+		if w == "" {
+			continue
+		}
+		if strings.Contains(title, w) {
+			return true
+		}
+		for _, alias := range keywordAliases[w] {
+			if strings.Contains(title, alias) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // locationMatches is containsAnyFold plus the alias expansion. Aliases apply to
