@@ -45,3 +45,21 @@ export function Empty(props: {
     </div>
   )
 }
+
+/** Placeholder rows while a list loads: content-shaped, so the screen does not
+ *  jump when the real rows arrive. */
+export function SkeletonList({ rows = 8 }: { rows?: number }) {
+  return (
+    <div className="list" aria-hidden>
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="job-row skeleton" key={i}>
+          <span className="mark shimmer" />
+          <span className="job-main">
+            <span className="shimmer line w60" />
+            <span className="shimmer line w80" />
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}

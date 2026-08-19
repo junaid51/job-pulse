@@ -28,6 +28,8 @@ export interface MatchEvent {
   job: Job
 }
 
+export type JobSort = 'posted' | 'matched'
+
 export interface ProfileInput {
   name: string
   keywords: string[]
@@ -73,9 +75,10 @@ export const api = {
   deleteProfile: (id: number) =>
     request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
 
-  jobs: (profileId: number) =>
-    request<{ jobs: Job[] }>(`/api/jobs?profile_id=${profileId}&limit=50`)
-      .then((r) => r.jobs ?? []),
+  jobs: (profileId: number, sort: JobSort = 'posted', q = '') =>
+    request<{ jobs: Job[] }>(
+      `/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}&q=${encodeURIComponent(q)}`,
+    ).then((r) => r.jobs ?? []),
 
   notifications: () =>
     request<{ notifications: MatchEvent[]; unread: number }>('/api/notifications?limit=50')

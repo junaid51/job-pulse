@@ -45,8 +45,13 @@ func TestCareerjetParse(t *testing.T) {
 	if again[0].ExternalID != first.ExternalID {
 		t.Error("hash identity is not deterministic")
 	}
-	if careerjetID("t", "c", "l", "d") == careerjetID("t", "c", "l", "other-date") {
-		t.Error("hash must include the posting date")
+	// A reposted ad (same job, bumped date) must keep its identity, or every
+	// bump becomes a duplicate row and a duplicate notification.
+	if careerjetID("t", "c", "l") != careerjetID("t", "c", "l") {
+		t.Error("identity must be stable")
+	}
+	if careerjetID("t", "c", "l") == careerjetID("t", "c", "elsewhere") {
+		t.Error("location must distinguish postings")
 	}
 }
 
