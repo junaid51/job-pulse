@@ -1,14 +1,59 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// The three things a screen shows when it has no list to show. Shared because
 /// all three screens need all three.
-class LoadingView extends StatelessWidget {
+///
+/// After a few seconds the spinner explains itself: on free hosting the backend
+/// scales to zero, and the first request of the day is what wakes it.
+class LoadingView extends StatefulWidget {
   const LoadingView({super.key});
 
   @override
-  Widget build(BuildContext context) => const Center(
-    child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
-  );
+  State<LoadingView> createState() => _LoadingViewState();
+}
+
+class _LoadingViewState extends State<LoadingView> {
+  bool _slow = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(const Duration(seconds: 5), () => setState(() => _slow = true));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+          AnimatedOpacity(
+            opacity: _slow ? 1 : 0,
+            duration: const Duration(milliseconds: 400),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(32, 20, 32, 0),
+              child: Text(
+                'Still working — the backend may be waking up.\nFree hosting takes up to a minute.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, height: 1.5, color: colors.onSurfaceVariant),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ErrorView extends StatelessWidget {
@@ -39,10 +84,14 @@ class ErrorView extends StatelessWidget {
 }
 
 class EmptyView extends StatelessWidget {
-  const EmptyView({required this.title, this.detail, super.key});
+  const EmptyView({required this.title, this.detail, this.actionLabel, this.onAction, super.key});
 
   final String title;
   final String? detail;
+
+  /// An optional way out, so an empty screen is never a dead end.
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +114,10 @@ class EmptyView extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13.5, height: 1.4, color: colors.onSurfaceVariant),
               ),
+            ],
+            if (actionLabel != null) ...[
+              const SizedBox(height: 20),
+              FilledButton.tonal(onPressed: onAction, child: Text(actionLabel!)),
             ],
           ],
         ),

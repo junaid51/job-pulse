@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../api.dart' show describeError;
 import '../models.dart';
@@ -31,9 +32,12 @@ class JobsScreen extends ConsumerWidget {
           message: describeError(error),
           onRetry: () => ref.invalidate(profilesProvider),
         ),
-        AsyncData(:final value) when value.isEmpty => const EmptyView(
+        AsyncData(:final value) when value.isEmpty => EmptyView(
           title: 'No search profiles yet',
-          detail: 'Add one in Settings — keywords, locations, and whether it has to be remote.',
+          detail:
+              'A profile is what jobs get matched against: keywords, locations, remote or not.',
+          actionLabel: 'Create a profile',
+          onAction: () => context.go('/settings'),
         ),
         AsyncData(:final value) => _Jobs(profiles: value),
         _ => const LoadingView(),
@@ -71,10 +75,14 @@ class _Jobs extends ConsumerWidget {
                   onRetry: () => ref.invalidate(jobsProvider(profile.id)),
                 ),
               ),
-              AsyncData(:final value) when value.isEmpty => const RefreshableState(
+              AsyncData(:final value) when value.isEmpty => RefreshableState(
                 child: EmptyView(
                   title: 'Nothing matched yet',
-                  detail: 'The next poll may find something. Pull down to check now.',
+                  detail:
+                      'Try broader keywords in Settings, or refresh — the boards are polled '
+                      'every half hour.',
+                  actionLabel: 'Refresh',
+                  onAction: () => refreshFeeds(ref),
                 ),
               ),
               AsyncData(:final value) => ListView.separated(

@@ -64,7 +64,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           AsyncData(:final value) when value.events.isEmpty => const RefreshableState(
             child: EmptyView(
               title: 'No matches yet',
-              detail: 'When a poll finds a job that fits one of your profiles, it shows up here.',
+              detail:
+                  'When the poller finds a job that fits one of your profiles, it lands '
+                  'here — and pings your phone once push is set up.',
             ),
           ),
           AsyncData(:final value) => Builder(

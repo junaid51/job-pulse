@@ -46,7 +46,26 @@ class _Shell extends ConsumerWidget {
     final unread = ref.watch(unreadProvider);
 
     return Scaffold(
-      body: shell,
+      // On a desktop browser the app would otherwise stretch into a
+      // phone-layout the width of the monitor. A centered column with hairline
+      // edges reads as intentional; on phones the constraint never engages.
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth <= 760) return shell;
+          final colors = Theme.of(context).colorScheme;
+          return Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 760),
+              decoration: BoxDecoration(
+                border: Border.symmetric(
+                  vertical: BorderSide(color: colors.outlineVariant),
+                ),
+              ),
+              child: shell,
+            ),
+          );
+        },
+      ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
