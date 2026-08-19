@@ -1,0 +1,52 @@
+{
+  "refineSearch": {
+    "status": 200,
+    "totalHits": 188,
+    "data": {
+      "jobs": [
+        {
+          "jobSeqNo": "MAFMAFGLOBAL20518EXTERNALENGLOBAL",
+          "jobId": "20518",
+          "title": "Specialist - Logistics & Fulfilment",
+          "company": "Majid Al Futtaim Lifestyle",
+          "cityStateCountry": "Riyadh, Saudi Arabia",
+          "city": "Riyadh",
+          "country": "Saudi Arabia",
+          "multi_location_array": [
+            {
+              "latlong": {
+                "lon": 46.72185,
+                "lat": 24.68773
+              },
+              "location": "Riyadh"
+            }
+          ],
+          "postedDate": "2025-12-20T15:09:43.000+0000",
+          "category": "Business Operations, Procurement & Logistics",
+          "type": "Regular"
+        },
+        {
+          "jobSeqNo": "MAFMAFGLOBAL20532EXTERNALENGLOBAL",
+          "jobId": "20532",
+          "title": "B2B Sales Representative",
+          "company": "6",
+          "cityStateCountry": "Riyadh, Saudi Arabia",
+          "city": "Riyadh",
+          "country": "Saudi Arabia",
+          "multi_location_array": [
+            {
+              "latlong": {
+                "lon": 46.72185,
+                "lat": 24.68773
+              },
+              "location": "Riyadh"
+            }
+          ],
+          "postedDate": "2026-01-08T12:14:28.000+0000",
+          "category": "Other",
+          "type": "Regular"
+        }
+      ]
+    }
+  }
+}

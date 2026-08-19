@@ -217,6 +217,7 @@ new file + one map entry. That is the whole "plugin system".
 | Teamtailor | `{slug}.teamtailor.com/jobs.json` | `propertyfinder`, `fresha` |
 | Careerjet | `search.api.careerjet.net/v4/query` (aggregator; slug is a saved search) | `software+engineer\|dubai\|en_AE` |
 | Manatal | `api.manatal.com/open/v3/career-page/{slug}/jobs/` | `nathanhr` |
+| Phenom | `POST https://{slug}/widgets` (slug is the careers host) | `careers.majidalfuttaim.com` |
 
 | Provider | id | title | location | remote | url | posted |
 |---|---|---|---|---|---|---|
@@ -255,6 +256,11 @@ Gotchas worth knowing before you write the code:
   closest thing to agency inventory a polite poller can reach. No posting date
   (jobs age from first sight), `organization_name` is a department rather than
   the company, and job pages live on Manatal's careers-page.com domain.
+- **Phenom**: powers enterprise career sites, so the slug is the careers host
+  itself and the "API" is the public POST /widgets search the site's own page
+  makes. Pages with from/size against totalHits; no job URL in the payload (it
+  is built from jobSeqNo); the company field sometimes holds a bare number and
+  is dropped when it does.
 - **Careerjet**: the one aggregator, and different in kind. The slug is a saved
   search, not a company. It needs credentials (`CAREERJET_API_KEY`,
   `CAREERJET_SITE`), calls only work from IPs declared in its publisher

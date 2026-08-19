@@ -47,6 +47,7 @@ var All = map[string]Provider{
 	"teamtailor":      fetchTeamtailor,
 	"careerjet":       fetchCareerjet,
 	"manatal":         fetchManatal,
+	"phenom":          fetchPhenom,
 }
 
 const userAgent = "jobpulse/0.1 (+https://github.com/junaid51/job-pulse)"
