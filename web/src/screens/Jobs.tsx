@@ -182,6 +182,11 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
         {feed.isFetchingNextPage && (
           <div className="sentinel"><span className="spinner" /></div>
         )}
+        {!feed.hasNextPage && (
+          <p className="feed-end">
+            That's all — {rows.length} {rows.length === 1 ? 'job' : 'jobs'}
+          </p>
+        )}
       </>
     )
   }
