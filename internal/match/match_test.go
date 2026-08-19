@@ -143,3 +143,43 @@ func TestLocationAliases(t *testing.T) {
 		t.Error("keyword aliases must not expand")
 	}
 }
+
+// "Frontend" and "React Engineer" are the same job wearing different titles;
+// the keyword dictionary bridges them. See aliases.go.
+func TestKeywordAliases(t *testing.T) {
+	frontend := Criteria{Keywords: []string{"Frontend"}}
+	for _, title := range []string{
+		"Frontend Developer",
+		"Front-End Engineer",
+		"Senior React Engineer",
+		"Software Engineer, Payments",
+		"TypeScript Developer",
+	} {
+		if !Matches(frontend, providers.Job{Title: title}) {
+			t.Errorf("keywords=[Frontend] should match %q", title)
+		}
+	}
+	if Matches(frontend, providers.Job{Title: "Accountant"}) {
+		t.Error("keywords=[Frontend] must not match Accountant")
+	}
+
+	backend := Criteria{Keywords: []string{"backend"}}
+	for _, title := range []string{"Golang Engineer", "Java Spring Developer", "Node Engineer"} {
+		if !Matches(backend, providers.Job{Title: title}) {
+			t.Errorf("keywords=[backend] should match %q", title)
+		}
+	}
+
+	for _, keyword := range []string{"full stack", "full-stack", "fullstack"} {
+		if !Matches(Criteria{Keywords: []string{keyword}},
+			providers.Job{Title: "Full-Stack Engineer"}) {
+			t.Errorf("keywords=[%s] should match Full-Stack Engineer", keyword)
+		}
+	}
+
+	// Role aliases apply to keywords only; a location named like one stays literal.
+	if Matches(Criteria{Locations: []string{"frontend"}},
+		providers.Job{Title: "Engineer", Location: "React Office Park"}) {
+		t.Error("keyword aliases must not leak into location matching")
+	}
+}
