@@ -8,13 +8,16 @@ three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Milestone 2 — the backend does its job.** It polls six providers, stores what
-is new, matches it against search profiles and serves them over REST. A live
-cycle over the boards in `companies.txt` takes about three seconds.
+**Milestone 3 — usable end to end.** The backend polls six providers, stores what
+is new, matches it against search profiles and serves them over REST; the app has
+its three screens and an Apply button on every job. A live cycle over the boards
+in `companies.txt` takes about three seconds.
 
-Still to come: push notifications (M4) and the Flutter UI (M3) — the app is
-currently a boot placeholder. It analyzes clean, its smoke test passes and it
-builds for web; iOS has not been built yet and the Android Gradle build is
+Still to come (M4): push notifications. Until then the app shows new matches when
+you open it or pull to refresh.
+
+The app analyzes clean, its widget tests pass and it builds for web. iOS has not
+been built yet — that needs Xcode locally — and the Android Gradle build is
 deferred.
 
 ## Stack
@@ -34,6 +37,15 @@ cd app && flutter run         # Android, iOS or web
 
 Migrations run automatically on startup, so there is no separate migrate step
 and no `migrate` CLI to install.
+
+On a real phone, `localhost` is the phone, not your computer, so point the app at
+your machine's address on the network:
+
+```bash
+cd app && flutter run --dart-define=JOBPULSE_API=http://192.168.1.20:8080
+```
+
+The current URL is shown under Settings → Backend.
 
 If port 5432 or 8080 is already taken on your machine:
 
@@ -70,6 +82,10 @@ PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
 GET    /api/jobs?profile_id=1&limit=50&cursor=…    matched jobs, newest first
+
+GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
+POST   /api/notifications/seen                     mark the feed read
+
 POST   /api/poll                                   poll now; returns 202
 ```
 
@@ -122,15 +138,16 @@ Everything has a working default, so a fresh clone needs no setup.
 ## Layout
 
 ```
-cmd/jobpulse/      main: config, migrate, poller, HTTP server, graceful shutdown
-internal/api/      chi router and handlers
-internal/config/   environment variables
-internal/db/       pgx pool and migration runner
-internal/match/    does a job satisfy a profile
-internal/poll/     the poll cycle and companies.txt
+cmd/jobpulse/       main: config, migrate, poller, HTTP server, graceful shutdown
+internal/api/       chi router and handlers
+internal/config/    environment variables
+internal/db/        pgx pool and migration runner
+internal/match/     does a job satisfy a profile
+internal/poll/      the poll cycle and companies.txt
 internal/providers/ one file per job board
-migrations/        numbered .sql files, embedded into the binary
-app/               Flutter client
+migrations/         numbered .sql files, embedded into the binary
+app/lib/            api.dart, models.dart, providers.dart, router.dart, theme.dart
+app/lib/screens/    jobs, notifications, settings
 ```
 
 Adding a migration means dropping `0002_thing.up.sql` and `0002_thing.down.sql`
