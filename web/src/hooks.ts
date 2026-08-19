@@ -37,9 +37,14 @@ function load<T>(key: Key, fetcher: () => Promise<T>) {
   )
 }
 
-/** invalidate refetches every live query whose key matches the prefix. */
+/** invalidate refetches every live query whose key matches the prefix, and
+ *  purges matching entries nothing is watching — otherwise a cached tab you
+ *  left stays stale until the whole app reloads. */
 const refetchers = new Map<Key, () => void>()
 export function invalidate(prefix: 'jobs' | 'profiles' | 'notifications') {
+  for (const key of [...cache.keys()]) {
+    if (key.startsWith(prefix) && !refetchers.has(key)) cache.delete(key)
+  }
   for (const [key, refetch] of refetchers) {
     if (key.startsWith(prefix)) refetch()
   }
@@ -50,7 +55,10 @@ export function useQuery<T>(key: Key, fetcher: () => Promise<T>): Entry<T> & { r
 
   useEffect(() => {
     refetchers.set(key, refetch)
-    if (!cache.has(key)) refetch()
+    // Stale-while-revalidate: cached data renders instantly, but every mount
+    // refetches in the background — a view you return to is never stale, and
+    // actions (applied, hide) need no cross-view bookkeeping.
+    refetch()
     return () => { refetchers.delete(key) }
   }, [key, refetch])
 
