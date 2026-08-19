@@ -1,0 +1,22 @@
+# The poller for scale-to-zero hosting: the backend runs with POLL_INTERVAL=0
+# and this schedule wakes it. One request runs a full cycle and sends the
+# notifications; the free host sleeping in between is the point.
+#
+# Secrets: JOBPULSE_URL (the deployment), JOBPULSE_POLL_TOKEN (same value as
+# the POLL_TOKEN env on the server).
+name: poll
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: wake the backend and run a cycle
+        run: |
+          # The free host takes up to a minute to spin up, hence the retries.
+          curl -fsS -X POST "${{ secrets.JOBPULSE_URL }}/api/poll" \
+            -H "Authorization: Bearer ${{ secrets.JOBPULSE_POLL_TOKEN }}" \
+            --retry 8 --retry-delay 10 --retry-all-errors --max-time 90

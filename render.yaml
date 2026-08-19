@@ -1,0 +1,18 @@
+# Render blueprint: "New > Blueprint" on this repo creates the service. This
+# file is a convenience for one host; the binary itself knows nothing about it.
+services:
+  - type: web
+    name: jobpulse
+    runtime: go
+    plan: free
+    buildCommand: go build -o jobpulse ./cmd/jobpulse
+    startCommand: ./jobpulse
+    envVars:
+      - key: POLL_INTERVAL
+        value: "0" # the GitHub Actions cron drives polling
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/firebase-service-account.json
+      - key: DATABASE_URL
+        sync: false # paste the Neon connection string in the dashboard
+      - key: POLL_TOKEN
+        sync: false # same value as the JOBPULSE_POLL_TOKEN repo secret
