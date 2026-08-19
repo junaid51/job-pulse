@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -24,13 +23,5 @@ func healthz(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		writeJSON(w, status, body)
-	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.Error("write response", "error", err)
 	}
 }
