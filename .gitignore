@@ -1,11 +1,9 @@
 .DS_Store
 /jobpulse
 
-# Flutter / Dart
-app/.dart_tool/
-app/build/
-app/.flutter-plugins
-app/.flutter-plugins-dependencies
+# Web app
+web/node_modules/
+web/dist/
 
 # The Firebase service account key is the one real secret: it can SEND
 # notifications. The client config (firebase_options.dart, the plist) is public

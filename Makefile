@@ -1,7 +1,7 @@
 # Thin wrappers around the commands in the README. Nothing here is required:
 # every target is one line you could type yourself.
 
-.PHONY: up down run build test tidy psql health app
+.PHONY: up down run build test tidy psql health app webtest
 
 up:    ## start PostgreSQL
 	docker compose up -d
@@ -27,5 +27,8 @@ psql:  ## open a shell on the dev database
 health:
 	curl -fsS localhost:8080/healthz && echo
 
-app:   ## run the Flutter app
-	cd app && flutter run
+webtest:
+	cd web && npm test
+
+app:   ## run the web app against the local backend
+	cd web && VITE_JOBPULSE_API=http://localhost:8080 npm run dev

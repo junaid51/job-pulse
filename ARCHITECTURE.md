@@ -3,7 +3,7 @@
 A small tool that watches public company job boards and tells me when a new
 matching job appears.
 
-One Go binary. One Postgres database. One Flutter app. Three screens.
+One Go binary. One Postgres database. One web app. Three screens.
 
 ---
 
@@ -57,7 +57,7 @@ Everything below follows from this.
                    │ FCM push
                    ▼
         ┌──────────────────────┐
-        │ Flutter app          │
+        │ Web app (PWA)        │
         │ Jobs · Notifs · Set. │
         └──────────────────────┘
 ```
@@ -326,46 +326,43 @@ through a private tunnel. Do not put this on a public IP.
 
 ---
 
-## 8. Flutter app
+## 8. Web app
 
-`Riverpod` for state, `GoRouter` for the three routes, `Dio` for HTTP,
-`firebase_messaging` for push.
+React + Vite + TypeScript, hand-written CSS, no router (three tabs and a URL
+hash), no state library (a sixty-line fetch cache with named keys), Firebase's
+JS SDK for push. It ships as a PWA: Add to Home Screen gives an icon, a
+full-screen app and push notifications on iOS — without an Apple Developer
+account, which native push cannot do. The production bundle is ~80 KB gzipped.
 
-The app ships as a PWA: the Flutter code compiles to the web, and Add to Home
-Screen gives an icon, a full-screen app and push notifications on iOS — without
-an Apple Developer account, which native push cannot do. The native shells were
-deleted once web push proved out on a real iPhone; `flutter create .`
-regenerates them if that ever changes.
+This replaced a working Flutter implementation. Flutter's reason to exist here
+was one codebase targeting Android, iOS and web; once web push proved out on a
+real iPhone and the native builds were dropped, it was paying a 4–8 MB
+CanvasKit tax and rendering to a canvas for what three list screens express
+naturally in HTML.
 
 ```
-app/lib/
-  main.dart              ProviderScope + router + theme
-  api.dart               Dio client, one method per endpoint
-  models.dart            Job, Profile, Notification (fromJson only)
-  providers.dart         AsyncNotifier per screen (~3 of them)
-  screens/jobs.dart
-  screens/notifications.dart
-  screens/settings.dart
-  widgets/job_tile.dart
+web/src/
+  main.tsx               entry: mount + service worker registration
+  App.tsx                tabs, unread badge, inline SVG icons
+  api.ts                 typed fetch functions, one per endpoint
+  hooks.ts               the fetch cache: useQuery + invalidate
+  push.ts                FCM init, gesture-driven enable, token registration
+  format.ts              shortAgo, provider labels
+  screens/               Jobs, Notifications, Settings
+  components/            JobRow, the loading/empty/error states
+  styles.css             the whole design: tokens, dark-first, light variant
 ```
 
-Eight files. No feature folders, no per-screen barrel files, no clean layers.
+**Jobs** — profile chips, dense rows (title, company · location · provider,
+age, Apply), a refresh button, empty states that lead somewhere.
 
-**Jobs** — profile chips along the top, dense list below. Each row: title,
-company · location, relative time, `Apply` on the right (`url_launcher`,
-external browser). Pull to refresh calls `POST /api/poll` then refetches.
+**Notifications** — the match feed across profiles, unread dots, marked read on
+open. **Settings** — profile CRUD in a bottom sheet, push status with a
+gesture-driven Enable button (iOS requires the permission request to come from
+a tap), backend URL.
 
-**Notifications** — reverse-chronological match events, unread ones with a small
-accent dot. Tapping opens the job. Opening the screen marks visible items seen.
-
-**Settings** — create/edit/delete profiles (name, keyword chips, location chips,
-remote-only switch), backend URL, and the FCM token with a copy button for
-debugging.
-
-**Look** — dark-first with a light variant, one accent colour, no elevation, no
-gradients, hairline dividers, generous vertical rhythm, `Inter` for text and a
-mono face for timestamps and locations. Tight information density like Linear;
-no avatars, badges, or engagement furniture.
+The one service worker does both jobs: shows pushes that arrive while no window
+is focused, and keeps the app shell cached so it opens instantly and offline.
 
 FCM push carries no payload beyond a nudge — the app invalidates the jobs
 provider and refetches. Never trust a notification body as data you then store.
@@ -387,7 +384,7 @@ job-pulse/
   companies.txt                 seed list: "greenhouse stripe"
   docker-compose.yml            postgres only
   Makefile                      up, run, test, seed
-  app/                          Flutter
+  web/                          the React PWA
 ```
 
 ```bash
@@ -395,7 +392,7 @@ git clone … && cd job-pulse
 docker compose up -d          # postgres
 make seed                     # load companies.txt
 go run ./cmd/jobpulse         # migrates, serves :8080, polls every 15m
-cd app && flutter run
+cd web && npm run dev
 ```
 
 Configuration is five environment variables with working defaults:
@@ -414,7 +411,7 @@ knows or cares.
 |---|---|
 | 1 | Migrations, Greenhouse + Lever, poll loop, `/api/jobs`. Verify new-job detection against a real board. |
 | 2 | Remaining four providers, matching, profiles CRUD, `companies.txt` seeding. |
-| 3 | Flutter: three screens, API client, theme. |
+| 3 | Web app: three screens, API client, theme. |
 | 4 | FCM both ends, `seen_at` plumbing, README. |
 
 Roughly 1,200 lines of Go and 900 of Dart. If it grows much past that, something
@@ -488,6 +485,11 @@ naturally self-healing — that is the main reason to prefer it over webhooks he
 and one golden-file test per provider parser (a saved JSON fixture → expected
 `[]Job`), because those are where bugs are silent and expensive. Not handler
 tests, not an integration harness, not a mock HTTP layer.
+
+**A frontend framework's runtime.** Flutter web shipped megabytes of CanvasKit
+to draw three screens; the React replacement is ~80 KB gzipped and renders real
+HTML. No Next.js either: nothing here needs a server or SSR — Firebase Hosting
+serves static files.
 
 **Native iOS and Android builds.** The PWA delivers the whole product — icon,
 full screen, push — and the native route demanded an Apple Developer
