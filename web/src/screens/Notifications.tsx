@@ -25,7 +25,11 @@ export function Notifications() {
   useEffect(() => {
     if (!marked.current && feed.data && feed.data.unread > 0) {
       marked.current = true
-      api.markSeen().catch(() => { marked.current = false })
+      api.markSeen()
+        // The Jobs screen stays mounted, so its chips' unread counts only
+        // clear if told.
+        .then(() => invalidate('profiles'))
+        .catch(() => { marked.current = false })
     }
   }, [feed.data])
 

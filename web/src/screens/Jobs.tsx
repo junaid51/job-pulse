@@ -17,6 +17,14 @@ async function refreshFeeds() {
 export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
   const [selected, setSelected] = useState<number | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const refresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try { await refreshFeeds() } finally { setRefreshing(false) }
+    showToast('Up to date')
+  }
 
   // Straight into the editor, not just the Settings screen.
   const newSearch = () => {
@@ -60,7 +68,8 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
     <section>
       <header className="bar">
         <h1>Jobs</h1>
-        <button className="icon-btn" title="Refresh" onClick={refreshFeeds}>
+        <button className={`icon-btn ${refreshing ? 'spinning' : ''}`} title="Refresh"
+          onClick={refresh} disabled={refreshing}>
           <RefreshIcon />
         </button>
       </header>
@@ -97,9 +106,11 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const typing = (event.target as HTMLElement)?.tagName === 'INPUT'
-      if (event.key === '/' && !typing) {
+      // offsetParent is null while the Jobs screen is hidden behind another
+      // tab — "/" must not focus an invisible input.
+      if (event.key === '/' && !typing && searchRef.current?.offsetParent) {
         event.preventDefault()
-        searchRef.current?.focus()
+        searchRef.current.focus()
       }
     }
     window.addEventListener('keydown', onKey)
