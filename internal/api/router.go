@@ -12,7 +12,7 @@ import (
 // NewRouter wires the routes. The pool is passed in rather than reached for
 // from a global, which is the whole of the dependency injection in this project.
 //
-// TODO(M4): /api/notifications and /api/devices.
+// TODO(M4): /api/devices, for FCM registration tokens.
 func NewRouter(pool *pgxpool.Pool) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, requestLogger)
@@ -26,6 +26,9 @@ func NewRouter(pool *pgxpool.Pool) http.Handler {
 		r.Post("/profiles", createProfile(pool))
 		r.Put("/profiles/{id}", updateProfile(pool))
 		r.Delete("/profiles/{id}", deleteProfile(pool))
+
+		r.Get("/notifications", listNotifications(pool))
+		r.Post("/notifications/seen", markSeen(pool))
 
 		r.Post("/poll", triggerPoll(pool))
 	})
