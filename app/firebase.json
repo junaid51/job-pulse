@@ -1,14 +1,6 @@
 {
   "flutter": {
     "platforms": {
-      "ios": {
-        "default": {
-          "projectId": "jobpulse-junaid",
-          "appId": "1:1079027519074:ios:80bed65145eb5cc5648b3b",
-          "uploadDebugSymbols": false,
-          "fileOutput": "ios/Runner/GoogleService-Info.plist"
-        }
-      },
       "dart": {
         "lib/firebase_options.dart": {
           "projectId": "jobpulse-junaid",

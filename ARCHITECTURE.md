@@ -331,6 +331,12 @@ through a private tunnel. Do not put this on a public IP.
 `Riverpod` for state, `GoRouter` for the three routes, `Dio` for HTTP,
 `firebase_messaging` for push.
 
+The app ships as a PWA: the Flutter code compiles to the web, and Add to Home
+Screen gives an icon, a full-screen app and push notifications on iOS — without
+an Apple Developer account, which native push cannot do. The native shells were
+deleted once web push proved out on a real iPhone; `flutter create .`
+regenerates them if that ever changes.
+
 ```
 app/lib/
   main.dart              ProviderScope + router + theme
@@ -482,6 +488,12 @@ naturally self-healing — that is the main reason to prefer it over webhooks he
 and one golden-file test per provider parser (a saved JSON fixture → expected
 `[]Job`), because those are where bugs are silent and expensive. Not handler
 tests, not an integration harness, not a mock HTTP layer.
+
+**Native iOS and Android builds.** The PWA delivers the whole product — icon,
+full screen, push — and the native route demanded an Apple Developer
+subscription for push, weekly re-signing on a free account, and a Gradle build,
+all to end at the same three screens. Dropped after web push worked on a real
+iPhone.
 
 **AI anything.** No embeddings for "semantic" matching, no LLM job scoring, no
 resume tailoring, no cover letters. It would add an API key, latency, cost, and
