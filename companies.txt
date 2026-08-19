@@ -69,3 +69,9 @@ workable           salla        Salla
 remotive           software-dev  Remotive
 himalayas          all           Himalayas
 jobicy             dev           Jobicy
+
+# Jobven: metered aggregator (JOBVEN_API_KEY), slug is a location search or "remote"
+jobven             dubai            Jobven
+jobven             saudi+arabia     Jobven
+jobven             india            Jobven
+jobven             remote           Jobven

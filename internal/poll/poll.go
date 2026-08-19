@@ -39,6 +39,8 @@ var minPollInterval = map[string]time.Duration{
 	"remotive":  time.Hour,
 	"himalayas": time.Hour,
 	"jobicy":    time.Hour,
+	// Metered: ~700 calls/month free; four searches at this cadence use ~480.
+	"jobven": 6 * time.Hour,
 }
 
 // ErrBusy is returned when a cycle is already running.
@@ -172,10 +174,21 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 // passed yet. Everything else is always due.
 func dueNow(companies []Company, now time.Time) []Company {
 	due := make([]Company, 0, len(companies))
+	// At most one board per metered provider per cycle: firing a provider's
+	// searches back to back trips burst limits (jobven answers 429 to the
+	// second call). At the cycle cadence they rotate through within minutes
+	// while each still keeps its own interval.
+	taken := map[string]bool{}
 	for _, c := range companies {
 		interval, metered := minPollInterval[c.Provider]
 		if metered && c.LastPolledAt != nil && now.Sub(*c.LastPolledAt) < interval {
 			continue
+		}
+		if metered {
+			if taken[c.Provider] {
+				continue
+			}
+			taken[c.Provider] = true
 		}
 		due = append(due, c)
 	}
@@ -313,9 +326,14 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 		if !j.PostedAt.IsZero() {
 			posted = j.PostedAt
 		}
+		// The not-exists guard is cross-provider dedup: an aggregator (jobven)
+		// crawls the same ATS postings some boards serve directly, and both
+		// sides end at the same canonical URL. First provider to see a URL
+		// owns it; the age sweep or its board's absence-deletion retires it.
 		batch.Queue(`
 			insert into jobs (provider, external_id, slug, company, title, location, remote, url, salary, posted_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+			select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+			where not exists (select 1 from jobs d where d.url = $8 and d.provider <> $1)
 			on conflict (provider, external_id) do nothing
 			returning id`,
 			c.Provider, j.ExternalID, c.Slug, j.Company, j.Title, j.Location, j.Remote, j.URL, j.Salary, posted)

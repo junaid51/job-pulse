@@ -27,6 +27,7 @@ const PROVIDERS: Record<string, string> = {
   remotive: 'Remotive',
   himalayas: 'Himalayas',
   jobicy: 'Jobicy',
+  jobven: 'Jobven',
 }
 
 export const providerLabel = (provider: string) => PROVIDERS[provider] ?? provider

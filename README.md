@@ -8,7 +8,7 @@ with three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Live.** The backend polls 54 boards across fourteen providers, stores what is new,
+**Live.** The backend polls 58 boards across fifteen providers, stores what is new,
 matches it against search profiles, and pushes one summary per profile to the
 phone; the app is an installable PWA with search, sorting and push. A full cycle
 takes a few seconds; the deployment runs entirely on free tiers.
@@ -142,6 +142,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
 | `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site; unset = careerjet lines error quietly |
+| `JOBVEN_API_KEY` | *(unset)*                                                              | metered aggregator key; unset = jobven lines error quietly |
 | `POSTGRES_PORT`  | `5432`                                                                 | host port published by Compose |
 
 ## Layout
