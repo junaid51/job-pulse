@@ -1,8 +1,11 @@
 package api
 
 import (
+	"crypto/subtle"
 	"errors"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -16,7 +19,19 @@ import (
 // configured boards takes a few seconds, which is exactly what a refresh
 // spinner is for.
 func triggerPoll(pool *pgxpool.Pool, notifier *notify.Notifier) http.HandlerFunc {
+	// POLL_TOKEN is not user auth — the API deliberately has none. It stops a
+	// stranger who finds a public deployment from making this server hammer the
+	// job boards. Unset (local development) means the endpoint stays open.
+	token := os.Getenv("POLL_TOKEN")
+
 	return func(w http.ResponseWriter, r *http.Request) {
+		if token != "" {
+			presented := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
+				writeError(w, http.StatusUnauthorized, "poll requires the token")
+				return
+			}
+		}
 		stats, err := poll.Cycle(r.Context(), pool, notifier)
 		if errors.Is(err, poll.ErrBusy) {
 			// The scheduled poller got there first; its results are just as good.
