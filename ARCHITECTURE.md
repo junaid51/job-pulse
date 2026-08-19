@@ -218,6 +218,7 @@ new file + one map entry. That is the whole "plugin system".
 | Careerjet | `search.api.careerjet.net/v4/query` (aggregator; slug is a saved search) | `software+engineer\|dubai\|en_AE` |
 | Manatal | `api.manatal.com/open/v3/career-page/{slug}/jobs/` | `nathanhr` |
 | Phenom | `POST https://{slug}/widgets` (slug is the careers host) | `careers.majidalfuttaim.com` |
+| Oracle | `{host}/hcmRestApi/.../recruitingCEJobRequisitions` (slug is `host\|siteNumber`) | `esbe.fa.em8.oraclecloud.com\|CX_1001` |
 
 | Provider | id | title | location | remote | url | posted |
 |---|---|---|---|---|---|---|
@@ -261,6 +262,11 @@ Gotchas worth knowing before you write the code:
   makes. Pages with from/size against totalHits; no job URL in the payload (it
   is built from jobSeqNo); the company field sometimes holds a bare number and
   is dropped when it does.
+- **Oracle Recruiting Cloud**: enterprise career sites (hotel groups, telcos,
+  holdings) on a public REST API. Host is per-tenant and unguessable, so the
+  slug is `host|siteNumber`. The finder's `;` and `,` are Oracle syntax and must
+  not be percent-encoded; requisitions need `expand=requisitionList`; a browser
+  User-Agent is required.
 - **Careerjet**: the one aggregator, and different in kind. The slug is a saved
   search, not a company. It needs credentials (`CAREERJET_API_KEY`,
   `CAREERJET_SITE`), calls only work from IPs declared in its publisher
@@ -506,6 +512,13 @@ tells me what happened. Prometheus and OpenTelemetry are for systems with users.
 **Retry queues, dead-letter tables, circuit breakers.** A board that fails gets
 one retry, records `last_error`, and is tried again in 15 minutes. Polling is
 naturally self-healing — that is the main reason to prefer it over webhooks here.
+
+**Scrapers for bot-walled boards.** Workday's public JSON API was investigated:
+its reachable tenants are global-corporate boards with no Gulf inventory, while
+the Gulf-specific tenants (talabat, regional arms of the big firms) sit behind
+edge bot-shields that only a headless browser defeats. Driving a browser to
+defeat an anti-automation shield is the browser automation this project refuses
+on principle, and the reachable-but-irrelevant tenants were left out as noise.
 
 **Docker image for the backend, CI/CD, Kubernetes manifests.** `go run` locally,
 `go build` on the box. Compose exists only to hand me a Postgres.

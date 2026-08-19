@@ -23,6 +23,7 @@ const PROVIDERS: Record<string, string> = {
   careerjet: 'Careerjet',
   manatal: 'Manatal',
   phenom: 'Phenom',
+  oracle: 'Oracle',
 }
 
 export const providerLabel = (provider: string) => PROVIDERS[provider] ?? provider
