@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { initPush, type PushState } from './push'
 import { Toasts } from './toast'
@@ -19,6 +19,34 @@ export function App() {
   const [push, setPush] = useState<PushState>('off')
   useEffect(() => { initPush().then(setPush) }, [])
 
+  // Each tab keeps its place in the shared scroller, and re-selecting the
+  // current tab is "take me to the top".
+  const mainRef = useRef<HTMLElement>(null)
+  const scrollMemory = useRef<Record<Tab, number>>({ jobs: 0, notifications: 0, settings: 0 })
+  const select = (next: Tab) => {
+    const main = mainRef.current
+    if (next === tab) {
+      main?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (main) scrollMemory.current[tab] = main.scrollTop
+    setTab(next)
+  }
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (!main) return
+    const top = scrollMemory.current[tab]
+    main.scrollTop = top
+    if (top === 0) return
+    // The virtualized list re-measures a beat after being unhidden; until it
+    // does, the content is short and the first restore clamps to 0.
+    const raf = requestAnimationFrame(() => { main.scrollTop = top })
+    const timer = setTimeout(() => {
+      if (Math.abs(main.scrollTop - top) > 2) main.scrollTop = top
+    }, 150)
+    return () => { cancelAnimationFrame(raf); clearTimeout(timer) }
+  }, [tab])
+
   const feed = useQuery({ queryKey: ['notifications'], queryFn: api.notifications })
   const unread = feed.data?.unread ?? 0
 
@@ -36,8 +64,12 @@ export function App() {
   return (
     <div className="frame">
       <Toasts />
-      <main>
-        {tab === 'jobs' && <Jobs goToSettings={() => setTab('settings')} />}
+      <main ref={mainRef}>
+        {/* Jobs stays mounted: mid-scroll research and a typed search must
+            survive a hop to Notifications and back. */}
+        <div style={{ display: tab === 'jobs' ? undefined : 'none' }}>
+          <Jobs goToSettings={() => select('settings')} />
+        </div>
         {tab === 'notifications' && <Notifications />}
         {tab === 'settings' && <Settings push={push} setPush={setPush} />}
       </main>
@@ -46,10 +78,10 @@ export function App() {
           <PulseMark />
           <span>JobPulse</span>
         </div>
-        <TabButton current={tab} tab="jobs" label="Jobs" glyph={<BriefcaseIcon />} onSelect={setTab} />
+        <TabButton current={tab} tab="jobs" label="Jobs" glyph={<BriefcaseIcon />} onSelect={select} />
         <TabButton current={tab} tab="notifications" label="Notifications" glyph={<BellIcon />}
-          badge={unread} onSelect={setTab} />
-        <TabButton current={tab} tab="settings" label="Settings" glyph={<GearIcon />} onSelect={setTab} />
+          badge={unread} onSelect={select} />
+        <TabButton current={tab} tab="settings" label="Settings" glyph={<GearIcon />} onSelect={select} />
       </nav>
     </div>
   )
