@@ -459,3 +459,6 @@ mark.hit {
 @media (pointer: coarse) {
   .sheet input, .search input, .place input, .adopt input { font-size: 16px; }
 }
+
+/* the difference between "no more pages" and "pages not loading" */
+.feed-end { text-align: center; color: var(--muted); font-size: 12px; padding: 20px 0 28px; margin: 0; }
