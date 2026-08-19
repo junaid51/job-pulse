@@ -70,11 +70,35 @@ class SettingsScreen extends ConsumerWidget {
             label: 'Push',
             value: switch (ref.watch(pushProvider)) {
               AsyncData(value: true) => 'On',
-              AsyncData(value: false) => 'Off — permission or configuration missing',
+              AsyncData(value: false) => 'Off',
               AsyncError() => 'Off',
               _ => 'Setting up…',
             },
           ),
+          if (ref.watch(pushProvider) case AsyncData(value: false) || AsyncError())
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton.tonal(
+                    onPressed: () => ref.read(pushProvider.notifier).enable(),
+                    child: const Text('Enable push notifications'),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'On iPhone: add this app to your Home Screen first '
+                    '(Share → Add to Home Screen) and open it from there — '
+                    'iOS only allows notifications for installed web apps.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.45,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: 24),
         ],
       ),
