@@ -98,3 +98,35 @@ func TestMatches(t *testing.T) {
 		})
 	}
 }
+
+// Boards write "Dubai", "Dubai, United Arab Emirates" and "Abu Dhabi, UAE" for
+// the same place; typing "uae" has to find all of them. Discovered the hard way
+// by the first real profile matching nothing.
+func TestLocationAliases(t *testing.T) {
+	uae := Criteria{Locations: []string{"UAE"}}
+	for _, location := range []string{
+		"Dubai",
+		"Dubai, United Arab Emirates",
+		"Abu Dhabi, UAE",
+		"Dubai & Sharjah",
+		"UAE, Dubai",
+	} {
+		if !Matches(uae, providers.Job{Title: "Engineer", Location: location}) {
+			t.Errorf("locations=[UAE] should match %q", location)
+		}
+	}
+	if Matches(uae, providers.Job{Title: "Engineer", Location: "London"}) {
+		t.Error("locations=[UAE] must not match London")
+	}
+
+	if !Matches(Criteria{Locations: []string{"ksa"}},
+		providers.Job{Title: "Engineer", Location: "Riyadh, Saudi Arabia"}) {
+		t.Error(`locations=[ksa] should match "Riyadh, Saudi Arabia"`)
+	}
+
+	// Aliases are for locations only; a keyword named like one stays literal.
+	if Matches(Criteria{Keywords: []string{"uae"}},
+		providers.Job{Title: "Engineer, Dubai team", Location: ""}) {
+		t.Error("keyword aliases must not expand")
+	}
+}

@@ -20,16 +20,48 @@ type Criteria struct {
 // against the location, each list OR-ed, an empty list meaning "anything".
 //
 // Substring matching is the entire strategy: no stemming, no fuzzy matching, no
-// relevance score. If it turns out too loose in practice, this function is where
-// that gets fixed.
+// relevance score. If it turns out too loose or too strict in practice, this
+// function is where that gets fixed.
 func Matches(c Criteria, j providers.Job) bool {
 	if c.RemoteOnly && !j.Remote {
 		return false
 	}
-	if len(c.Locations) > 0 && !containsAnyFold(j.Location, c.Locations) {
+	if len(c.Locations) > 0 && !locationMatches(j.Location, c.Locations) {
 		return false
 	}
 	return len(c.Keywords) == 0 || containsAnyFold(j.Title, c.Keywords)
+}
+
+// locationAliases expands the shorthand people type into the strings job boards
+// actually write: "uae" has to find "Dubai" and "Dubai, United Arab Emirates".
+// Deliberately a tiny curated map, not a geocoder — an entry earns its place by
+// a real search having missed real jobs. Every expansion must be long enough to
+// be a safe substring ("us" would match Australia).
+var locationAliases = map[string][]string{
+	"uae":   {"united arab emirates", "dubai", "abu dhabi", "sharjah"},
+	"ksa":   {"saudi arabia", "saudi", "riyadh", "jeddah"},
+	"saudi": {"saudi arabia", "riyadh", "jeddah"},
+}
+
+// locationMatches is containsAnyFold plus the alias expansion. Aliases apply to
+// locations only: expanding keywords the same way would be surprising.
+func locationMatches(location string, wanted []string) bool {
+	location = strings.ToLower(location)
+	for _, w := range wanted {
+		w = strings.ToLower(strings.TrimSpace(w))
+		if w == "" {
+			continue
+		}
+		if strings.Contains(location, w) {
+			return true
+		}
+		for _, alias := range locationAliases[w] {
+			if strings.Contains(location, alias) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func containsAnyFold(haystack string, needles []string) bool {
