@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef, useState } from 'react'
 import { api, describeError, type JobSort } from '../api'
 import { JobRow } from '../components/JobRow'
@@ -114,17 +115,6 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     getNextPageParam: (last) => last.next ?? undefined,
   })
 
-  const sentinel = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const node = sentinel.current
-    if (!node || !feed.hasNextPage) return
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && !feed.isFetchingNextPage) feed.fetchNextPage()
-    }, { rootMargin: '600px' })
-    observer.observe(node)
-    return () => observer.disconnect()
-  }, [feed.hasNextPage, feed.isFetchingNextPage, feed])
-
   // What caused each row: the search term while searching, the profile's
   // positive keywords otherwise. Aliases match server-side without highlight —
   // the dictionary lives in Go, and duplicating it here would drift.
@@ -133,6 +123,27 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     : keywords.filter((keyword) => !keyword.startsWith('-'))
 
   const rows = feed.data?.pages.flatMap((page) => page.jobs) ?? null
+
+  // Real windowing: only the rows near the viewport exist in the DOM. The
+  // scroller is <main>, so the list's own offset inside it is the margin.
+  const listRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: rows?.length ?? 0,
+    getScrollElement: () => listRef.current?.closest('main') ?? null,
+    estimateSize: () => 100,
+    overscan: 10,
+    scrollMargin: listRef.current?.offsetTop ?? 0,
+    getItemKey: (index) => rows![index].id,
+  })
+  const windowed = virtualizer.getVirtualItems()
+
+  // Infinite scroll by index instead of an IntersectionObserver: when the
+  // window reaches the last few rows, ask for the next page.
+  const lastIndex = windowed[windowed.length - 1]?.index ?? -1
+  useEffect(() => {
+    if (!rows || lastIndex < rows.length - 8) return
+    if (feed.hasNextPage && !feed.isFetchingNextPage) feed.fetchNextPage()
+  }, [lastIndex, rows, feed.hasNextPage, feed.isFetchingNextPage, feed])
 
   let list
   if (feed.error) {
@@ -149,7 +160,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
         : (
           <Empty
             title="Nothing matched yet"
-            detail="Try broader keywords in Settings, or refresh — the boards are polled every half hour."
+            detail="Try broader keywords in Settings, or refresh — the boards are polled every few minutes."
             actionLabel="Refresh"
             onAction={refreshFeeds}
           />
@@ -157,16 +168,19 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
   } else {
     list = (
       <>
-        <div className="list">
-          {rows.map((job) => (
-            <JobRow key={job.id} job={job} actions highlight={highlight}
-              ageOf={sort === 'applied' && !searching ? 'applied' : 'posted'} />
+        <div ref={listRef} className="list virtual"
+          style={{ height: virtualizer.getTotalSize() }}>
+          {windowed.map((item) => (
+            <div key={item.key} data-index={item.index} ref={virtualizer.measureElement}
+              className="vrow"
+              style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}>
+              <JobRow job={rows[item.index]} actions highlight={highlight}
+                ageOf={sort === 'applied' && !searching ? 'applied' : 'posted'} />
+            </div>
           ))}
         </div>
-        {feed.hasNextPage && (
-          <div ref={sentinel} className="sentinel">
-            {feed.isFetchingNextPage ? <span className="spinner" /> : null}
-          </div>
+        {feed.isFetchingNextPage && (
+          <div className="sentinel"><span className="spinner" /></div>
         )}
       </>
     )
