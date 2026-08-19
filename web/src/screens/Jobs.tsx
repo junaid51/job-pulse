@@ -89,10 +89,16 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  const searching = debounced !== ''
+  // "@place" tokens filter by location, through the same alias dictionary the
+  // matcher uses — "designer @dubai", or "@uae" alone.
+  const tokens = debounced.split(/\s+/).filter(Boolean)
+  const locations = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
+  const term = tokens.filter((t) => !t.startsWith('@')).join(' ')
+
+  const searching = term !== '' || locations.length > 0
   const first = useQuery<JobPage>(
-    searching ? `jobs:search:${debounced}` : `jobs:${profileId}:${sort}`,
-    () => (searching ? api.searchJobs(debounced) : api.jobs(profileId, sort)),
+    searching ? `jobs:search:${term}@${locations.join(',')}` : `jobs:${profileId}:${sort}`,
+    () => (searching ? api.searchJobs(term, locations) : api.jobs(profileId, sort)),
   )
 
   // Later pages live beside the cached first page and reset whenever it
@@ -113,7 +119,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
       if (!entries[0].isIntersecting || loadingMore) return
       setLoadingMore(true)
       const fetchPage = searching
-        ? api.searchJobs(debounced, next)
+        ? api.searchJobs(term, locations, next)
         : api.jobs(profileId, sort, next)
       fetchPage
         .then((page) => { setMore((old) => [...old, ...page.jobs]); setNext(page.next) })
@@ -122,13 +128,14 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     }, { rootMargin: '600px' })
     observer.observe(node)
     return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [next, loadingMore, searching, debounced, profileId, sort])
 
   // What caused each row: the search term while searching, the profile's
   // positive keywords otherwise. Aliases match server-side without highlight —
   // the dictionary lives in Go, and duplicating it here would drift.
   const highlight = searching
-    ? [debounced]
+    ? (term ? [term] : [])
     : keywords.filter((keyword) => !keyword.startsWith('-'))
 
   let list
@@ -137,8 +144,8 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
   } else if (!first.data) {
     list = <SkeletonList />
   } else if (first.data.jobs.length === 0) {
-    list = debounced
-      ? <Empty title={`Nothing for “${debounced}”`} detail="Search covers title, company and location across every job the boards currently list." />
+    list = searching
+      ? <Empty title={`Nothing for “${debounced}”`} detail="Search covers every live job. Tip: @place filters by location — designer @dubai." />
       : sort === 'applied'
         ? <Empty title="Nothing marked applied" detail="The check on a job row records where you've applied." />
         : (
@@ -170,7 +177,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
             ref={searchRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search all jobs"
+            placeholder="Search"
             aria-label="Search all jobs"
           />
           {query
