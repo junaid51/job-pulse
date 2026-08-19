@@ -17,40 +17,39 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
   const [selected, setSelected] = useState<number | null>(null)
 
+  // Straight into the editor, not just the Settings screen.
+  const newSearch = () => {
+    location.hash = '#/settings/new'
+    goToSettings()
+  }
+
   let body
   if (profiles.error) {
     body = <ErrorState message={describeError(profiles.error)} onRetry={() => profiles.refetch()} />
   } else if (!profiles.data) {
     body = <Loading />
-  } else if (profiles.data.length === 0) {
-    body = (
-      <Empty
-        title="No search profiles yet"
-        detail="A profile is what jobs get matched against: keywords, locations, remote or not."
-        actionLabel="Create a profile"
-        onAction={goToSettings}
-      />
-    )
   } else {
     const list = profiles.data
-    const profile = list.find((candidate) => candidate.id === selected) ?? list[0]
+    const profile = list.find((candidate) => candidate.id === selected) ?? list[0] ?? null
     body = (
       <>
-        {list.length > 1 && (
+        {list.length > 0 && (
           <div className="chips">
             {list.map((candidate) => (
               <button
                 key={candidate.id}
-                className={`chip ${candidate.id === profile.id ? 'selected' : ''}`}
+                className={`chip ${candidate.id === profile?.id ? 'selected' : ''}`}
                 onClick={() => setSelected(candidate.id)}
               >
                 {candidate.name}
                 {candidate.unread > 0 && <span className="chip-count">{candidate.unread}</span>}
               </button>
             ))}
+            <button className="chip chip-add" onClick={newSearch}>+ New</button>
           </div>
         )}
-        <JobList profileId={profile.id} keywords={profile.keywords} profileName={profile.name} />
+        <JobList profileId={profile?.id ?? null} keywords={profile?.keywords ?? []}
+          profileName={profile?.name ?? ''} onCreateProfile={newSearch} />
       </>
     )
   }
@@ -68,8 +67,12 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   )
 }
 
-function JobList({ profileId, keywords, profileName }: {
-  profileId: number; keywords: string[]; profileName: string
+// profileId is null when no profile exists yet: the feed has nothing to show,
+// but the search bar still covers the whole corpus — browsing must not wait
+// for a profile to be created.
+function JobList({ profileId, keywords, profileName, onCreateProfile }: {
+  profileId: number | null; keywords: string[]; profileName: string
+  onCreateProfile: () => void
 }) {
   const [sort, setSort] = useState<JobSort>('posted')
   const [query, setQuery] = useState('')
@@ -79,11 +82,11 @@ function JobList({ profileId, keywords, profileName }: {
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(query.trim()), 250)
+    const timer = setTimeout(() => setDebounced(query.trim()), 400)
     return () => clearTimeout(timer)
   }, [query])
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedPlace(place.trim()), 250)
+    const timer = setTimeout(() => setDebouncedPlace(place.trim()), 400)
     return () => clearTimeout(timer)
   }, [place])
 
@@ -106,15 +109,22 @@ function JobList({ profileId, keywords, profileName }: {
   const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
   const term = tokens.filter((t) => !t.startsWith('@')).join(' ')
   const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
+  // With no profile there is no feed for the location box to filter, so a
+  // place on its own also counts as a search of everything.
   const searching = term !== '' || atTokens.length > 0
+    || (profileId === null && debouncedPlace !== '')
 
   const feed = useInfiniteQuery({
     queryKey: ['jobs', searching ? 'search' : profileId, searching ? term : sort, locations],
     queryFn: ({ pageParam }) => searching
       ? api.searchJobs(term, locations, pageParam)
-      : api.jobs(profileId, sort, locations, pageParam),
+      : api.jobs(profileId!, sort, locations, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
+    enabled: searching || profileId !== null,
+    // While a refined search loads, keep the previous results on screen
+    // instead of flashing skeletons on every debounced keystroke.
+    placeholderData: (previous) => previous,
   })
 
   // What caused each row: the search term while searching, the profile's
@@ -150,6 +160,15 @@ function JobList({ profileId, keywords, profileName }: {
   let list
   if (feed.error) {
     list = <ErrorState message={describeError(feed.error)} onRetry={() => feed.refetch()} />
+  } else if (!searching && profileId === null) {
+    list = (
+      <Empty
+        title="Start with a search"
+        detail="The bar above covers every job from every board — type a role and look around. Like the results? Tap Save and they become a standing search that notifies you. Or build one directly:"
+        actionLabel="New search"
+        onAction={onCreateProfile}
+      />
+    )
   } else if (!rows) {
     list = <SkeletonList />
   } else if (rows.length === 0) {
@@ -177,7 +196,9 @@ function JobList({ profileId, keywords, profileName }: {
       <>
         {searching && (
           <p className="scope-note">
-            Searching every job from every board — not just your matches.
+            {profileId === null
+              ? 'Searching every job from every board. Tap Save to turn this into a standing search.'
+              : 'Searching every job from every board — not just your matches.'}
           </p>
         )}
         <div ref={listRef} className="list virtual"
@@ -244,14 +265,17 @@ function JobList({ profileId, keywords, profileName }: {
               }).then(() => {
                 invalidate('profiles')
                 invalidate('jobs')
-                showToast('Saved as a profile — edit it in Settings')
+                // Land on the saved search's own feed: the loop closes here.
+                setQuery('')
+                setPlace('')
+                showToast('Saved — new matches will notify you. Edit it in Settings.')
               }).catch(() => showToast('Could not save'))
             }}
           >
             + Save
           </button>
         )}
-        {searching ? null : (
+        {searching || profileId === null ? null : (
           <div className="segment" role="tablist" aria-label="View">
             <button role="tab" aria-selected={sort === 'posted'}
               className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
