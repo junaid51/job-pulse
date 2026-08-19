@@ -111,8 +111,10 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			       or j.company ilike '%' || $5 || '%'
 			       or j.location ilike '%' || $5 || '%')
 			  and ($7::text[] is null or j.location ilike any($7))
+			  and (not $8 or j.remote)
 			order by `+cursorExpr+` desc, j.id desc
-			limit $4`, profileID, at, atID, limit, search, deviceID(r), locations)
+			limit $4`, profileID, at, atID, limit, search, deviceID(r), locations,
+			r.URL.Query().Get("remote") == "1")
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return
@@ -203,10 +205,12 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 		   or company ilike '%' || $1 || '%'
 		   or location ilike '%' || $1 || '%')
 		  and ($5::text[] is null or location ilike any($5))
+		  and (not $6 or remote)
 		  and ($3::timestamptz is null
 		       or (coalesce(posted_at, 'epoch'::timestamptz), id) < ($3, $4::bigint))
 		order by coalesce(posted_at, 'epoch'::timestamptz) desc, id desc
-		limit $2`, search, limit, at, atID, locations)
+		limit $2`, search, limit, at, atID, locations,
+		r.URL.Query().Get("remote") == "1")
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return
