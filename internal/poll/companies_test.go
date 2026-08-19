@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/junaid51/job-pulse/internal/providers"
 )
 
 func TestParseCompanies(t *testing.T) {
@@ -77,5 +79,25 @@ func TestDisplayNameFallsBackToSlug(t *testing.T) {
 	}
 	if got := (Company{Slug: "spotify", Name: "Spotify"}).displayName(); got != "Spotify" {
 		t.Errorf("displayName() = %q, want %q", got, "Spotify")
+	}
+}
+
+// The ingest filter and the age sweep must agree, or an old posting still on
+// its board would be deleted and re-announced every cycle.
+func TestYoungEnough(t *testing.T) {
+	now := time.Now()
+	jobs := []providers.Job{
+		{Title: "fresh", PostedAt: now.Add(-24 * time.Hour)},
+		{Title: "borderline", PostedAt: now.Add(-maxJobAge + time.Hour)},
+		{Title: "ancient", PostedAt: now.Add(-maxJobAge - time.Hour)},
+		{Title: "undated"}, // no posting date: ages from first sight, so kept
+	}
+	var kept []string
+	for _, j := range youngEnough(jobs, now) {
+		kept = append(kept, j.Title)
+	}
+	want := []string{"fresh", "borderline", "undated"}
+	if fmt.Sprint(kept) != fmt.Sprint(want) {
+		t.Errorf("youngEnough kept %v, want %v", kept, want)
 	}
 }
