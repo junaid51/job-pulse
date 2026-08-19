@@ -16,6 +16,7 @@ import (
 	"github.com/junaid51/job-pulse/internal/api"
 	"github.com/junaid51/job-pulse/internal/config"
 	"github.com/junaid51/job-pulse/internal/db"
+	"github.com/junaid51/job-pulse/internal/notify"
 	"github.com/junaid51/job-pulse/internal/poll"
 )
 
@@ -56,9 +57,11 @@ func run() error {
 	}
 	slog.Info("companies loaded", "count", count, "file", cfg.CompaniesFile)
 
+	notifier := notify.New(ctx, pool, cfg.FirebaseCredentials)
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           api.NewRouter(pool),
+		Handler:           api.NewRouter(pool, notifier),
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      30 * time.Second,
 	}
@@ -67,7 +70,7 @@ func run() error {
 	poller.Add(1)
 	go func() {
 		defer poller.Done()
-		poll.Run(ctx, pool, cfg.PollInterval)
+		poll.Run(ctx, pool, notifier, cfg.PollInterval)
 	}()
 	slog.Info("poller started", "interval", cfg.PollInterval.String())
 

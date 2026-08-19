@@ -7,13 +7,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/junaid51/job-pulse/internal/notify"
 )
 
 // NewRouter wires the routes. The pool is passed in rather than reached for
 // from a global, which is the whole of the dependency injection in this project.
-//
-// TODO(M4): /api/devices, for FCM registration tokens.
-func NewRouter(pool *pgxpool.Pool) http.Handler {
+func NewRouter(pool *pgxpool.Pool, notifier *notify.Notifier) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, requestLogger)
 
@@ -30,7 +30,9 @@ func NewRouter(pool *pgxpool.Pool) http.Handler {
 		r.Get("/notifications", listNotifications(pool))
 		r.Post("/notifications/seen", markSeen(pool))
 
-		r.Post("/poll", triggerPoll(pool))
+		r.Post("/devices", registerDevice(pool))
+
+		r.Post("/poll", triggerPoll(pool, notifier))
 	})
 
 	return r
