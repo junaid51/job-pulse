@@ -89,6 +89,10 @@ Creating or editing a profile backfills it against every job already stored, so
 it is never mysteriously empty. `/api/jobs` returns `next_cursor` when another
 page exists; pass it back as `cursor` and treat it as opaque.
 
+Every device mints an anonymous id (X-Device header) and sees only its own
+profiles, matches and notifications; the job corpus is shared. Push follows the
+profile's owner, so a match only buzzes the device that created the search.
+
 There is no authentication, by design. Bind it to `127.0.0.1` or reach it over a
 private tunnel — do not put this on a public IP.
 

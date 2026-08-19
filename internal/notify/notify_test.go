@@ -83,7 +83,7 @@ func TestNotifierWithoutCredentialsIsUsable(t *testing.T) {
 	if notifier.client != nil {
 		t.Error("there should be no HTTP client without credentials")
 	}
-	notifier.Notify(t.Context(), "Backend Go", []providers.Job{{Company: "Stripe"}})
+	notifier.Notify(t.Context(), "device-1", "Backend Go", []providers.Job{{Company: "Stripe"}})
 }
 
 // Bad credentials must degrade to logging rather than stop the process.
@@ -109,7 +109,7 @@ func TestNotifierWithUnusableCredentials(t *testing.T) {
 			if notifier.client != nil {
 				t.Error("unusable credentials should leave push disabled")
 			}
-			notifier.Notify(t.Context(), "Backend Go", []providers.Job{{Company: "Stripe"}})
+			notifier.Notify(t.Context(), "device-1", "Backend Go", []providers.Job{{Company: "Stripe"}})
 		})
 	}
 }

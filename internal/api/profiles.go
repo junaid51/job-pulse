@@ -33,7 +33,7 @@ func listProfiles(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := pool.Query(r.Context(), `
 			select id, name, keywords, locations, remote_only, created_at
-			from profiles order by id`)
+			from profiles where owner = $1 order by id`, deviceID(r))
 		if err != nil {
 			serverError(w, "listing profiles", err)
 			return
@@ -96,10 +96,10 @@ func createProfile(pool *pgxpool.Pool) http.HandlerFunc {
 
 		var p profile
 		err := pool.QueryRow(r.Context(), `
-			insert into profiles (name, keywords, locations, remote_only)
-			values ($1, $2, $3, $4)
+			insert into profiles (name, keywords, locations, remote_only, owner)
+			values ($1, $2, $3, $4, $5)
 			returning id, name, keywords, locations, remote_only, created_at`,
-			in.Name, in.Keywords, in.Locations, in.RemoteOnly,
+			in.Name, in.Keywords, in.Locations, in.RemoteOnly, deviceID(r),
 		).Scan(&p.ID, &p.Name, &p.Keywords, &p.Locations, &p.RemoteOnly, &p.CreatedAt)
 		if err != nil {
 			serverError(w, "creating profile", err)
@@ -130,9 +130,9 @@ func updateProfile(pool *pgxpool.Pool) http.HandlerFunc {
 		var p profile
 		err = pool.QueryRow(r.Context(), `
 			update profiles set name = $2, keywords = $3, locations = $4, remote_only = $5
-			where id = $1
+			where id = $1 and owner = $6
 			returning id, name, keywords, locations, remote_only, created_at`,
-			id, in.Name, in.Keywords, in.Locations, in.RemoteOnly,
+			id, in.Name, in.Keywords, in.Locations, in.RemoteOnly, deviceID(r),
 		).Scan(&p.ID, &p.Name, &p.Keywords, &p.Locations, &p.RemoteOnly, &p.CreatedAt)
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "no such profile")
@@ -161,8 +161,10 @@ func deleteProfile(pool *pgxpool.Pool) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "id must be a number")
 			return
 		}
-		// Matches go with it: the foreign key cascades.
-		tag, err := pool.Exec(r.Context(), `delete from profiles where id = $1`, id)
+		// Matches go with it: the foreign key cascades. The owner clause means a
+		// device can only delete what it created.
+		tag, err := pool.Exec(r.Context(),
+			`delete from profiles where id = $1 and owner = $2`, id, deviceID(r))
 		if err != nil {
 			serverError(w, "deleting profile", err)
 			return

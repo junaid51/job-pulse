@@ -31,9 +31,10 @@ func registerDevice(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		_, err := pool.Exec(r.Context(), `
-			insert into devices (token, platform) values ($1, $2)
-			on conflict (token) do update set platform = excluded.platform`,
-			in.Token, in.Platform)
+			insert into devices (token, platform, owner) values ($1, $2, $3)
+			on conflict (token) do update
+			set platform = excluded.platform, owner = excluded.owner`,
+			in.Token, in.Platform, deviceID(r))
 		if err != nil {
 			serverError(w, "registering device", err)
 			return

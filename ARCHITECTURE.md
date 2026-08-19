@@ -460,6 +460,16 @@ has been over-designed.
 scraping aggregators or driving a headless browser. A curated `companies.txt` is
 more accurate, never breaks, and matches how I actually job-hunt.
 
+**Identity without accounts (added after real use).** Every device mints an
+anonymous UUID on first launch and sends it as X-Device; profiles, matches,
+notifications and push routing all belong to that id. Two of the author's own
+devices sharing one profile list turned out to be wrong in practice, and this
+is the smallest fix: no passwords, no sessions, no users table — a column and
+WHERE clauses. Anyone with the URL gets their own empty space. What it is not:
+security. A device id is not a secret worth stealing (it unlocks that device's
+own search profiles), and anyone who wants "real" multi-user still runs their
+own copy.
+
 **Authentication and user accounts.** Single user. Auth would mean a users
 table, token issuance, refresh, password reset, and a foreign key on every
 table — for one person. Bind to localhost instead. If I ever share it with a
