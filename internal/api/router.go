@@ -33,6 +33,8 @@ func NewRouter(pool *pgxpool.Pool, notifier *notify.Notifier) http.Handler {
 		r.Get("/notifications", listNotifications(pool))
 		r.Post("/notifications/seen", markSeen(pool))
 
+		r.Get("/boards", listBoards(pool))
+
 		r.Post("/devices", registerDevice(pool))
 
 		r.Post("/poll", triggerPoll(pool, notifier))

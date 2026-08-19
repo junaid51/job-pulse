@@ -30,7 +30,21 @@ export interface MatchEvent {
   job: Job
 }
 
-export type JobSort = 'posted' | 'matched'
+export type JobSort = 'posted' | 'matched' | 'applied'
+
+export interface JobPage {
+  jobs: Job[]
+  next: string | null
+}
+
+export interface Board {
+  provider: string
+  slug: string
+  name: string
+  jobs: number
+  last_polled_at: string | null
+  last_error: string | null
+}
 
 export interface ProfileInput {
   name: string
@@ -94,16 +108,23 @@ export const api = {
   deleteProfile: (id: number) =>
     request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
 
-  jobs: (profileId: number, sort: JobSort = 'posted') =>
-    request<{ jobs: Job[] }>(`/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}`)
-      .then((r) => r.jobs ?? []),
+  jobs: (profileId: number, sort: JobSort = 'posted', cursor?: string) =>
+    request<{ jobs: Job[]; next_cursor?: string }>(
+      `/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}` +
+      (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
+    ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
 
   /** Searches every stored job, not just one profile's matches — a search bar
    *  that hides jobs because they missed your keywords answers the wrong
    *  question. */
-  searchJobs: (q: string) =>
-    request<{ jobs: Job[] }>(`/api/jobs?limit=50&q=${encodeURIComponent(q)}`)
-      .then((r) => r.jobs ?? []),
+  searchJobs: (q: string, cursor?: string) =>
+    request<{ jobs: Job[]; next_cursor?: string }>(
+      `/api/jobs?limit=50&q=${encodeURIComponent(q)}` +
+      (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
+    ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
+
+  boards: () =>
+    request<{ boards: Board[] }>('/api/boards').then((r) => r.boards ?? []),
 
   notifications: () =>
     request<{ notifications: MatchEvent[]; unread: number }>('/api/notifications?limit=50')

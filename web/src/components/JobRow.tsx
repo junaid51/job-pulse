@@ -14,6 +14,7 @@ export const JobRow = memo(function JobRow(props: {
   label?: string
   showUnread?: boolean
   actions?: boolean
+  highlight?: string[]
 }) {
   const { job } = props
   const [applied, setApplied] = useState(job.applied)
@@ -49,7 +50,7 @@ export const JobRow = memo(function JobRow(props: {
       <span className="job-main">
         {props.label && <span className="job-label">{props.label}</span>}
         <span className="job-title">
-          {job.title}
+          <Highlighted text={job.title} terms={props.highlight} />
           {isFresh && <span className="fresh">NEW</span>}
           {applied && <span className="applied-tag">APPLIED</span>}
         </span>
@@ -76,6 +77,32 @@ export const JobRow = memo(function JobRow(props: {
     </a>
   )
 })
+
+/** Marks where a search term or profile keyword literally appears in the
+ *  title — the "why is this here" at a glance. Alias-driven matches (the
+ *  dictionary lives server-side) simply go unmarked. */
+function Highlighted({ text, terms }: { text: string; terms?: string[] }) {
+  const needles = (terms ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean)
+  if (needles.length === 0) return <>{text}</>
+  const lower = text.toLowerCase()
+  let earliest = -1
+  let length = 0
+  for (const needle of needles) {
+    const at = lower.indexOf(needle)
+    if (at !== -1 && (earliest === -1 || at < earliest)) {
+      earliest = at
+      length = needle.length
+    }
+  }
+  if (earliest === -1) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, earliest)}
+      <mark className="hit">{text.slice(earliest, earliest + length)}</mark>
+      {text.slice(earliest + length)}
+    </>
+  )
+}
 
 /** A letter mark with a hue derived from the company name — stable identity
  *  without logos, which the boards do not reliably provide. */

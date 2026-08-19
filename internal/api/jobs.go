@@ -46,8 +46,8 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		if sort == "" {
 			sort = "posted"
 		}
-		if sort != "posted" && sort != "matched" {
-			writeError(w, http.StatusBadRequest, "sort must be posted or matched")
+		if sort != "posted" && sort != "matched" && sort != "applied" {
+			writeError(w, http.StatusBadRequest, "sort must be posted, matched or applied")
 			return
 		}
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -79,29 +79,34 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			at, atID = t, id
 		}
 
-		// The cursor compares (created_at, id) as a pair because a great many
-		// matches share a created_at — a profile backfill inserts all of its
-		// matches in one statement, so they all carry the same now(). Filtering on
-		// the timestamp alone would drop every tied row. The cursor belongs to the
-		// matched ordering; posted ordering serves a single page.
-		orderBy := `order by j.posted_at desc nulls last, j.id desc`
-		if sort == "matched" {
-			orderBy = `order by m.created_at desc, j.id desc`
+		// Every ordering paginates on a (timestamp, id) pair, because timestamps
+		// tie constantly — a backfill stamps hundreds of matches with one now(),
+		// and boards without posting dates coalesce to the epoch. Filtering on
+		// the timestamp alone would drop every tied row. Each sort names the
+		// column its cursor compares.
+		cursorExpr := `coalesce(j.posted_at, 'epoch'::timestamptz)`
+		extraWhere := ``
+		switch sort {
+		case "matched":
+			cursorExpr = `m.created_at`
+		case "applied":
+			cursorExpr = `m.applied_at`
+			extraWhere = ` and m.applied_at is not null`
 		}
 		rows, err := pool.Query(r.Context(), `
 			select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 			       j.salary, j.posted_at, m.created_at, m.seen_at,
-			       m.applied_at is not null
+			       m.applied_at is not null, `+cursorExpr+` as cursor_at
 			from matches m
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = $6
 			where m.profile_id = $1
-			  and m.hidden_at is null
-			  and ($2::timestamptz is null or (m.created_at, j.id) < ($2, $3::bigint))
+			  and m.hidden_at is null`+extraWhere+`
+			  and ($2::timestamptz is null or (`+cursorExpr+`, j.id) < ($2, $3::bigint))
 			  and ($5 = '' or j.title ilike '%' || $5 || '%'
 			       or j.company ilike '%' || $5 || '%'
 			       or j.location ilike '%' || $5 || '%')
-			`+orderBy+`
+			order by `+cursorExpr+` desc, j.id desc
 			limit $4`, profileID, at, atID, limit, search, deviceID(r))
 		if err != nil {
 			serverError(w, "listing jobs", err)
@@ -110,11 +115,12 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		defer rows.Close()
 
 		jobs := []job{}
+		var lastCursorAt time.Time
 		for rows.Next() {
 			var j job
 			if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
 				&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-				&j.Applied); err != nil {
+				&j.Applied, &lastCursorAt); err != nil {
 				serverError(w, "reading jobs", err)
 				return
 			}
@@ -126,10 +132,10 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		body := map[string]any{"jobs": jobs}
-		// Only offer a cursor when there is plausibly another page, and only for
-		// the ordering the cursor encodes.
-		if sort == "matched" && len(jobs) == limit {
-			body["next_cursor"] = formatCursor(jobs[len(jobs)-1])
+		// Only offer a cursor when there is plausibly another page.
+		if len(jobs) == limit {
+			body["next_cursor"] = fmt.Sprintf("%s,%d",
+				lastCursorAt.Format(time.RFC3339Nano), jobs[len(jobs)-1].ID)
 		}
 		writeJSON(w, http.StatusOK, body)
 	}
@@ -159,15 +165,28 @@ func parseCursor(raw string) (time.Time, int64, error) {
 
 // searchAllJobs is the profile-free search: every live job, newest first.
 func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, search string, limit int) {
+	var at any
+	var atID any
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		t, id, err := parseCursor(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		at, atID = t, id
+	}
 	rows, err := pool.Query(r.Context(), `
 		select id, provider, company, title, location, remote, url,
-		       salary, posted_at, first_seen_at, null::timestamptz, false
+		       salary, posted_at, first_seen_at, null::timestamptz, false,
+		       coalesce(posted_at, 'epoch'::timestamptz) as cursor_at
 		from jobs
-		where title ilike '%' || $1 || '%'
+		where (title ilike '%' || $1 || '%'
 		   or company ilike '%' || $1 || '%'
-		   or location ilike '%' || $1 || '%'
-		order by posted_at desc nulls last, id desc
-		limit $2`, search, limit)
+		   or location ilike '%' || $1 || '%')
+		  and ($3::timestamptz is null
+		       or (coalesce(posted_at, 'epoch'::timestamptz), id) < ($3, $4::bigint))
+		order by coalesce(posted_at, 'epoch'::timestamptz) desc, id desc
+		limit $2`, search, limit, at, atID)
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return
@@ -175,11 +194,12 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 	defer rows.Close()
 
 	jobs := []job{}
+	var lastCursorAt time.Time
 	for rows.Next() {
 		var j job
 		if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
 			&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-			&j.Applied); err != nil {
+			&j.Applied, &lastCursorAt); err != nil {
 			serverError(w, "reading jobs", err)
 			return
 		}
@@ -189,7 +209,12 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 		serverError(w, "reading jobs", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+	body := map[string]any{"jobs": jobs}
+	if len(jobs) == limit {
+		body["next_cursor"] = fmt.Sprintf("%s,%d",
+			lastCursorAt.Format(time.RFC3339Nano), jobs[len(jobs)-1].ID)
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func intParam(r *http.Request, name string, def, max int) int {
