@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -18,6 +19,8 @@ type Company struct {
 	Provider string
 	Slug     string
 	Name     string
+	// LastPolledAt feeds the per-provider throttle; nil means never polled.
+	LastPolledAt *time.Time
 }
 
 // displayName is what jobs from this board are labelled with when the provider
@@ -103,7 +106,8 @@ func SyncCompanies(ctx context.Context, pool *pgxpool.Pool, path string) (int, e
 }
 
 func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
-	rows, err := pool.Query(ctx, `select provider, slug, name from companies order by provider, slug`)
+	rows, err := pool.Query(ctx,
+		`select provider, slug, name, last_polled_at from companies order by provider, slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +116,7 @@ func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	var companies []Company
 	for rows.Next() {
 		var c Company
-		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name); err != nil {
+		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name, &c.LastPolledAt); err != nil {
 			return nil, err
 		}
 		companies = append(companies, c)
