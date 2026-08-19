@@ -41,6 +41,11 @@ var locationAliases = map[string][]string{
 	"uae":   {"united arab emirates", "dubai", "abu dhabi", "sharjah"},
 	"ksa":   {"saudi arabia", "saudi", "riyadh", "jeddah"},
 	"saudi": {"saudi arabia", "riyadh", "jeddah"},
+	// "uk" earned its place the same way "uae" did: a real profile matched two
+	// jobs while fifty said "United Kingdom" — which does not contain "uk".
+	"uk":  {"united kingdom", "london"},
+	"usa": {"united states", "new york"},
+	"us":  {"united states"},
 }
 
 // locationMatches is containsAnyFold plus the alias expansion. Aliases apply to
