@@ -73,7 +73,8 @@ lever              spotify      Spotify
 The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
-`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`.
+`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`,
+`teamtailor`.
 
 ## API
 

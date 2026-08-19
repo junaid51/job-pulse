@@ -97,6 +97,21 @@ func TestParseBoards(t *testing.T) {
 			},
 		},
 		{
+			name:    "teamtailor",
+			fixture: "teamtailor.json",
+			parse:   func(t *testing.T, raw []byte) []Job { return decode[teamtailorFeed](t, raw).jobs() },
+			count:   2,
+			want: Job{
+				ExternalID: "7ac6b47c-c2d1-48b5-803a-2d84bb3762fe",
+				Company:    "Property Finder",
+				Title:      "Sales Team Leader (B2B SaaS)",
+				Location:   "Cairo, Egypt", // ISO "EG" expanded to what a profile matches
+				Remote:     false,
+				URL:        "https://propertyfinder.teamtailor.com/jobs/7982798-sales-team-leader-b2b-saas",
+				PostedAt:   mustTime(t, time.RFC3339, "2026-06-29T09:37:39+04:00"),
+			},
+		},
+		{
 			name:    "recruitee",
 			fixture: "recruitee.json",
 			parse:   func(t *testing.T, raw []byte) []Job { return decode[recruiteeOffers](t, raw).jobs() },
@@ -170,6 +185,32 @@ func TestParseSkipsClosedPostings(t *testing.T) {
 	})
 }
 
+// Teamtailor postings can name several cities, or none at all — both appear on
+// real boards (dubizzle has postings with no jobLocation).
+func TestTeamtailorLocations(t *testing.T) {
+	raw := []byte(`{"items":[
+		{"id":"a","title":"Multi","url":"https://x/a","_jobposting":{"jobLocation":[
+			{"address":{"addressLocality":"Dubai","addressCountry":"AE"}},
+			{"address":{"addressLocality":"Riyadh","addressCountry":"SA"}}]}},
+		{"id":"b","title":"Nowhere","url":"https://x/b","_jobposting":{}},
+		{"id":"c","title":"Anywhere","url":"https://x/c","_jobposting":{"jobLocation":[
+			{"address":{"addressLocality":"Remote","addressCountry":"XX"}}]}}
+	]}`)
+	jobs := decode[teamtailorFeed](t, raw).jobs()
+	if got, want := jobs[0].Location, "Dubai, United Arab Emirates / Riyadh, Saudi Arabia"; got != want {
+		t.Errorf("multi-location = %q, want %q", got, want)
+	}
+	if jobs[1].Location != "" {
+		t.Errorf("missing jobLocation should give an empty location, got %q", jobs[1].Location)
+	}
+	if got, want := jobs[2].Location, "Remote, XX"; got != want {
+		t.Errorf("unknown country code should pass through, got %q want %q", got, want)
+	}
+	if !jobs[2].Remote {
+		t.Error(`a location saying "Remote" should set the flag`)
+	}
+}
+
 func TestRemoteDetection(t *testing.T) {
 	// Greenhouse has no remote flag at all, so the location text is all there is.
 	raw := []byte(`{"jobs":[
@@ -195,7 +236,7 @@ func TestParseTimeIsLenient(t *testing.T) {
 }
 
 func TestAllProvidersRegistered(t *testing.T) {
-	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee"}
+	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor"}
 	if len(All) != len(want) {
 		t.Errorf("All has %d providers, want %d", len(All), len(want))
 	}
