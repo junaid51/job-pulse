@@ -38,8 +38,12 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   // Only the app's own static files; API calls always go to the network.
   if (url.origin !== location.origin || event.request.method !== 'GET') return;
+  // Page loads revalidate with the server (cheap 304 when unchanged) instead
+  // of trusting the HTTP cache — a stale shell means a stale app for an hour.
   event.respondWith(
-    fetch(event.request)
+    (event.request.mode === 'navigate'
+      ? fetch(event.request.url, { cache: 'no-cache' })
+      : fetch(event.request))
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE).then((c) => c.put(event.request, copy));

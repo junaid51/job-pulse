@@ -12,8 +12,20 @@ import './styles.css'
 // open — controllerchange is the moment to offer the reload, and the end of
 // "hard refresh to get the new version".
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/firebase-messaging-sw.js')
+  const loadedAt = Date.now()
+  navigator.serviceWorker.register('/firebase-messaging-sw.js').then((registration) => {
+    // iOS keeps an installed PWA warm for hours: resuming it is not a page
+    // load, so nothing would ever notice a deploy. Foregrounding is the
+    // moment to check (the worker is stamped per build, so a deploy always
+    // changes its bytes).
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') registration.update().catch(() => {})
+    })
+  })
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Right after a load the page already is the new version (the shell is
+    // served no-cache); only a session that has been running needs the offer.
+    if (Date.now() - loadedAt < 5000) return
     showToast('A new version is ready', { label: 'Reload', run: () => location.reload() }, 0)
   })
 }
