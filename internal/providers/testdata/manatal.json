@@ -1,0 +1,39 @@
+{
+  "count": 9,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "id": 3102939,
+      "hash": "X9583V6Y",
+      "position_name": "Content Creator",
+      "description": "<p><strong>Job Title: Content Creator</strong></p>\n<p><strong>Location: Dubai</strong></p>\n<p><strong>Budge...",
+      "country": "United Arab Emirates",
+      "state": "",
+      "city": "Dubai",
+      "address": "",
+      "zipcode": "",
+      "location_display": "Dubai, United Arab Emirates",
+      "is_salary_visible": false,
+      "is_remote": null,
+      "contract_details": "full_time",
+      "is_pinned_in_career_page": false
+    },
+    {
+      "id": 2950133,
+      "hash": "L7R9WWY5",
+      "position_name": "Sales Consultant (Russian Speaker)",
+      "description": "<p><strong>Position Overview:</strong></p>\n<p>As a Sales Consultant for Freelancer Visas, you will play a k...",
+      "country": "United Arab Emirates",
+      "state": "",
+      "city": "Dubai",
+      "address": "",
+      "zipcode": "",
+      "location_display": "Dubai, United Arab Emirates",
+      "is_salary_visible": false,
+      "is_remote": null,
+      "contract_details": "full_time",
+      "is_pinned_in_career_page": false
+    }
+  ]
+}
