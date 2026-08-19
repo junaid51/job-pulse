@@ -38,10 +38,10 @@ func listNotifications(pool *pgxpool.Pool) http.HandlerFunc {
 			       j.posted_at, m.created_at, m.seen_at
 			from matches m
 			join jobs j on j.id = m.job_id
-			join profiles p on p.id = m.profile_id
+			join profiles p on p.id = m.profile_id and p.owner = $4
 			where $1::timestamptz is null or (m.created_at, j.id) < ($1, $2::bigint)
 			order by m.created_at desc, j.id desc
-			limit $3`, at, atID, limit)
+			limit $3`, at, atID, limit, deviceID(r))
 		if err != nil {
 			serverError(w, "listing notifications", err)
 			return
@@ -65,8 +65,10 @@ func listNotifications(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var unread int
-		if err := pool.QueryRow(r.Context(),
-			`select count(*) from matches where seen_at is null`).Scan(&unread); err != nil {
+		if err := pool.QueryRow(r.Context(), `
+			select count(*) from matches m
+			join profiles p on p.id = m.profile_id and p.owner = $1
+			where m.seen_at is null`, deviceID(r)).Scan(&unread); err != nil {
 			serverError(w, "counting unread", err)
 			return
 		}
@@ -83,8 +85,11 @@ func listNotifications(pool *pgxpool.Pool) http.HandlerFunc {
 // "opened the Notifications screen" means all of it — no ids to plumb through.
 func markSeen(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tag, err := pool.Exec(r.Context(),
-			`update matches set seen_at = $1 where seen_at is null`, time.Now())
+		tag, err := pool.Exec(r.Context(), `
+			update matches m set seen_at = $1
+			from profiles p
+			where p.id = m.profile_id and p.owner = $2 and m.seen_at is null`,
+			time.Now(), deviceID(r))
 		if err != nil {
 			serverError(w, "marking seen", err)
 			return

@@ -176,11 +176,12 @@ func dueNow(companies []Company, now time.Time) []Company {
 	return due
 }
 
-// notifyProfiles sends one push per profile that gained something this cycle.
+// notifyProfiles sends one push per profile that gained something this cycle,
+// routed to the device that owns the profile.
 func notifyProfiles(ctx context.Context, notifier *notify.Notifier, profiles []profile, matched map[int64][]providers.Job) {
 	for _, p := range profiles {
 		if jobs := matched[p.id]; len(jobs) > 0 {
-			notifier.Notify(ctx, p.name, jobs)
+			notifier.Notify(ctx, p.owner, p.name, jobs)
 		}
 	}
 }
@@ -397,11 +398,12 @@ func recordResult(ctx context.Context, pool *pgxpool.Pool, c Company, cause erro
 type profile struct {
 	id       int64
 	name     string
+	owner    string
 	criteria match.Criteria
 }
 
 func loadProfiles(ctx context.Context, pool *pgxpool.Pool) ([]profile, error) {
-	rows, err := pool.Query(ctx, `select id, name, keywords, locations, remote_only from profiles order by id`)
+	rows, err := pool.Query(ctx, `select id, name, owner, keywords, locations, remote_only from profiles order by id`)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +412,7 @@ func loadProfiles(ctx context.Context, pool *pgxpool.Pool) ([]profile, error) {
 	var profiles []profile
 	for rows.Next() {
 		var p profile
-		if err := rows.Scan(&p.id, &p.name, &p.criteria.Keywords, &p.criteria.Locations, &p.criteria.RemoteOnly); err != nil {
+		if err := rows.Scan(&p.id, &p.name, &p.owner, &p.criteria.Keywords, &p.criteria.Locations, &p.criteria.RemoteOnly); err != nil {
 			return nil, err
 		}
 		profiles = append(profiles, p)

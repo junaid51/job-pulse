@@ -91,13 +91,14 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			       j.posted_at, m.created_at, m.seen_at
 			from matches m
 			join jobs j on j.id = m.job_id
+			join profiles p on p.id = m.profile_id and p.owner = $6
 			where m.profile_id = $1
 			  and ($2::timestamptz is null or (m.created_at, j.id) < ($2, $3::bigint))
 			  and ($5 = '' or j.title ilike '%' || $5 || '%'
 			       or j.company ilike '%' || $5 || '%'
 			       or j.location ilike '%' || $5 || '%')
 			`+orderBy+`
-			limit $4`, profileID, at, atID, limit, search)
+			limit $4`, profileID, at, atID, limit, search, deviceID(r))
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return

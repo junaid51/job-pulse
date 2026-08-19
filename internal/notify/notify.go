@@ -78,8 +78,10 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentialsFile string) *Notif
 	return &Notifier{pool: pool, projectID: account.ProjectID, client: client}
 }
 
-// Notify sends one summary for one profile.
-func (n *Notifier) Notify(ctx context.Context, profileName string, jobs []providers.Job) {
+// Notify sends one summary for one profile, to the device that owns it —
+// profiles belong to devices, and a match on your search should not buzz
+// someone else's phone.
+func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs []providers.Job) {
 	if len(jobs) == 0 {
 		return
 	}
@@ -90,7 +92,7 @@ func (n *Notifier) Notify(ctx context.Context, profileName string, jobs []provid
 		return
 	}
 
-	tokens, err := n.tokens(ctx)
+	tokens, err := n.tokens(ctx, owner)
 	if err != nil {
 		slog.Error("reading device tokens", "error", err)
 		return
@@ -174,8 +176,8 @@ func isTokenDead(err error) bool {
 	return sendErr.status == http.StatusNotFound || sendErr.status == http.StatusBadRequest
 }
 
-func (n *Notifier) tokens(ctx context.Context) ([]string, error) {
-	rows, err := n.pool.Query(ctx, `select token from devices`)
+func (n *Notifier) tokens(ctx context.Context, owner string) ([]string, error) {
+	rows, err := n.pool.Query(ctx, `select token from devices where owner = $1`, owner)
 	if err != nil {
 		return nil, err
 	}

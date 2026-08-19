@@ -40,10 +40,27 @@ export interface ProfileInput {
 // Baked in at build time, like every deployment constant in this app.
 export const API = import.meta.env.VITE_JOBPULSE_API ?? 'http://localhost:8091'
 
+// Identity without accounts: a UUID minted once per browser install. Everything
+// this device creates on the backend belongs to this id and is invisible to
+// other devices — profiles, matches, notifications and push routing all follow
+// it. Clearing site data mints a new identity (and orphans the old profiles).
+export const deviceId: string = (() => {
+  const KEY = 'jobpulse-device'
+  let id = localStorage.getItem(KEY)
+  if (!id) {
+    id = crypto.randomUUID()
+    localStorage.setItem(KEY, id)
+  }
+  return id
+})()
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(API + path, {
     ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: {
+      'X-Device': deviceId,
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+    },
   })
   if (!response.ok) {
     let message = `The backend answered ${response.status}.`
