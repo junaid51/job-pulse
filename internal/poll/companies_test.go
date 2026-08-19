@@ -67,7 +67,9 @@ func TestDueNow(t *testing.T) {
 	for _, c := range dueNow(companies, now) {
 		slugs = append(slugs, c.Slug)
 	}
-	want := []string{"always", "stale", "never"}
+	// A metered provider surfaces at most one due board per cycle — bursts
+	// trip its rate limit — so "never" waits for the next cycle.
+	want := []string{"always", "stale"}
 	if fmt.Sprint(slugs) != fmt.Sprint(want) {
 		t.Errorf("dueNow kept %v, want %v", slugs, want)
 	}
