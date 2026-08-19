@@ -10,11 +10,22 @@ interface Entry<T> {
   loading: boolean
 }
 
+// One shared fallback: returning a fresh object from getSnapshot makes React
+// believe the store changed on every read.
+const fallback: Entry<never> = { loading: true }
+
 const cache = new Map<Key, Entry<unknown>>()
 const listeners = new Set<() => void>()
 
 function notify() {
   for (const listener of listeners) listener()
+}
+
+// A stable identity, or useSyncExternalStore tears the subscription down and
+// rebuilds it on every render.
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
 }
 
 function load<T>(key: Key, fetcher: () => Promise<T>) {
@@ -44,8 +55,8 @@ export function useQuery<T>(key: Key, fetcher: () => Promise<T>): Entry<T> & { r
   }, [key, refetch])
 
   const entry = useSyncExternalStore(
-    (listener) => { listeners.add(listener); return () => listeners.delete(listener) },
-    () => (cache.get(key) as Entry<T>) ?? { loading: true },
+    subscribe,
+    () => (cache.get(key) as Entry<T>) ?? fallback,
   )
   return { ...entry, refetch }
 }
