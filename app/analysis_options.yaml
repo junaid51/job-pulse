@@ -1,0 +1,8 @@
+# Flutter's recommended lints, plus a few that catch real mistakes early.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - prefer_single_quotes
+    - avoid_print
+    - unawaited_futures
