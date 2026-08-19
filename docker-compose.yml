@@ -1,0 +1,23 @@
+# PostgreSQL only. The Go binary and the Flutter app run on the host, so this
+# file stays useful on any Docker-compatible machine and is never a deploy unit.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: jobpulse-postgres
+    environment:
+      POSTGRES_USER: jobpulse
+      POSTGRES_PASSWORD: jobpulse
+      POSTGRES_DB: jobpulse
+    ports:
+      # Override POSTGRES_PORT if 5432 is already taken on your machine.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - jobpulse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobpulse -d jobpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  jobpulse-pgdata:
