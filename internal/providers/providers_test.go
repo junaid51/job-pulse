@@ -127,6 +127,23 @@ func TestParseBoards(t *testing.T) {
 			},
 		},
 		{
+			name:    "phenom",
+			fixture: "phenom.json",
+			parse: func(t *testing.T, raw []byte) []Job {
+				return decode[phenomPage](t, raw).jobs("careers.majidalfuttaim.com")
+			},
+			count: 2,
+			want: Job{
+				ExternalID: "MAFMAFGLOBAL20518EXTERNALENGLOBAL",
+				Company:    "Majid Al Futtaim Lifestyle",
+				Title:      "Specialist - Logistics & Fulfilment",
+				Location:   "Riyadh, Saudi Arabia",
+				Remote:     false,
+				URL:        "https://careers.majidalfuttaim.com/global/en/job/MAFMAFGLOBAL20518EXTERNALENGLOBAL",
+				PostedAt:   mustTime(t, phenomTimeLayout, "2025-12-20T15:09:43.000+0000"),
+			},
+		},
+		{
 			name:    "recruitee",
 			fixture: "recruitee.json",
 			parse:   func(t *testing.T, raw []byte) []Job { return decode[recruiteeOffers](t, raw).jobs() },
@@ -251,7 +268,7 @@ func TestParseTimeIsLenient(t *testing.T) {
 }
 
 func TestAllProvidersRegistered(t *testing.T) {
-	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet", "manatal"}
+	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet", "manatal", "phenom"}
 	if len(All) != len(want) {
 		t.Errorf("All has %d providers, want %d", len(All), len(want))
 	}

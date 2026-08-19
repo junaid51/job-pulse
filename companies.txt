@@ -45,3 +45,4 @@ careerjet          ui+ux+designer||en_AE          Careerjet
 smartrecruiters    Namshi       Namshi
 manatal            nathanhr     NathanHR
 manatal            sundus       Sundus
+phenom             careers.majidalfuttaim.com  Majid Al Futtaim

@@ -62,7 +62,7 @@ The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
 `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`,
-`teamtailor`, `manatal` — plus `careerjet`, an aggregator whose "slug" is a
+`teamtailor`, `manatal`, `phenom` — plus `careerjet`, an aggregator whose "slug" is a
 saved search (`software+engineer|dubai|en_AE`) and which is polled every six
 hours.
 
