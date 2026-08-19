@@ -112,6 +112,21 @@ func TestParseBoards(t *testing.T) {
 			},
 		},
 		{
+			name:    "manatal",
+			fixture: "manatal.json",
+			parse:   func(t *testing.T, raw []byte) []Job { return decode[manatalPage](t, raw).jobs("nathanhr") },
+			count:   2,
+			want: Job{
+				ExternalID: "X9583V6Y",
+				Company:    "", // the payload's organization_name is a department; the poller fills the company
+				Title:      "Content Creator",
+				Location:   "Dubai, United Arab Emirates",
+				Remote:     false, // is_remote is null
+				URL:        "https://www.careers-page.com/nathanhr/job/X9583V6Y",
+				// No posting date in the payload: ages from first sight.
+			},
+		},
+		{
 			name:    "recruitee",
 			fixture: "recruitee.json",
 			parse:   func(t *testing.T, raw []byte) []Job { return decode[recruiteeOffers](t, raw).jobs() },
@@ -236,7 +251,7 @@ func TestParseTimeIsLenient(t *testing.T) {
 }
 
 func TestAllProvidersRegistered(t *testing.T) {
-	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet"}
+	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet", "manatal"}
 	if len(All) != len(want) {
 		t.Errorf("All has %d providers, want %d", len(All), len(want))
 	}
