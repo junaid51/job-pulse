@@ -138,6 +138,16 @@ create index on jobs (first_seen_at desc);
 create index on matches (profile_id, created_at desc);
 ```
 
+The jobs table holds only what is worth applying to, and cleanup is the
+poller's job. Each fetch is a board's complete current listing, so a stored job
+absent from it was closed by the company — deleted on the spot, match history
+and all. Postings older than 45 days never enter and are swept out if stored:
+past that, an unfilled listing is advertising, not an opening. The ingest
+filter and the sweep must agree, or an old posting still on its board would be
+deleted and re-announced every cycle. Aggregator (metered) providers only show
+a window of results, so absence proves nothing there; their rows leave through
+the age sweep alone.
+
 Notes:
 
 - `keywords`/`locations` as `text[]` instead of child tables. They are lists of

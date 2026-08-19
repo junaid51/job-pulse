@@ -21,6 +21,13 @@ import (
 // someone else's public API and a poll has fifteen minutes to finish.
 const concurrency = 4
 
+// maxJobAge is how old a posting can be and still be worth applying to. It
+// rules in two places that must agree: postings older than this never enter
+// the database, and stored jobs are deleted once they cross it — if only the
+// sweep existed, a still-listed old posting would be re-ingested next cycle
+// and re-announced forever.
+const maxJobAge = 45 * 24 * time.Hour
+
 // minPollInterval slows selected providers down below the cycle cadence.
 // Aggregator APIs meter requests, and a search index refreshes far slower than
 // a company's own board; a cycle skips their boards until the interval passes.
@@ -37,10 +44,11 @@ var running sync.Mutex
 
 // Stats is what one cycle did, for the log line and the /api/poll response.
 type Stats struct {
-	Companies  int `json:"companies"`
-	Failed     int `json:"failed"`
-	NewJobs    int `json:"new_jobs"`
-	NewMatches int `json:"new_matches"`
+	Companies  int   `json:"companies"`
+	Failed     int   `json:"failed"`
+	NewJobs    int   `json:"new_jobs"`
+	NewMatches int   `json:"new_matches"`
+	Removed    int64 `json:"removed"`
 }
 
 // Run polls immediately, then every interval until ctx is cancelled.
@@ -74,6 +82,7 @@ func logCycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier
 		"failed", stats.Failed,
 		"new_jobs", stats.NewJobs,
 		"new_matches", stats.NewMatches,
+		"removed", stats.Removed,
 		"duration", time.Since(start).Round(time.Millisecond).String(),
 	)
 }
@@ -135,6 +144,19 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	if err := ctx.Err(); err != nil {
 		return stats, err
 	}
+
+	// The age sweep: past maxJobAge a posting is not worth applying to, so it
+	// and its match history go. Jobs that never carried a posting date age from
+	// when they were first seen.
+	tag, err := pool.Exec(ctx, `
+		delete from jobs
+		where coalesce(posted_at, first_seen_at) < now() - $1::interval`,
+		maxJobAge.String())
+	if err != nil {
+		return stats, err
+	}
+	stats.Removed += tag.RowsAffected()
+
 	notifyProfiles(ctx, notifier, profiles, matched)
 
 	return stats, nil
@@ -177,11 +199,24 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 		recordResult(ctx, pool, c, err)
 		return 0, nil, err
 	}
+	jobs = youngEnough(jobs, time.Now())
 
 	newJobs, err := insertJobs(ctx, pool, c, jobs)
 	if err != nil {
 		recordResult(ctx, pool, c, err)
 		return 0, nil, err
+	}
+
+	// The fetch is this board's complete current list, so anything stored from
+	// it that the fetch does not contain has been closed by the company —
+	// delete it, match history and all. Metered providers only show a window
+	// of their results, so absence there proves nothing; their postings leave
+	// through the age sweep instead.
+	if _, metered := minPollInterval[c.Provider]; !metered {
+		if err := deleteAbsent(ctx, pool, c, jobs); err != nil {
+			recordResult(ctx, pool, c, err)
+			return 0, nil, err
+		}
 	}
 
 	newMatches, err := insertMatches(ctx, pool, newJobs, profiles)
@@ -192,6 +227,40 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 
 	recordResult(ctx, pool, c, nil)
 	return len(newJobs), newMatches, nil
+}
+
+// youngEnough drops postings already past maxJobAge, so the sweep and the
+// ingest agree about what belongs in the database.
+func youngEnough(jobs []providers.Job, now time.Time) []providers.Job {
+	kept := make([]providers.Job, 0, len(jobs))
+	for _, j := range jobs {
+		if j.PostedAt.IsZero() || now.Sub(j.PostedAt) < maxJobAge {
+			kept = append(kept, j)
+		}
+	}
+	return kept
+}
+
+// deleteAbsent removes this board's stored jobs that its current listing no
+// longer contains. Rows from before the slug column existed carry ” and are
+// first claimed by their board when re-seen (see insertJobs), so they are
+// never deleted by a board that does not own them.
+func deleteAbsent(ctx context.Context, pool *pgxpool.Pool, c Company, current []providers.Job) error {
+	ids := make([]string, len(current))
+	for i, j := range current {
+		ids[i] = j.ExternalID
+	}
+	tag, err := pool.Exec(ctx, `
+		delete from jobs
+		where provider = $1 and slug = $2 and not (external_id = any($3))`,
+		c.Provider, c.Slug, ids)
+	if err != nil {
+		return err
+	}
+	if n := tag.RowsAffected(); n > 0 {
+		slog.Info("closed jobs removed", "provider", c.Provider, "slug", c.Slug, "count", n)
+	}
+	return nil
 }
 
 // storedJob is a job that was genuinely new in this cycle.
@@ -217,6 +286,19 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 		}
 	}
 
+	// Rows inserted before the slug column existed carry ''; the first board to
+	// re-see them claims them, which is what lets deleteAbsent trust the slug.
+	claim := make([]string, len(jobs))
+	for i, j := range jobs {
+		claim[i] = j.ExternalID
+	}
+	if _, err := pool.Exec(ctx, `
+		update jobs set slug = $2
+		where provider = $1 and slug = '' and external_id = any($3)`,
+		c.Provider, c.Slug, claim); err != nil {
+		return nil, err
+	}
+
 	batch := &pgx.Batch{}
 	for _, j := range jobs {
 		// A missing date must be NULL, not the zero time.
@@ -225,11 +307,11 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 			posted = j.PostedAt
 		}
 		batch.Queue(`
-			insert into jobs (provider, external_id, company, title, location, remote, url, posted_at)
-			values ($1, $2, $3, $4, $5, $6, $7, $8)
+			insert into jobs (provider, external_id, slug, company, title, location, remote, url, posted_at)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 			on conflict (provider, external_id) do nothing
 			returning id`,
-			c.Provider, j.ExternalID, j.Company, j.Title, j.Location, j.Remote, j.URL, posted)
+			c.Provider, j.ExternalID, c.Slug, j.Company, j.Title, j.Location, j.Remote, j.URL, posted)
 	}
 
 	// Every queued result must be consumed before Close, so errors surface here
