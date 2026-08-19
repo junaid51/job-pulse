@@ -2,7 +2,7 @@
 // data library would provide, hand-rolled because this app has three queries.
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 
-type Key = 'profiles' | 'notifications' | `jobs:${string}`
+type Key = 'profiles' | 'notifications' | 'boards' | `jobs:${string}`
 
 interface Entry<T> {
   data?: T

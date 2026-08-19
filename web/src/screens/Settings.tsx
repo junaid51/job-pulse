@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { API, api, describeError, type Profile, type ProfileInput } from '../api'
+import { API, api, describeError, deviceId, type Profile, type ProfileInput } from '../api'
 import { Loading } from '../components/States'
+import { providerLabel, shortAgo } from '../format'
 import { invalidate, useQuery } from '../hooks'
 import { enablePush, type PushState } from '../push'
 
@@ -53,6 +54,12 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
         </div>
       )}
 
+      <h2 className="section-h">Boards</h2>
+      <Boards />
+
+      <h2 className="section-h">This device</h2>
+      <DeviceIdentity />
+
       <h2 className="section-h">Backend</h2>
       <div className="kv"><span>URL</span><span className="kv-value">{API}</span></div>
       <p className="state-detail pad">
@@ -68,6 +75,87 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
         />
       )}
     </section>
+  )
+}
+
+function Boards() {
+  const boards = useQuery('boards', api.boards)
+  if (boards.error) return <p className="state-detail pad">{describeError(boards.error)}</p>
+  if (!boards.data) return <Loading />
+  const failing = boards.data.filter((b) => b.last_error)
+  return (
+    <>
+      <p className="state-detail pad">
+        {boards.data.length} sources · {boards.data.reduce((n, b) => n + b.jobs, 0)} live jobs
+        {failing.length > 0 && ` · ${failing.length} failing`}
+      </p>
+      {boards.data.map((b) => (
+        <div className="board-row" key={`${b.provider}:${b.slug}`}>
+          <span className={`board-dot ${b.last_error ? 'bad' : 'ok'}`} />
+          <span className="board-main">
+            <span className="board-name">{b.name || b.slug}</span>
+            <span className="job-meta">
+              {providerLabel(b.provider)} · {b.jobs} {b.jobs === 1 ? 'job' : 'jobs'}
+              {b.last_error ? ` · ${b.last_error}` : ''}
+            </span>
+          </span>
+          <span className="job-age">
+            {b.last_polled_at ? shortAgo(b.last_polled_at) : 'never'}
+          </span>
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** The anonymous id everything this device owns is filed under. Losing it
+ *  (reinstalling the Home-Screen app clears site data) orphans the profiles —
+ *  so it can be copied out and pasted back in. */
+function DeviceIdentity() {
+  const [adopt, setAdopt] = useState('')
+  const [copied, setCopied] = useState(false)
+  return (
+    <>
+      <div className="kv">
+        <span>Device ID</span>
+        <span className="kv-value">
+          {deviceId.slice(0, 13)}…{' '}
+          <button
+            className="linkish"
+            onClick={() => {
+              navigator.clipboard?.writeText(deviceId)
+                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+            }}
+          >
+            {copied ? 'copied' : 'copy'}
+          </button>
+        </span>
+      </div>
+      <div className="pad stack">
+        <p className="state-detail">
+          Your searches belong to this ID. Keep a copy somewhere — reinstalling
+          the app clears it, and pasting it back here reclaims everything.
+        </p>
+        <form
+          className="adopt"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const id = adopt.trim()
+            if (!id) return
+            localStorage.setItem('jobpulse-device', id)
+            location.reload()
+          }}
+        >
+          <input
+            value={adopt}
+            onChange={(event) => setAdopt(event.target.value)}
+            placeholder="Paste a device ID to restore it"
+            aria-label="Device ID to adopt"
+          />
+          <button className="btn-tonal" type="submit" disabled={!adopt.trim()}>Use</button>
+        </form>
+      </div>
+    </>
   )
 }
 

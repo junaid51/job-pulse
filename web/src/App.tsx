@@ -40,6 +40,10 @@ export function App() {
         {tab === 'settings' && <Settings push={push} setPush={setPush} />}
       </main>
       <nav>
+        <div className="brand" aria-hidden>
+          <PulseMark />
+          <span>JobPulse</span>
+        </div>
         <TabButton current={tab} tab="jobs" label="Jobs" glyph={<BriefcaseIcon />} onSelect={setTab} />
         <TabButton current={tab} tab="notifications" label="Notifications" glyph={<BellIcon />}
           badge={unread} onSelect={setTab} />
@@ -96,6 +100,16 @@ function GearIcon() {
     <svg {...icon}>
       <circle cx="12" cy="12" r="3.2" />
       <path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5" />
+    </svg>
+  )
+}
+
+
+function PulseMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12h4l2.5-5 4 10 2.5-5h5" />
     </svg>
   )
 }

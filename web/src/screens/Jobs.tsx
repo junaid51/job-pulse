@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { api, describeError, type JobSort } from '../api'
+import { api, describeError, type Job, type JobPage, type JobSort } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate, useQuery } from '../hooks'
@@ -46,7 +46,7 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
             ))}
           </div>
         )}
-        <JobList profileId={profile.id} />
+        <JobList profileId={profile.id} keywords={profile.keywords} />
       </>
     )
   }
@@ -64,7 +64,7 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   )
 }
 
-function JobList({ profileId }: { profileId: number }) {
+function JobList({ profileId, keywords }: { profileId: number; keywords: string[] }) {
   const [sort, setSort] = useState<JobSort>('posted')
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -90,29 +90,75 @@ function JobList({ profileId }: { profileId: number }) {
   }, [])
 
   const searching = debounced !== ''
-  const jobs = useQuery(
+  const first = useQuery<JobPage>(
     searching ? `jobs:search:${debounced}` : `jobs:${profileId}:${sort}`,
     () => (searching ? api.searchJobs(debounced) : api.jobs(profileId, sort)),
   )
 
+  // Later pages live beside the cached first page and reset whenever it
+  // changes — a refetch (pull, refresh button) starts the feed over.
+  const [more, setMore] = useState<Job[]>([])
+  const [next, setNext] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  useEffect(() => {
+    setMore([])
+    setNext(first.data?.next ?? null)
+  }, [first.data])
+
+  const sentinel = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const node = sentinel.current
+    if (!node || !next) return
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries[0].isIntersecting || loadingMore) return
+      setLoadingMore(true)
+      const fetchPage = searching
+        ? api.searchJobs(debounced, next)
+        : api.jobs(profileId, sort, next)
+      fetchPage
+        .then((page) => { setMore((old) => [...old, ...page.jobs]); setNext(page.next) })
+        .catch(() => setNext(null)) // stop asking; pull-to-refresh starts over
+        .finally(() => setLoadingMore(false))
+    }, { rootMargin: '600px' })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [next, loadingMore, searching, debounced, profileId, sort])
+
+  // What caused each row: the search term while searching, the profile's
+  // positive keywords otherwise. Aliases match server-side without highlight —
+  // the dictionary lives in Go, and duplicating it here would drift.
+  const highlight = searching
+    ? [debounced]
+    : keywords.filter((keyword) => !keyword.startsWith('-'))
+
   let list
-  if (jobs.error) {
-    list = <ErrorState message={describeError(jobs.error)} onRetry={jobs.refetch} />
-  } else if (!jobs.data) {
+  if (first.error) {
+    list = <ErrorState message={describeError(first.error)} onRetry={first.refetch} />
+  } else if (!first.data) {
     list = <SkeletonList />
-  } else if (jobs.data.length === 0) {
+  } else if (first.data.jobs.length === 0) {
     list = debounced
       ? <Empty title={`Nothing for “${debounced}”`} detail="Search covers title, company and location across every job the boards currently list." />
-      : (
-        <Empty
-          title="Nothing matched yet"
-          detail="Try broader keywords in Settings, or refresh — the boards are polled every half hour."
-          actionLabel="Refresh"
-          onAction={refreshFeeds}
-        />
-      )
+      : sort === 'applied'
+        ? <Empty title="Nothing marked applied" detail="The check on a job row records where you've applied." />
+        : (
+          <Empty
+            title="Nothing matched yet"
+            detail="Try broader keywords in Settings, or refresh — the boards are polled every half hour."
+            actionLabel="Refresh"
+            onAction={refreshFeeds}
+          />
+        )
   } else {
-    list = <div className="list">{jobs.data.map((job) => <JobRow key={job.id} job={job} actions />)}</div>
+    const rows = [...first.data.jobs, ...more]
+    list = (
+      <>
+        <div className="list">
+          {rows.map((job) => <JobRow key={job.id} job={job} actions highlight={highlight} />)}
+        </div>
+        {next && <div ref={sentinel} className="sentinel">{loadingMore ? <span className="spinner" /> : null}</div>}
+      </>
+    )
   }
 
   return (
@@ -125,23 +171,27 @@ function JobList({ profileId }: { profileId: number }) {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search all jobs"
-            aria-label="Search matches"
+            aria-label="Search all jobs"
           />
           {query
             ? <button className="clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>
             : <kbd>/</kbd>}
         </div>
         {searching ? null : (
-        <div className="segment" role="tablist" aria-label="Sort">
-          <button role="tab" aria-selected={sort === 'posted'}
-            className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
-            Newest
-          </button>
-          <button role="tab" aria-selected={sort === 'matched'}
-            className={sort === 'matched' ? 'on' : ''} onClick={() => setSort('matched')}>
-            Matched
-          </button>
-        </div>
+          <div className="segment" role="tablist" aria-label="View">
+            <button role="tab" aria-selected={sort === 'posted'}
+              className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
+              Newest
+            </button>
+            <button role="tab" aria-selected={sort === 'matched'}
+              className={sort === 'matched' ? 'on' : ''} onClick={() => setSort('matched')}>
+              Matched
+            </button>
+            <button role="tab" aria-selected={sort === 'applied'}
+              className={sort === 'applied' ? 'on' : ''} onClick={() => setSort('applied')}>
+              Applied
+            </button>
+          </div>
         )}
       </div>
       {list}
