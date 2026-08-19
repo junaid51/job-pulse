@@ -112,7 +112,7 @@ function JobList({ profileId }: { profileId: number }) {
         />
       )
   } else {
-    list = <div className="list">{jobs.data.map((job) => <JobRow key={job.id} job={job} />)}</div>
+    list = <div className="list">{jobs.data.map((job) => <JobRow key={job.id} job={job} actions />)}</div>
   }
 
   return (

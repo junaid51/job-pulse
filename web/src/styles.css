@@ -276,3 +276,25 @@ nav {
   font-size: 9.5px; font-weight: 650; line-height: 1;
   border-radius: 8px; border: 2px solid var(--surface);
 }
+
+/* per-row hunt actions: quiet until pointed at, always reachable on touch */
+.row-actions { display: inline-flex; gap: 2px; margin-top: 1px; }
+.row-actions button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 6px; color: var(--muted);
+  transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
+}
+.row-actions button:hover { background: var(--surface-2); color: var(--on-surface); }
+.row-actions button.on { color: var(--accent); }
+@media (hover: hover) {
+  .row-actions { opacity: 0; }
+  .job-row:hover .row-actions, .job-row:focus-within .row-actions { opacity: 1; }
+}
+.applied-tag {
+  display: inline-block; vertical-align: 2px; margin-left: 6px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  color: var(--muted); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0.5px 4px;
+}
+.job-row.applied .job-title { color: var(--muted); }
+.job-salary { font-size: 12px; color: var(--on-surface); font-variant-numeric: tabular-nums; margin-top: 1px; }

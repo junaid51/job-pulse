@@ -168,6 +168,7 @@ func TestParseBoards(t *testing.T) {
 			want: Job{
 				ExternalID: "2697907",
 				Company:    "Channable",
+				Salary:     "2850–2950 EUR/month", // formatted from the min/max/currency/period struct
 				Title:      "Technical Customer Support DACH - German speaking",
 				Location:   "Utrecht, Utrecht, Netherlands",
 				Remote:     false,
@@ -323,5 +324,6 @@ func equalJob(got, want Job) bool {
 		got.Location == want.Location &&
 		got.Remote == want.Remote &&
 		got.URL == want.URL &&
+		got.Salary == want.Salary &&
 		got.PostedAt.Equal(want.PostedAt)
 }

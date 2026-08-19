@@ -77,6 +77,8 @@ PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
 GET    /api/jobs?profile_id=1&limit=50&cursor=…    matched jobs, newest first
+POST   /api/jobs/{id}/hide                         hide from this device's feeds
+POST   /api/jobs/{id}/applied                      toggle applied; answers the new state
 
 GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
 POST   /api/notifications/seen                     mark the feed read
@@ -85,8 +87,11 @@ POST   /api/devices                                {token, platform} — FCM reg
 POST   /api/poll                                   run a cycle now; returns its stats
 ```
 
-Creating or editing a profile backfills it against every job already stored, so
-it is never mysteriously empty. `/api/jobs` returns `next_cursor` when another
+Profile keywords match case-insensitive substrings, expanded through a small
+role dictionary ("frontend" also finds React and plain Software Engineer
+titles); a `-` prefix excludes (`designer, -senior`). Salaries are shown when a
+board publishes them. Creating or editing a profile backfills it against every
+job already stored, so it is never mysteriously empty. `/api/jobs` returns `next_cursor` when another
 page exists; pass it back as `cursor` and treat it as opaque.
 
 Every device mints an anonymous id (X-Device header) and sees only its own

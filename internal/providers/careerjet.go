@@ -136,6 +136,7 @@ func (p careerjetPage) jobs() []Job {
 			ExternalID: careerjetID(title, j.Company, j.Locations),
 			Company:    strings.TrimSpace(j.Company),
 			Title:      title,
+			Salary:     strings.TrimSpace(j.Salary),
 			Location:   strings.TrimSpace(j.Locations),
 			Remote:     looksRemote(j.Locations),
 			URL:        j.URL,

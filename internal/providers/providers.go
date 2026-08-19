@@ -27,7 +27,9 @@ type Job struct {
 	Location   string
 	Remote     bool
 	URL        string
-	PostedAt   time.Time
+	// Salary is display text, kept only when a board publishes it.
+	Salary   string
+	PostedAt time.Time
 }
 
 // A Provider fetches every currently open posting on one company's board.

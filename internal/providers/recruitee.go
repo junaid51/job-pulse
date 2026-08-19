@@ -21,6 +21,12 @@ type recruiteeOffers struct {
 		CareersURL  string `json:"careers_url"`
 		PublishedAt string `json:"published_at"`
 		CompanyName string `json:"company_name"`
+		Salary      struct {
+			Min      string `json:"min"`
+			Max      string `json:"max"`
+			Period   string `json:"period"`
+			Currency string `json:"currency"`
+		} `json:"salary"`
 	} `json:"offers"`
 }
 
@@ -40,9 +46,20 @@ func (o recruiteeOffers) jobs() []Job {
 		if j.Status != "published" {
 			continue
 		}
+		salary := ""
+		if j.Salary.Min != "" || j.Salary.Max != "" {
+			salary = strings.Trim(j.Salary.Min+"–"+j.Salary.Max, "–")
+			if j.Salary.Currency != "" {
+				salary += " " + j.Salary.Currency
+			}
+			if j.Salary.Period != "" {
+				salary += "/" + j.Salary.Period
+			}
+		}
 		jobs = append(jobs, Job{
 			ExternalID: strconv.FormatInt(j.ID, 10),
 			Company:    j.CompanyName,
+			Salary:     salary,
 			Title:      strings.TrimSpace(j.Title),
 			Location:   j.Location,
 			Remote:     j.Remote || looksRemote(j.Location),
