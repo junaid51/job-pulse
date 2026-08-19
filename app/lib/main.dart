@@ -1,29 +1,32 @@
 // JobPulse — Flutter client.
 //
-// M1 is deliberately a boot placeholder: it proves the app compiles and runs on
-// Android, iOS and web, and it puts ProviderScope in place so that adding state
-// later is a pure addition.
+// Three screens: Jobs, Notifications, Settings.
 //
-// TODO(M3): GoRouter with the three screens (Jobs, Notifications, Settings).
+// TODO(M4): Firebase Messaging — register the token with POST /api/devices and
+// refresh the feed when a push arrives.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'router.dart';
+import 'theme.dart';
 
 void main() {
   runApp(const ProviderScope(child: JobPulseApp()));
 }
 
-class JobPulseApp extends StatelessWidget {
+class JobPulseApp extends ConsumerWidget {
   const JobPulseApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MaterialApp.router(
       title: 'JobPulse',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: const Color(0xFF5B5BD6)),
-      home: const Scaffold(
-        body: Center(child: Text('JobPulse')),
-      ),
+      routerConfig: ref.watch(routerProvider),
+      // Dark by default, light if that is what the system asks for.
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
     );
   }
 }
