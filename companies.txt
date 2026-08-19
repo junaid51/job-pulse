@@ -48,3 +48,12 @@ manatal            sundus       Sundus
 phenom             careers.majidalfuttaim.com  Majid Al Futtaim
 oracle             esbe.fa.em8.oraclecloud.com|CX_1001  Dubai Holding
 oracle             fa-ewnx-saasfaprod1.fa.ocs.oraclecloud.com|CX_1001  du
+
+# India: verified live boards, city-name locations (the "india" alias maps them)
+greenhouse         postman      Postman
+greenhouse         phonepe      PhonePe
+greenhouse         groww        Groww
+lever              paytm        Paytm
+lever              cred         CRED
+lever              meesho       Meesho
+smartrecruiters    freshworks   Freshworks
