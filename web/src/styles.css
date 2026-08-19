@@ -38,7 +38,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 
 /* layout: centered column on wide screens, full-bleed on phones */
 .frame { height: 100%; display: flex; flex-direction: column; max-width: 760px; margin: 0 auto; }
-@media (min-width: 761px) { .frame { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+
 main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
 
 /* header: sticky, near-opaque, one hairline */
@@ -59,7 +59,11 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 .icon-btn:active { background: var(--line); }
 
 /* toolbar: search + sort */
-.toolbar { display: flex; gap: 8px; align-items: center; padding: 14px 18px 10px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 18px 10px; }
+@media (max-width: 480px) {
+  .search { flex: 1 1 100%; }
+  .place { flex: 1; width: auto; }
+}
 .search {
   flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
   height: 36px; padding: 0 12px; border-radius: 10px;
@@ -80,6 +84,21 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 }
 .search .clear { color: var(--muted); font-size: 11px; padding: 4px 2px; transition: color 0.12s ease; }
 .search .clear:hover { color: var(--on-surface); }
+
+.place {
+  flex: none; display: flex; align-items: center; gap: 6px; min-width: 0;
+  width: 118px; height: 36px; padding: 0 10px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid transparent; color: var(--muted);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.place:focus-within { border-color: var(--accent); background: var(--surface); }
+.place svg { flex: none; }
+.place input {
+  flex: 1; min-width: 0; height: 100%; border: 0; background: none; outline: none;
+  color: var(--on-surface); font: inherit; font-size: 13px;
+}
+.place input::placeholder { color: var(--muted); }
+.place .clear { color: var(--muted); font-size: 11px; padding: 2px; }
 
 .segment { display: flex; flex: none; padding: 3px; gap: 2px; border-radius: 10px; background: var(--surface-2); }
 .segment button {
@@ -340,10 +359,11 @@ mark.hit {
 /* ---- desktop shell: the bottom bar becomes a sidebar ---- */
 .brand { display: none; }
 @media (min-width: 761px) {
-  .frame {
-    flex-direction: row; max-width: 1000px;
-  }
+  .frame { flex-direction: row; max-width: none; border: 0 !important; }
   main { order: 2; flex: 1; min-width: 0; }
+  /* full-bleed canvas, readable measure: the app fills the window while the
+     content sits on a centered column — no more floating box */
+  main > section { max-width: 940px; margin: 0 auto; }
   nav {
     order: 1; flex: none; width: 208px;
     flex-direction: column; align-items: stretch; gap: 2px;
