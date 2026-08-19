@@ -14,3 +14,7 @@ ashby              leantech     Lean Technologies
 workable           foodics      Foodics
 workable           salla        Salla
 recruitee          unifonic     Unifonic
+teamtailor         propertyfinder Property Finder
+teamtailor         dubizzle     Dubizzle Group
+teamtailor         wego         Wego
+teamtailor         fresha       Fresha

@@ -204,6 +204,7 @@ new file + one map entry. That is the whole "plugin system".
 | SmartRecruiters | `api.smartrecruiters.com/v1/companies/{slug}/postings?limit=100&offset=N` | `Visa` |
 | Workable | `apply.workable.com/api/v1/widget/accounts/{slug}?details=true` | `blueground`, `spotawheel` |
 | Recruitee | `{slug}.recruitee.com/api/offers/` | `channable` |
+| Teamtailor | `{slug}.teamtailor.com/jobs.json` | `propertyfinder`, `fresha` |
 
 | Provider | id | title | location | remote | url | posted |
 |---|---|---|---|---|---|---|
@@ -213,6 +214,7 @@ new file + one map entry. That is the whole "plugin system".
 | SmartRecruiters | `id` | `name` | `location.fullLocation` | `location.remote` | *constructed* (below) | `releasedDate` |
 | Workable | `shortcode` | `title` | `city, country` | `telecommuting` | `url` | `published_on` (date only) |
 | Recruitee | `id` | `title` | `location` | `remote` | `careers_url` | `published_at` (`"… UTC"` string) |
+| Teamtailor | `id` | `title` | `_jobposting.jobLocation[].address` | location text only | `url` | `date_published` |
 
 Gotchas worth knowing before you write the code:
 
@@ -233,6 +235,10 @@ Gotchas worth knowing before you write the code:
 - **Recruitee**: response contains offers in several `status` values — keep only
   `"published"`. Timestamps are `"2026-08-03 15:40:43 UTC"`, needing a custom
   layout.
+- **Teamtailor**: a JSON Feed whose items carry a schema.org JobPosting under
+  `_jobposting`. `jobLocation` is a list (multi-city postings) and sometimes
+  absent; countries are ISO codes, expanded to names so profiles can match them.
+  Large boards paginate via `next_url`. No remote flag at all.
 
 ### Politeness
 

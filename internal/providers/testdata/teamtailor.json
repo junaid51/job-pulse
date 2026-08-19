@@ -1,0 +1,80 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Property Finder",
+  "items": [
+    {
+      "id": "7ac6b47c-c2d1-48b5-803a-2d84bb3762fe",
+      "title": "Sales Team Leader (B2B SaaS)",
+      "url": "https://propertyfinder.teamtailor.com/jobs/7982798-sales-team-leader-b2b-saas",
+      "date_published": "2026-06-29T09:37:39+04:00",
+      "content_html": "<div><p>Property Finder is the leading property portal in the Middle East and North Africa (MENA) region, dedicated t...",
+      "_jobposting": {
+        "@context": "http://schema.org/",
+        "@type": "JobPosting",
+        "title": "Sales Team Leader (B2B SaaS)",
+        "description": "<div><p>Property Finder is the leading property portal in the Middle East and North Africa (MENA) region, dedicated t...",
+        "identifier": {
+          "@type": "PropertyValue",
+          "name": "Property Finder",
+          "value": 7982798
+        },
+        "datePosted": "2026-06-29T09:37:39+04:00",
+        "hiringOrganization": {
+          "@type": "Organization",
+          "name": "Property Finder",
+          "sameAs": "https://propertyfinder.teamtailor.com"
+        },
+        "jobLocation": [
+          {
+            "@type": "Place",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": null,
+              "addressLocality": "Cairo",
+              "postalCode": null,
+              "addressCountry": "EG",
+              "addressRegion": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "88627867-38df-47d6-aba4-1b440d84fa5f",
+      "title": "Senior Product Designer",
+      "url": "https://propertyfinder.teamtailor.com/jobs/8232355-senior-product-designer",
+      "date_published": "2026-08-18T10:47:51+04:00",
+      "content_html": "<div><p>Property Finder is the leading property portal in the Middle East and North Africa (MENA) region, dedicated t...",
+      "_jobposting": {
+        "@context": "http://schema.org/",
+        "@type": "JobPosting",
+        "title": "Senior Product Designer",
+        "description": "<div><p>Property Finder is the leading property portal in the Middle East and North Africa (MENA) region, dedicated t...",
+        "identifier": {
+          "@type": "PropertyValue",
+          "name": "Property Finder",
+          "value": 8232355
+        },
+        "datePosted": "2026-08-18T10:47:51+04:00",
+        "hiringOrganization": {
+          "@type": "Organization",
+          "name": "Property Finder",
+          "sameAs": "https://propertyfinder.teamtailor.com"
+        },
+        "jobLocation": [
+          {
+            "@type": "Place",
+            "address": {
+              "@type": "PostalAddress",
+              "streetAddress": null,
+              "addressLocality": "Dubai",
+              "postalCode": null,
+              "addressCountry": "AE",
+              "addressRegion": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
