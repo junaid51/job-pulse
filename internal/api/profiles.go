@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/junaidkhan/job-pulse/internal/match"
-	"github.com/junaidkhan/job-pulse/internal/providers"
+	"github.com/junaid51/job-pulse/internal/match"
+	"github.com/junaid51/job-pulse/internal/providers"
 )
 
 type profile struct {

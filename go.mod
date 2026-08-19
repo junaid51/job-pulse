@@ -1,4 +1,4 @@
-module github.com/junaidkhan/job-pulse
+module github.com/junaid51/job-pulse
 
 go 1.26
 

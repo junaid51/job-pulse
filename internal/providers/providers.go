@@ -46,7 +46,7 @@ var All = map[string]Provider{
 	"recruitee":       fetchRecruitee,
 }
 
-const userAgent = "jobpulse/0.1 (+https://github.com/junaidkhan/job-pulse)"
+const userAgent = "jobpulse/0.1 (+https://github.com/junaid51/job-pulse)"
 
 var client = &http.Client{Timeout: 30 * time.Second}
 

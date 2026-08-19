@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/junaidkhan/job-pulse/internal/providers"
+	"github.com/junaid51/job-pulse/internal/providers"
 )
 
 // Company is one board to poll.

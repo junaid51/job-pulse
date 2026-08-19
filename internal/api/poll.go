@@ -8,7 +8,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/junaidkhan/job-pulse/internal/poll"
+	"github.com/junaid51/job-pulse/internal/poll"
 )
 
 // triggerPoll starts a cycle and returns immediately. A full cycle can take

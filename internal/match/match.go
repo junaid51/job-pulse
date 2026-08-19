@@ -4,7 +4,7 @@ package match
 import (
 	"strings"
 
-	"github.com/junaidkhan/job-pulse/internal/providers"
+	"github.com/junaid51/job-pulse/internal/providers"
 )
 
 // Criteria is the part of a search profile that matching cares about.

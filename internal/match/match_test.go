@@ -3,7 +3,7 @@ package match
 import (
 	"testing"
 
-	"github.com/junaidkhan/job-pulse/internal/providers"
+	"github.com/junaid51/job-pulse/internal/providers"
 )
 
 func TestMatches(t *testing.T) {

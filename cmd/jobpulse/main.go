@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/junaidkhan/job-pulse/internal/api"
-	"github.com/junaidkhan/job-pulse/internal/config"
-	"github.com/junaidkhan/job-pulse/internal/db"
-	"github.com/junaidkhan/job-pulse/internal/poll"
+	"github.com/junaid51/job-pulse/internal/api"
+	"github.com/junaid51/job-pulse/internal/config"
+	"github.com/junaid51/job-pulse/internal/db"
+	"github.com/junaid51/job-pulse/internal/poll"
 )
 
 func main() {

@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver, used by golang-migrate
 
-	"github.com/junaidkhan/job-pulse/migrations"
+	"github.com/junaid51/job-pulse/migrations"
 )
 
 // Open creates the pool and verifies the database is actually reachable, so a
