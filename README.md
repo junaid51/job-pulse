@@ -8,11 +8,14 @@ three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Milestone 1 — foundations.** The backend starts, applies its schema and serves
-`/healthz`. The Flutter app is a boot placeholder: it analyzes clean, its smoke
-test passes, and it builds for web. iOS needs Xcode locally and has not been
-built yet; the Android Gradle build is deferred. There are no providers, no
-polling, no matching, no notifications and no UI — those are M2-M4.
+**Milestone 2 — the backend does its job.** It polls six providers, stores what
+is new, matches it against search profiles and serves them over REST. A live
+cycle over the boards in `companies.txt` takes about three seconds.
+
+Still to come: push notifications (M4) and the Flutter UI (M3) — the app is
+currently a boot placeholder. It analyzes clean, its smoke test passes and it
+builds for web; iOS has not been built yet and the Android Gradle build is
+deferred.
 
 ## Stack
 
@@ -25,7 +28,7 @@ layer: handlers and the poller take a `*pgxpool.Pool` and run their own queries.
 
 ```bash
 docker compose up -d          # PostgreSQL on :5432
-go run ./cmd/jobpulse         # migrates, then serves on :8080
+go run ./cmd/jobpulse         # migrates, polls, serves on :8080
 cd app && flutter run         # Android, iOS or web
 ```
 
@@ -39,35 +42,93 @@ POSTGRES_PORT=5434 docker compose up -d
 PORT=8091 DATABASE_URL='postgres://jobpulse:jobpulse@localhost:5434/jobpulse?sslmode=disable' go run ./cmd/jobpulse
 ```
 
+## Boards to watch
+
+None of these providers offer search across companies — every public API is
+scoped to one company's board — so JobPulse polls the list in
+[companies.txt](companies.txt):
+
+```
+# provider         slug         display name
+greenhouse         stripe       Stripe
+lever              spotify      Spotify
+```
+
+The slug is whatever identifies the company on that provider, usually the last
+part of its careers URL. The file is the source of truth and is re-read on every
+start, so removing a line stops that board being polled. Supported providers:
+`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`.
+
+## API
+
+```
+GET    /healthz                                    pings the database
+
+GET    /api/profiles
+POST   /api/profiles          {name, keywords[], locations[], remote_only}
+PUT    /api/profiles/{id}
+DELETE /api/profiles/{id}
+
+GET    /api/jobs?profile_id=1&limit=50&cursor=…    matched jobs, newest first
+POST   /api/poll                                   poll now; returns 202
+```
+
+Creating or editing a profile backfills it against every job already stored, so
+it is never mysteriously empty. `/api/jobs` returns `next_cursor` when another
+page exists; pass it back as `cursor` and treat it as opaque.
+
+There is no authentication, by design. Bind it to `127.0.0.1` or reach it over a
+private tunnel — do not put this on a public IP.
+
 ## Verify it works
 
 ```bash
-curl localhost:8080/healthz          # {"database":"ok","status":"ok"}
+curl localhost:8080/healthz                  # {"database":"ok","status":"ok"}
 go test ./...
-make psql                            # then: \dt   → five tables
 cd app && flutter analyze && flutter test
 ```
 
-`/healthz` pings the database, so a 200 means the process is genuinely wired to
-Postgres. It returns 503 when the database is unreachable.
+End to end, against real boards:
+
+```bash
+curl -X POST localhost:8080/api/profiles -H 'Content-Type: application/json' \
+  -d '{"name":"Backend Go","keywords":["go","backend"],"locations":[],"remote_only":true}'
+
+curl 'localhost:8080/api/jobs?profile_id=1&limit=5'
+make psql   # then: select provider, count(*) from jobs group by provider;
+```
+
+The poll log line is the quickest check that a cycle worked:
+
+```
+msg="poll cycle" companies=6 failed=0 new_jobs=1452 new_matches=0 duration=2.7s
+```
+
+`new_jobs=0` on the second cycle is the point: it means new-job detection is
+working rather than re-alerting on everything.
 
 ## Configuration
 
 Everything has a working default, so a fresh clone needs no setup.
 
-| Variable        | Default                                                              |
-| --------------- | -------------------------------------------------------------------- |
-| `DATABASE_URL`  | `postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable` |
-| `PORT`          | `8080`                                                               |
-| `POSTGRES_PORT` | `5432` (host port published by Docker Compose only)                  |
+| Variable         | Default                                                                | Purpose                        |
+| ---------------- | ---------------------------------------------------------------------- | ------------------------------ |
+| `DATABASE_URL`   | `postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable` |                                |
+| `PORT`           | `8080`                                                                 |                                |
+| `POLL_INTERVAL`  | `15m`                                                                  | Go duration, e.g. `90s`, `1h`  |
+| `COMPANIES_FILE` | `companies.txt`                                                        |                                |
+| `POSTGRES_PORT`  | `5432`                                                                 | host port published by Compose |
 
 ## Layout
 
 ```
-cmd/jobpulse/      main: config, migrate, HTTP server, graceful shutdown
+cmd/jobpulse/      main: config, migrate, poller, HTTP server, graceful shutdown
 internal/api/      chi router and handlers
 internal/config/   environment variables
 internal/db/       pgx pool and migration runner
+internal/match/    does a job satisfy a profile
+internal/poll/     the poll cycle and companies.txt
+internal/providers/ one file per job board
 migrations/        numbered .sql files, embedded into the binary
 app/               Flutter client
 ```
@@ -77,6 +138,6 @@ into `migrations/`. Nothing else needs changing.
 
 ## Deployment
 
-`go build ./cmd/jobpulse` produces a static binary that needs only a
-`DATABASE_URL`. It runs on any host with any PostgreSQL; Compose exists purely
-to hand you a local database. Nothing in the code knows about a cloud provider.
+`go build ./cmd/jobpulse` produces a binary that needs only a `DATABASE_URL`. It
+runs on any host with any PostgreSQL; Compose exists purely to hand you a local
+database. Nothing in the code knows about a cloud provider.
