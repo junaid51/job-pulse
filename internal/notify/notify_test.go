@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/junaid51/job-pulse/internal/providers"
 )
@@ -129,5 +130,28 @@ func TestIsTokenDead(t *testing.T) {
 	}
 	if isTokenDead(errors.New("connection refused")) {
 		t.Error("a transport error must not delete a token")
+	}
+}
+
+// Quiet hours are the device's night, not the server's.
+func TestIsQuietHours(t *testing.T) {
+	noonUTC := time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)    // 16:00 in Dubai
+	nightUTC := time.Date(2026, 8, 19, 20, 0, 0, 0, time.UTC)   // 00:00 in Dubai
+	morningUTC := time.Date(2026, 8, 19, 4, 30, 0, 0, time.UTC) // 08:30 in Dubai
+
+	if isQuietHours("Asia/Dubai", noonUTC) {
+		t.Error("4pm in Dubai is not quiet hours")
+	}
+	if !isQuietHours("Asia/Dubai", nightUTC) {
+		t.Error("midnight in Dubai is quiet hours")
+	}
+	if isQuietHours("Asia/Dubai", morningUTC) {
+		t.Error("08:30 in Dubai is past quiet hours")
+	}
+	if isQuietHours("", nightUTC) {
+		t.Error("no timezone means never quiet")
+	}
+	if isQuietHours("Not/AZone", nightUTC) {
+		t.Error("an unparseable timezone must not eat notifications")
 	}
 }

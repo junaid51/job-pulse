@@ -11,6 +11,7 @@ export interface Job {
   url: string
   salary: string
   applied: boolean
+  applied_at: string | null
   posted_at: string | null
   matched_at: string
   seen_at: string | null
@@ -22,6 +23,7 @@ export interface Profile {
   keywords: string[]
   locations: string[]
   remote_only: boolean
+  unread: number
 }
 
 export interface MatchEvent {
@@ -136,14 +138,23 @@ export const api = {
 
   registerDevice: (token: string) =>
     request<void>('/api/devices', {
-      method: 'POST', body: JSON.stringify({ token, platform: 'web' }),
+      method: 'POST',
+      body: JSON.stringify({
+        token,
+        platform: 'web',
+        // Quiet hours run on the device's clock, not the server's.
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? '',
+      }),
     }),
 
   // Best effort: a deployed backend reserves this for its cron and answers 401.
   poll: () => request<unknown>('/api/poll', { method: 'POST' }),
 
-  /** Hides a job from this device's feeds for good. */
+  /** Hides a job from this device's feeds. */
   hideJob: (id: number) => request<void>(`/api/jobs/${id}/hide`, { method: 'POST' }),
+
+  /** The undo behind the toast. */
+  unhideJob: (id: number) => request<void>(`/api/jobs/${id}/unhide`, { method: 'POST' }),
 
   /** Flips the applied state; answers with the new one. */
   toggleApplied: (id: number) =>

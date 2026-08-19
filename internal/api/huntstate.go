@@ -40,6 +40,27 @@ func hideJob(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
+// unhideJob is hide's undo. Hiding stays final in the UI except through the
+// few-second toast this exists for.
+func unhideJob(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		jobID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "id must be a number")
+			return
+		}
+		if _, err := pool.Exec(r.Context(), `
+			update matches m set hidden_at = null
+			from profiles p
+			where p.id = m.profile_id and p.owner = $1 and m.job_id = $2`,
+			deviceID(r), jobID); err != nil {
+			serverError(w, "unhiding job", err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // toggleApplied flips the applied state on this device's matches for a job and
 // answers with the new state, so the row can render without a refetch.
 func toggleApplied(pool *pgxpool.Pool) http.HandlerFunc {

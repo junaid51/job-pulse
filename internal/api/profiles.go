@@ -23,6 +23,7 @@ type profile struct {
 	Locations  []string  `json:"locations"`
 	RemoteOnly bool      `json:"remote_only"`
 	CreatedAt  time.Time `json:"created_at"`
+	Unread     int       `json:"unread"`
 }
 
 func (p profile) criteria() match.Criteria {
@@ -32,8 +33,12 @@ func (p profile) criteria() match.Criteria {
 func listProfiles(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := pool.Query(r.Context(), `
-			select id, name, keywords, locations, remote_only, created_at
-			from profiles where owner = $1 order by id`, deviceID(r))
+			select p.id, p.name, p.keywords, p.locations, p.remote_only, p.created_at,
+			       count(m.job_id) filter (where m.seen_at is null and m.hidden_at is null)
+			from profiles p
+			left join matches m on m.profile_id = p.id
+			where p.owner = $1
+			group by p.id order by p.id`, deviceID(r))
 		if err != nil {
 			serverError(w, "listing profiles", err)
 			return
@@ -43,7 +48,8 @@ func listProfiles(pool *pgxpool.Pool) http.HandlerFunc {
 		profiles := []profile{}
 		for rows.Next() {
 			var p profile
-			if err := rows.Scan(&p.ID, &p.Name, &p.Keywords, &p.Locations, &p.RemoteOnly, &p.CreatedAt); err != nil {
+			if err := rows.Scan(&p.ID, &p.Name, &p.Keywords, &p.Locations, &p.RemoteOnly,
+				&p.CreatedAt, &p.Unread); err != nil {
 				serverError(w, "reading profiles", err)
 				return
 			}

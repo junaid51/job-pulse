@@ -25,6 +25,7 @@ type job struct {
 	MatchedAt time.Time  `json:"matched_at"`
 	SeenAt    *time.Time `json:"seen_at"`
 	Applied   bool       `json:"applied"`
+	AppliedAt *time.Time `json:"applied_at"`
 }
 
 const (
@@ -99,7 +100,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		rows, err := pool.Query(r.Context(), `
 			select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 			       j.salary, j.posted_at, m.created_at, m.seen_at,
-			       m.applied_at is not null, `+cursorExpr+` as cursor_at
+			       m.applied_at is not null, m.applied_at, `+cursorExpr+` as cursor_at
 			from matches m
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = $6
@@ -124,7 +125,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			var j job
 			if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
 				&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-				&j.Applied, &lastCursorAt); err != nil {
+				&j.Applied, &j.AppliedAt, &lastCursorAt); err != nil {
 				serverError(w, "reading jobs", err)
 				return
 			}
@@ -195,6 +196,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 	rows, err := pool.Query(r.Context(), `
 		select id, provider, company, title, location, remote, url,
 		       salary, posted_at, first_seen_at, null::timestamptz, false,
+		       null::timestamptz,
 		       coalesce(posted_at, 'epoch'::timestamptz) as cursor_at
 		from jobs
 		where ($1 = '' or title ilike '%' || $1 || '%'
@@ -217,7 +219,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 		var j job
 		if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
 			&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-			&j.Applied, &lastCursorAt); err != nil {
+			&j.Applied, &j.AppliedAt, &lastCursorAt); err != nil {
 			serverError(w, "reading jobs", err)
 			return
 		}
