@@ -75,3 +75,6 @@ jobven             dubai            Jobven
 jobven             saudi+arabia     Jobven
 jobven             india            Jobven
 jobven             remote           Jobven
+
+# JobsPipe: scraped-board aggregator (JOBSPIPE_API_KEY), metered per job returned
+jobspipe           ae,sa|frontend,front+end,backend,back+end,full+stack,fullstack,mobile+developer,mobile+engineer,ios,android,react,devops,software+engineer,ui/ux,product+designer,-civil,-sales,-mechanic,-electrical,-technician  JobsPipe

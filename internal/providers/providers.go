@@ -55,6 +55,7 @@ var All = map[string]Provider{
 	"himalayas":       fetchHimalayas,
 	"jobicy":          fetchJobicy,
 	"jobven":          fetchJobven,
+	"jobspipe":        fetchJobsPipe,
 }
 
 const userAgent = "jobpulse/0.1 (+https://github.com/junaid51/job-pulse)"

@@ -41,6 +41,9 @@ var minPollInterval = map[string]time.Duration{
 	"jobicy":    time.Hour,
 	// Metered: ~700 calls/month free; four searches at this cadence use ~480.
 	"jobven": 6 * time.Hour,
+	// Metered in jobs returned (1,000/month free); the shipped search measures
+	// ~250/month at this cadence.
+	"jobspipe": 12 * time.Hour,
 }
 
 // ErrBusy is returned when a cycle is already running.
@@ -405,13 +408,20 @@ func insertMatches(ctx context.Context, pool *pgxpool.Pool, jobs []storedJob, pr
 // recordResult stores the outcome so a board that quietly stops working is
 // visible in the database rather than only in the logs.
 func recordResult(ctx context.Context, pool *pgxpool.Pool, c Company, cause error) {
+	// A failed metered board keeps its last_polled_at: stamping it would turn
+	// one transient 502 into a full interval of silence (hours, not minutes).
+	// dueNow's one-per-provider rotation keeps the retries from bursting.
+	query := `update companies set last_polled_at = now(), last_error = $3
+		where provider = $1 and slug = $2`
+	if _, metered := minPollInterval[c.Provider]; metered && cause != nil {
+		query = `update companies set last_error = $3
+		where provider = $1 and slug = $2`
+	}
 	var lastError any
 	if cause != nil {
 		lastError = cause.Error()
 	}
-	_, err := pool.Exec(ctx, `
-		update companies set last_polled_at = now(), last_error = $3
-		where provider = $1 and slug = $2`, c.Provider, c.Slug, lastError)
+	_, err := pool.Exec(ctx, query, c.Provider, c.Slug, lastError)
 	if err != nil && ctx.Err() == nil {
 		slog.Error("recording poll result", "provider", c.Provider, "slug", c.Slug, "error", err)
 	}
