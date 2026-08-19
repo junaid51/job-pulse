@@ -1,0 +1,275 @@
+{
+  "offers": [
+    {
+      "dynamic_fields": [],
+      "position": 606,
+      "cover_image": null,
+      "salary": {
+        "max": "2950",
+        "min": "2850",
+        "period": "month",
+        "currency": "EUR"
+      },
+      "careers_apply_url": "https://jobs.channable.com/o/technical-customer-support-dach-german-speaking-2/c/new",
+      "state_name": "Utrecht",
+      "options_cover_letter": "off",
+      "close_at": null,
+      "guid": "n9hw9",
+      "state_code": "UT",
+      "published_at": "2026-08-03 15:40:43 UTC",
+      "open_questions": [
+        {
+          "id": 4283763,
+          "position": 1,
+          "options": {},
+          "required": true,
+          "body": "Do you speak the German language on a C2 (Native Proficiency) level?",
+          "kind": "boolean",
+          "translations": {
+            "en": {
+              "body": "Do you speak the German language on a C2 (Native Proficiency) level?"
+            }
+          },
+          "open_question_options": []
+        },
+        {
+          "id": 4283764,
+          "position": 2,
+          "options": {},
+          "required": true,
+          "body": "How did you find out about Channable?",
+          "kind": "string",
+          "translations": {
+            "en": {
+              "body": "How did you find out about Channable?"
+            }
+          },
+          "open_question_options": []
+        }
+      ],
+      "city": "Utrecht",
+      "updated_at": "2026-08-04 07:14:55 UTC",
+      "sharing_description": "Are you fluent in German and passionate about solving complex problems for a diverse range of customers? Do you want ...",
+      "postal_code": "3512 HL",
+      "locations_question_type": "multiple_choice",
+      "options_photo": "off",
+      "locations_question_required": true,
+      "requirements": "<p style=\"min-height: 1.7em;\"></p><h4 style=\"text-align:start;\"><strong><span style=\"color:#000000\">Your challenges</...",
+      "translations": {
+        "en": {
+          "description": "<p style=\"text-align:start;\"><span style=\"color:#000000\">Are you fluent in German and passionate about solving comple...",
+          "title": "Technical Customer Support DACH - German speaking",
+          "highlight": null,
+          "sharing_image": null,
+          "requirements": "<p style=\"min-height: 1.7em;\"></p><h4 style=\"text-align:start;\"><strong><span style=\"color:#000000\">Your challenges</...",
+          "locations_question": "What is your preferred work location?",
+          "sharing_description": "Are you fluent in German and passionate about solving complex problems for a diverse range of customers? Do you want ...",
+          "sharing_title": "Technical Customer Support DACH - German speaking"
+        }
+      },
+      "mailbox_email": "job.n9hw9@channable.recruitee.com",
+      "min_hours": 32,
+      "slug": "technical-customer-support-dach-german-speaking-2",
+      "country_code": "NL",
+      "location_question_visible": false,
+      "options_salutation": "off",
+      "hybrid": true,
+      "education_code": "bachelor_degree",
+      "sharing_image": null,
+      "description": "<p style=\"text-align:start;\"><span style=\"color:#000000\">Are you fluent in German and passionate about solving comple...",
+      "category_code": "customer_service",
+      "company_name": "Channable",
+      "tags": [],
+      "max_hours": 40,
+      "highlight": null,
+      "remote": false,
+      "max_hours_per_week": "40",
+      "options_cv": "required",
+      "employment_type_code": "fulltime_permanent",
+      "created_at": "2026-08-03 09:42:31 UTC",
+      "locations": [
+        {
+          "id": 64463,
+          "name": "Utrecht",
+          "state": "Utrecht",
+          "country": "Netherlands",
+          "city": "Utrecht",
+          "translations": {
+            "en": {
+              "name": "Utrecht",
+              "city": "Utrecht",
+              "postal_code": "3512 HL",
+              "street": "Kromme Nieuwegracht 66",
+              "note": null
+            }
+          },
+          "country_code": "NL",
+          "postal_code": "3512 HL",
+          "state_code": "UT",
+          "street": "Kromme Nieuwegracht 66",
+          "note": null
+        }
+      ],
+      "id": 2697907,
+      "department": "Support",
+      "options_title": "off",
+      "title": "Technical Customer Support DACH - German speaking",
+      "location": "Utrecht, Utrecht, Netherlands",
+      "experience_code": "entry_level",
+      "status": "published",
+      "sharing_title": "Technical Customer Support DACH - German speaking",
+      "locations_question": "What is your preferred work location?",
+      "options_phone": "required",
+      "careers_url": "https://jobs.channable.com/o/technical-customer-support-dach-german-speaking-2",
+      "country": "Netherlands",
+      "min_hours_per_week": "32",
+      "on_site": false
+    },
+    {
+      "dynamic_fields": [],
+      "position": 604,
+      "cover_image": null,
+      "salary": {
+        "max": "250000",
+        "min": "200000",
+        "period": "year",
+        "currency": "USD"
+      },
+      "careers_apply_url": "https://jobs.channable.com/o/account-executive-north-america-1/c/new",
+      "state_name": "New York",
+      "options_cover_letter": "off",
+      "close_at": null,
+      "guid": "89sad",
+      "state_code": "NY",
+      "published_at": "2026-08-06 16:09:53 UTC",
+      "open_questions": [
+        {
+          "id": 4292270,
+          "position": 1,
+          "options": {},
+          "required": true,
+          "body": "How did you find out about Channable?",
+          "kind": "string",
+          "translations": {
+            "en": {
+              "body": "How did you find out about Channable?"
+            }
+          },
+          "open_question_options": []
+        },
+        {
+          "id": 4292271,
+          "position": 2,
+          "options": {},
+          "required": true,
+          "body": "Do you have US citizenship or a valid work permit to work in the US?",
+          "kind": "single_choice",
+          "translations": {
+            "en": {
+              "body": "Do you have US citizenship or a valid work permit to work in the US?"
+            }
+          },
+          "open_question_options": [
+            {
+              "id": 6604089,
+              "position": 0,
+              "body": "US citizenship",
+              "translations": {
+                "en": {
+                  "body": "US citizenship"
+                }
+              }
+            },
+            {
+              "id": 6604090,
+              "position": 1,
+              "body": "Valid work permit",
+              "translations": {
+                "en": {
+                  "body": "Valid work permit"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "city": "New York City",
+      "updated_at": "2026-08-17 13:45:24 UTC",
+      "sharing_description": "Channable powers product feeds and digital advertising for 14,000+ brands and agencies across 3,500+ channels. We're ...",
+      "postal_code": "10168",
+      "locations_question_type": "multiple_choice",
+      "options_photo": "off",
+      "locations_question_required": true,
+      "requirements": "<p style=\"min-height: 1.7em;\"></p><h4><strong><span style=\"color:#000000\">Who you are</span></strong></h4><ul><li><p>...",
+      "translations": {
+        "en": {
+          "description": "<p><span style=\"color:#000000\">Channable powers product feeds and digital advertising for 14,000+ brands and agencies...",
+          "title": "Account Executive - North America",
+          "highlight": null,
+          "sharing_image": null,
+          "requirements": "<p style=\"min-height: 1.7em;\"></p><h4><strong><span style=\"color:#000000\">Who you are</span></strong></h4><ul><li><p>...",
+          "locations_question": "What is your preferred work location?",
+          "sharing_description": "Channable powers product feeds and digital advertising for 14,000+ brands and agencies across 3,500+ channels. We're ...",
+          "sharing_title": "Account Executive - North America"
+        }
+      },
+      "mailbox_email": "job.89sad@channable.recruitee.com",
+      "min_hours": 40,
+      "slug": "account-executive-north-america-1",
+      "country_code": "US",
+      "location_question_visible": false,
+      "options_salutation": "off",
+      "hybrid": true,
+      "education_code": "bachelor_degree",
+      "sharing_image": null,
+      "description": "<p><span style=\"color:#000000\">Channable powers product feeds and digital advertising for 14,000+ brands and agencies...",
+      "category_code": "sales",
+      "company_name": "Channable",
+      "tags": [],
+      "max_hours": 40,
+      "highlight": null,
+      "remote": false,
+      "max_hours_per_week": "40",
+      "options_cv": "required",
+      "employment_type_code": "fulltime_permanent",
+      "created_at": "2026-07-30 07:49:07 UTC",
+      "locations": [
+        {
+          "id": 64457,
+          "name": "New York City",
+          "state": "New York",
+          "country": "United States",
+          "city": "New York City",
+          "translations": {
+            "en": {
+              "name": "New York City",
+              "city": "New York City",
+              "postal_code": "10168",
+              "street": "122 East 42nd Street, Suite 1708",
+              "note": null
+            }
+          },
+          "country_code": "US",
+          "postal_code": "10168",
+          "state_code": "NY",
+          "street": "122 East 42nd Street, Suite 1708",
+          "note": null
+        }
+      ],
+      "id": 2694685,
+      "department": "US",
+      "options_title": "off",
+      "title": "Account Executive - North America",
+      "location": "New York City, New York, United States",
+      "experience_code": "experienced",
+      "status": "published",
+      "sharing_title": "Account Executive - North America",
+      "locations_question": "What is your preferred work location?",
+      "options_phone": "required",
+      "careers_url": "https://jobs.channable.com/o/account-executive-north-america-1",
+      "country": "United States",
+      "min_hours_per_week": "40",
+      "on_site": false
+    }
+  ]
+}
