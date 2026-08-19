@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import React, { useEffect, useState } from 'react'
 import { api } from './api'
 import { initPush, type PushState } from './push'
+import { Toasts } from './toast'
 import { Jobs } from './screens/Jobs'
 import { Notifications } from './screens/Notifications'
 import { Settings } from './screens/Settings'
@@ -34,6 +35,7 @@ export function App() {
 
   return (
     <div className="frame">
+      <Toasts />
       <main>
         {tab === 'jobs' && <Jobs goToSettings={() => setTab('settings')} />}
         {tab === 'notifications' && <Notifications />}

@@ -16,6 +16,7 @@ func registerDevice(pool *pgxpool.Pool) http.HandlerFunc {
 		var in struct {
 			Token    string `json:"token"`
 			Platform string `json:"platform"`
+			Timezone string `json:"timezone"` // IANA name; quiet hours run on it
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -31,10 +32,11 @@ func registerDevice(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		_, err := pool.Exec(r.Context(), `
-			insert into devices (token, platform, owner) values ($1, $2, $3)
+			insert into devices (token, platform, owner, timezone) values ($1, $2, $3, $4)
 			on conflict (token) do update
-			set platform = excluded.platform, owner = excluded.owner`,
-			in.Token, in.Platform, deviceID(r))
+			set platform = excluded.platform, owner = excluded.owner,
+			    timezone = excluded.timezone`,
+			in.Token, in.Platform, deviceID(r), strings.TrimSpace(in.Timezone))
 		if err != nil {
 			serverError(w, "registering device", err)
 			return

@@ -6,6 +6,16 @@ import { RefreshIcon } from './Jobs'
 import { useQuery } from '@tanstack/react-query'
 import { invalidate } from '../query'
 
+function dayLabel(iso: string): string {
+  const day = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+  if (sameDay(day, today)) return 'Today'
+  if (sameDay(day, yesterday)) return 'Yesterday'
+  return day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
 export function Notifications() {
   const feed = useQuery({ queryKey: ['notifications'], queryFn: api.notifications })
   const marked = useRef(false)
@@ -32,15 +42,29 @@ export function Notifications() {
       />
     )
   } else {
+    // Group the feed by the day the match landed.
+    const groups: { label: string; events: typeof feed.data.events }[] = []
+    for (const event of feed.data.events) {
+      const label = dayLabel(event.job.matched_at)
+      const last = groups[groups.length - 1]
+      if (last && last.label === label) last.events.push(event)
+      else groups.push({ label, events: [event] })
+    }
     body = (
       <div className="list">
-        {feed.data.events.map((event) => (
-          <JobRow
-            key={`${event.profile_id}:${event.job.id}`}
-            job={event.job}
-            label={event.profile_name}
-            showUnread
-          />
+        {groups.map((group) => (
+          <div key={group.label}>
+            <div className="day-h">{group.label}</div>
+            {group.events.map((event) => (
+              <JobRow
+                key={`${event.profile_id}:${event.job.id}`}
+                job={event.job}
+                label={event.profile_name}
+                showUnread
+                ageOf="matched"
+              />
+            ))}
+          </div>
         ))}
       </div>
     )

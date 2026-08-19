@@ -4,6 +4,7 @@ import { api, describeError, type JobSort } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
+import { showToast } from '../toast'
 
 async function refreshFeeds() {
   try { await api.poll() } catch { /* the cron's endpoint; refetch regardless */ }
@@ -43,6 +44,7 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
                 onClick={() => setSelected(candidate.id)}
               >
                 {candidate.name}
+                {candidate.unread > 0 && <span className="chip-count">{candidate.unread}</span>}
               </button>
             ))}
           </div>
@@ -156,7 +158,10 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
     list = (
       <>
         <div className="list">
-          {rows.map((job) => <JobRow key={job.id} job={job} actions highlight={highlight} />)}
+          {rows.map((job) => (
+            <JobRow key={job.id} job={job} actions highlight={highlight}
+              ageOf={sort === 'applied' && !searching ? 'applied' : 'posted'} />
+          ))}
         </div>
         {feed.hasNextPage && (
           <div ref={sentinel} className="sentinel">
@@ -195,6 +200,26 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
             <button className="clear" onClick={() => setPlace('')} aria-label="Clear location">✕</button>
           )}
         </div>
+        {(searching || debouncedPlace) && (
+          <button
+            className="save-search"
+            title="Save this search as a profile"
+            onClick={() => {
+              api.createProfile({
+                name: term || debouncedPlace || 'Search',
+                keywords: term ? [term] : [],
+                locations,
+                remote_only: false,
+              }).then(() => {
+                invalidate('profiles')
+                invalidate('jobs')
+                showToast('Saved as a profile — edit it in Settings')
+              }).catch(() => showToast('Could not save'))
+            }}
+          >
+            + Save
+          </button>
+        )}
         {searching ? null : (
           <div className="segment" role="tablist" aria-label="View">
             <button role="tab" aria-selected={sort === 'posted'}

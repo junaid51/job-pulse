@@ -20,6 +20,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	_ "time/tzdata" // free hosts ship no zoneinfo; embed it
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/oauth2"
@@ -105,7 +106,14 @@ func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs [
 	// One user with one or two devices, so a loop is clearer than a batch API and
 	// gives each token its own error to act on.
 	sent := 0
-	for _, token := range tokens {
+	for _, device := range tokens {
+		if isQuietHours(device.timezone, time.Now()) {
+			// A 3am match waits for morning. The feed has it either way; only
+			// the buzz is suppressed, so nothing needs a retry queue.
+			slog.Info("notification held for quiet hours", "title", title, "tz", device.timezone)
+			continue
+		}
+		token := device.token
 		switch err := n.send(ctx, token, title, body); {
 		case err == nil:
 			sent++
@@ -176,22 +184,43 @@ func isTokenDead(err error) bool {
 	return sendErr.status == http.StatusNotFound || sendErr.status == http.StatusBadRequest
 }
 
-func (n *Notifier) tokens(ctx context.Context, owner string) ([]string, error) {
-	rows, err := n.pool.Query(ctx, `select token from devices where owner = $1`, owner)
+type deviceToken struct {
+	token    string
+	timezone string
+}
+
+func (n *Notifier) tokens(ctx context.Context, owner string) ([]deviceToken, error) {
+	rows, err := n.pool.Query(ctx, `select token, timezone from devices where owner = $1`, owner)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var tokens []string
+	var tokens []deviceToken
 	for rows.Next() {
-		var token string
-		if err := rows.Scan(&token); err != nil {
+		var d deviceToken
+		if err := rows.Scan(&d.token, &d.timezone); err != nil {
 			return nil, err
 		}
-		tokens = append(tokens, token)
+		tokens = append(tokens, d)
 	}
 	return tokens, rows.Err()
+}
+
+// isQuietHours reports whether it is night where the device lives: 22:00 to
+// 08:00, fixed on purpose — a preference screen for two numbers is not worth
+// its surface. No timezone means never quiet, which is what the row's default
+// gives devices registered before timezones existed.
+func isQuietHours(timezone string, now time.Time) bool {
+	if timezone == "" {
+		return false
+	}
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return false
+	}
+	hour := now.In(location).Hour()
+	return hour >= 22 || hour < 8
 }
 
 func (n *Notifier) forget(ctx context.Context, token string) {

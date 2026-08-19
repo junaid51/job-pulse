@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import { api, type Job } from '../api'
 import { providerLabel, shortAgo } from '../format'
 import { invalidate } from '../query'
+import { showToast } from '../toast'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -15,6 +16,7 @@ export const JobRow = memo(function JobRow(props: {
   showUnread?: boolean
   actions?: boolean
   highlight?: string[]
+  ageOf?: 'posted' | 'applied' | 'matched'
 }) {
   const { job } = props
   const [applied, setApplied] = useState(job.applied)
@@ -26,14 +28,42 @@ export const JobRow = memo(function JobRow(props: {
     providerLabel(job.provider),
   ].filter(Boolean).join('  ·  ')
 
-  const posted = job.posted_at ?? job.matched_at
-  const isFresh = Date.now() - new Date(posted).getTime() < DAY_MS
+  // Each view ages by its own event: the Applied view by when you applied, the
+  // notifications feed by when the match landed, the jobs list by the posting.
+  const posted = (props.ageOf === 'applied' && job.applied_at)
+    || (props.ageOf === 'matched' && job.matched_at)
+    || job.posted_at || job.matched_at
+  const isFresh = props.ageOf !== 'applied' &&
+    Date.now() - new Date(posted).getTime() < DAY_MS
 
   const hide = (event: React.MouseEvent) => {
     event.preventDefault()
     event.stopPropagation()
-    api.hideJob(job.id).then(() => { invalidate('jobs'); invalidate('notifications') })
+    api.hideJob(job.id)
+      .then(() => {
+        invalidate('jobs')
+        invalidate('notifications')
+        showToast('Hidden', {
+          label: 'Undo',
+          run: () => api.unhideJob(job.id)
+            .then(() => { invalidate('jobs'); invalidate('notifications') })
+            .catch(() => showToast('Could not undo')),
+        })
+      })
       .catch(() => { /* it stays visible; nothing to clean up */ })
+  }
+
+  const share = (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const payload = { title: job.title, text: `${job.title} — ${job.company}`, url: job.url }
+    if (navigator.share) {
+      navigator.share(payload).catch(() => { /* user closed the sheet */ })
+    } else {
+      navigator.clipboard?.writeText(job.url)
+        .then(() => showToast('Link copied'))
+        .catch(() => { /* clipboard denied; nothing useful left to try */ })
+    }
   }
   const toggleApplied = (event: React.MouseEvent) => {
     event.preventDefault()
@@ -59,7 +89,7 @@ export const JobRow = memo(function JobRow(props: {
       </span>
       <span className="job-side">
         <span className="job-age" title={new Date(posted).toLocaleString()}>
-          {shortAgo(posted)}
+          {props.ageOf === 'applied' ? `✓ ${shortAgo(posted)}` : shortAgo(posted)}
         </span>
         <span className="apply">Apply</span>
         {props.actions && (
@@ -67,6 +97,9 @@ export const JobRow = memo(function JobRow(props: {
             <button title={applied ? 'Applied — tap to undo' : 'Mark applied'}
               className={applied ? 'on' : ''} onClick={toggleApplied}>
               <CheckIcon />
+            </button>
+            <button title="Share" onClick={share}>
+              <ShareIcon />
             </button>
             <button title="Hide this job" onClick={hide}>
               <HideIcon />
@@ -122,6 +155,15 @@ function CheckIcon() {
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="m4.5 12.5 5 5 10-11" />
+    </svg>
+  )
+}
+
+function ShareIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3v12M12 3 8 7M12 3l4 4M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" />
     </svg>
   )
 }
