@@ -470,3 +470,10 @@ mark.hit {
 @keyframes icon-rotate { to { transform: rotate(360deg); } }
 .icon-btn.spinning svg { animation: icon-rotate 0.9s linear infinite; }
 .job-row:active { background: var(--surface-2); }
+.remote-toggle {
+  flex: none; height: 36px; padding: 0 13px; border-radius: 10px;
+  background: var(--surface-2); color: var(--muted);
+  font-size: 12.5px; font-weight: 550;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.remote-toggle.on { background: var(--accent-soft); color: var(--accent); }

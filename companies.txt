@@ -57,3 +57,10 @@ lever              paytm        Paytm
 lever              cred         CRED
 lever              meesho       Meesho
 smartrecruiters    freshworks   Freshworks
+
+# Gulf second wave: verified live
+greenhouse         careem       Careem
+greenhouse         tamara       Tamara
+ashby              ziina        Ziina
+workable           foodics      Foodics
+workable           salla        Salla

@@ -206,7 +206,7 @@ function ProfileRow(props: { profile: Profile; onEdit: () => void; onChanged: ()
 // The roles here ride the same alias dictionary the matcher uses, so tapping
 // "frontend" also finds React, Angular and plain Software Engineer titles.
 const ROLES = ['frontend', 'backend', 'full stack', 'mobile', 'devops', 'data', 'design', 'product', 'qa']
-const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'india', 'uk', 'usa']
+const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'gulf', 'india', 'uk', 'usa']
 const NOISE = ['senior', 'lead', 'principal', 'manager', 'intern']
 
 const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase())

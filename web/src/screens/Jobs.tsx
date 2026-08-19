@@ -87,6 +87,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   onSavedSearch: (id: number) => void
 }) {
   const [sort, setSort] = useState<JobSort>('posted')
+  const [remoteOnly, setRemoteOnly] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [place, setPlace] = useState('')
@@ -129,10 +130,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
     || (profileId === null && debouncedPlace !== '')
 
   const feed = useInfiniteQuery({
-    queryKey: ['jobs', searching ? 'search' : profileId, searching ? term : sort, locations],
+    queryKey: ['jobs', searching ? 'search' : profileId, searching ? term : sort, locations, remoteOnly],
     queryFn: ({ pageParam }) => searching
-      ? api.searchJobs(term, locations, pageParam)
-      : api.jobs(profileId!, sort, locations, pageParam),
+      ? api.searchJobs(term, locations, remoteOnly, pageParam)
+      : api.jobs(profileId!, sort, locations, remoteOnly, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: searching || profileId !== null,
@@ -268,6 +269,13 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
             <button className="clear" onClick={() => setPlace('')} aria-label="Clear location">✕</button>
           )}
         </div>
+        <button
+          className={`remote-toggle ${remoteOnly ? 'on' : ''}`}
+          aria-pressed={remoteOnly}
+          onClick={() => setRemoteOnly((v) => !v)}
+        >
+          Remote
+        </button>
         {(searching || debouncedPlace) && (
           <button
             className="save-search"
@@ -277,7 +285,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
                 name: term || debouncedPlace || 'Search',
                 keywords: term ? [term] : [],
                 locations,
-                remote_only: false,
+                remote_only: remoteOnly,
               }).then((r) => {
                 invalidate('profiles')
                 invalidate('jobs')
