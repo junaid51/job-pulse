@@ -52,4 +52,8 @@ var locationAliases = map[string][]string{
 	"uk":  {"united kingdom", "london"},
 	"usa": {"united states", "new york"},
 	"us":  {"united states"},
+	// Indian boards write cities, not the country: Paytm says "Noida, Uttar
+	// Pradesh", Deliveroo says "Hyderabad - Main Office" — no "india" anywhere.
+	"india": {"bengaluru", "bangalore", "mumbai", "delhi", "gurgaon", "gurugram",
+		"hyderabad", "pune", "chennai", "noida", "kolkata"},
 }
