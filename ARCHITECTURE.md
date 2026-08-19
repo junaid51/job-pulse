@@ -272,9 +272,11 @@ function, not introducing a query language.
 
 ## 6. Notifications
 
-Firebase Cloud Messaging via `firebase.google.com/go/v4/messaging`. The app
-registers its token with `POST /api/devices`; the poller sends to every stored
-token.
+Firebase Cloud Messaging over its HTTP v1 API — one authenticated JSON POST per
+device, with `golang.org/x/oauth2` handling the token exchange. The Admin SDK
+would pull in gRPC, OpenTelemetry and Firestore (fifty-odd modules) to make that
+same POST. The app registers its token with `POST /api/devices`; the poller
+sends to every stored token.
 
 **One push per profile per cycle**, not per job:
 
