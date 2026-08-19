@@ -2,8 +2,8 @@
 
 Watches public company job boards and tells me when a new matching job appears.
 
-One Go binary (REST API + poller), one PostgreSQL database, one Flutter app with
-three screens. The design and its deliberate omissions are in
+One Go binary (REST API + poller), one PostgreSQL database, one web app (a PWA)
+with three screens. The design and its deliberate omissions are in
 [ARCHITECTURE.md](ARCHITECTURE.md) — read that before adding anything.
 
 ## Status
@@ -20,14 +20,14 @@ account. Still to come: the Firebase Messaging wiring inside the app, which
 needs a Firebase project. Until then the app shows new matches when you open it
 or pull to refresh.
 
-The app is a PWA: one Flutter codebase compiled to the web, installed via Add to
-Home Screen, with push notifications working on iPhone that way — no Apple
-Developer account needed. The native iOS and Android shells were deliberately
-dropped; `flutter create .` regenerates them if ever wanted.
+The app is a React PWA (~80 KB gzipped): installed via Add to Home Screen, with
+push notifications working on iPhone that way — no Apple Developer account
+needed. It replaced a working Flutter implementation once the native targets
+were dropped; the web needed real HTML, not a canvas renderer.
 
 ## Stack
 
-Go · chi · pgx · golang-migrate · PostgreSQL · Flutter · Riverpod
+Go · chi · pgx · golang-migrate · PostgreSQL · React · Vite · TypeScript
 
 SQL is written by hand. There is no ORM, no code generation and no repository
 layer: handlers and the poller take a `*pgxpool.Pool` and run their own queries.
@@ -37,20 +37,15 @@ layer: handlers and the poller take a `*pgxpool.Pool` and run their own queries.
 ```bash
 docker compose up -d          # PostgreSQL on :5432
 go run ./cmd/jobpulse         # migrates, polls, serves on :8080
-cd app && flutter run -d chrome
+cd web && npm install && VITE_JOBPULSE_API=http://localhost:8080 npm run dev
 ```
 
 Migrations run automatically on startup, so there is no separate migrate step
 and no `migrate` CLI to install.
 
-On a real phone, `localhost` is the phone, not your computer, so point the app at
-your machine's address on the network:
-
-```bash
-cd app && flutter run --dart-define=JOBPULSE_API=http://192.168.1.20:8080
-```
-
-The current URL is shown under Settings → Backend.
+To use the dev build from a phone, `localhost` is the phone, not your computer —
+set `VITE_JOBPULSE_API` to your machine's address on the network. The URL in use
+is shown under Settings → Backend.
 
 If port 5432 or 8080 is already taken on your machine:
 
@@ -108,7 +103,7 @@ private tunnel — do not put this on a public IP.
 ```bash
 curl localhost:8080/healthz                  # {"database":"ok","status":"ok"}
 go test ./...
-cd app && flutter analyze && flutter test
+cd web && npm test
 ```
 
 End to end, against real boards:
@@ -154,8 +149,8 @@ internal/match/     does a job satisfy a profile
 internal/poll/      the poll cycle and companies.txt
 internal/providers/ one file per job board
 migrations/         numbered .sql files, embedded into the binary
-app/lib/            api.dart, models.dart, providers.dart, router.dart, theme.dart
-app/lib/screens/    jobs, notifications, settings
+web/src/            api.ts, hooks.ts, push.ts, App.tsx, styles.css
+web/src/screens/    jobs, notifications, settings
 ```
 
 Adding a migration means dropping `0002_thing.up.sql` and `0002_thing.down.sql`
