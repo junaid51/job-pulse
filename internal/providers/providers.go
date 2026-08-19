@@ -51,6 +51,9 @@ var All = map[string]Provider{
 	"manatal":         fetchManatal,
 	"phenom":          fetchPhenom,
 	"oracle":          fetchOracle,
+	"remotive":        fetchRemotive,
+	"himalayas":       fetchHimalayas,
+	"jobicy":          fetchJobicy,
 }
 
 const userAgent = "jobpulse/0.1 (+https://github.com/junaid51/job-pulse)"
