@@ -28,10 +28,14 @@ const (
 	maxLimit     = 200
 )
 
-// listJobs returns the jobs matched by one profile, newest match first.
+// listJobs returns the jobs matched by one profile.
 //
 // profile_id is required: the Jobs screen always has a profile selected, and
-// "every job we ever stored" is not a view anyone wants.
+// "every job we ever stored" is not a view anyone wants. sort=posted (the
+// default) is freshness — when the job went up; sort=matched is when this
+// profile first saw it. q narrows by a case-insensitive substring over title,
+// company and location, server-side, so it searches every match rather than
+// whatever page the client happens to hold.
 func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		profileID, err := strconv.ParseInt(r.URL.Query().Get("profile_id"), 10, 64)
@@ -40,6 +44,16 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		limit := intParam(r, "limit", defaultLimit, maxLimit)
+
+		sort := r.URL.Query().Get("sort")
+		if sort == "" {
+			sort = "posted"
+		}
+		if sort != "posted" && sort != "matched" {
+			writeError(w, http.StatusBadRequest, "sort must be posted or matched")
+			return
+		}
+		search := strings.TrimSpace(r.URL.Query().Get("q"))
 
 		// Offset pagination repeats rows on a feed that grows at the head, so this
 		// is a cursor.
@@ -57,7 +71,12 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		// The cursor compares (created_at, id) as a pair because a great many
 		// matches share a created_at — a profile backfill inserts all of its
 		// matches in one statement, so they all carry the same now(). Filtering on
-		// the timestamp alone would drop every tied row.
+		// the timestamp alone would drop every tied row. The cursor belongs to the
+		// matched ordering; posted ordering serves a single page.
+		orderBy := `order by j.posted_at desc nulls last, j.id desc`
+		if sort == "matched" {
+			orderBy = `order by m.created_at desc, j.id desc`
+		}
 		rows, err := pool.Query(r.Context(), `
 			select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 			       j.posted_at, m.created_at, m.seen_at
@@ -65,8 +84,11 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			join jobs j on j.id = m.job_id
 			where m.profile_id = $1
 			  and ($2::timestamptz is null or (m.created_at, j.id) < ($2, $3::bigint))
-			order by m.created_at desc, j.id desc
-			limit $4`, profileID, at, atID, limit)
+			  and ($5 = '' or j.title ilike '%' || $5 || '%'
+			       or j.company ilike '%' || $5 || '%'
+			       or j.location ilike '%' || $5 || '%')
+			`+orderBy+`
+			limit $4`, profileID, at, atID, limit, search)
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return
@@ -89,8 +111,9 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		body := map[string]any{"jobs": jobs}
-		// Only offer a cursor when there is plausibly another page.
-		if len(jobs) == limit {
+		// Only offer a cursor when there is plausibly another page, and only for
+		// the ordering the cursor encodes.
+		if sort == "matched" && len(jobs) == limit {
 			body["next_cursor"] = formatCursor(jobs[len(jobs)-1])
 		}
 		writeJSON(w, http.StatusOK, body)

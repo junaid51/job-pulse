@@ -133,7 +133,7 @@ func (p careerjetPage) jobs() []Job {
 	for _, j := range p.Jobs {
 		title := strings.TrimSpace(j.Title)
 		jobs = append(jobs, Job{
-			ExternalID: careerjetID(title, j.Company, j.Locations, j.Date),
+			ExternalID: careerjetID(title, j.Company, j.Locations),
 			Company:    strings.TrimSpace(j.Company),
 			Title:      title,
 			Location:   strings.TrimSpace(j.Locations),
@@ -146,8 +146,12 @@ func (p careerjetPage) jobs() []Job {
 }
 
 // careerjetID builds a stable identity for a posting whose URL changes on
-// every request: the posting's own fields are all that persist.
-func careerjetID(title, company, locations, date string) string {
-	sum := sha256.Sum256([]byte(title + "|" + company + "|" + locations + "|" + date))
+// every request. The posting date is deliberately NOT part of it: aggregators
+// bump ads by reposting them with a fresh date, and a bumped ad is the same
+// job — including the date turned every bump into a "new" job and a duplicate
+// notification. The cost is that N identical openings collapse into one row,
+// which for a personal alert tool is the right trade.
+func careerjetID(title, company, locations string) string {
+	sum := sha256.Sum256([]byte(title + "|" + company + "|" + locations))
 	return hex.EncodeToString(sum[:12])
 }
