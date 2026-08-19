@@ -56,8 +56,8 @@ class SettingsScreen extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
             child: Text(
-              'Set at launch with --dart-define=JOBPULSE_API=http://192.168.1.20:8080 — a phone '
-              'cannot reach localhost, so use your computer\'s address on the network.',
+              'Fixed at build time (JOBPULSE_API). The boards are polled on a schedule; '
+              'refresh any screen to pick up what the last poll found.',
               style: TextStyle(
                 fontSize: 12.5,
                 height: 1.45,
