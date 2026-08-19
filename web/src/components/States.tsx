@@ -58,6 +58,9 @@ export function SkeletonList({ rows = 8 }: { rows?: number }) {
             <span className="shimmer line w60" />
             <span className="shimmer line w80" />
           </span>
+          <span className="job-side">
+            <span className="shimmer line w20" />
+          </span>
         </div>
       ))}
     </div>
