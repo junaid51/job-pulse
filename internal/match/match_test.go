@@ -183,3 +183,42 @@ func TestKeywordAliases(t *testing.T) {
 		t.Error("keyword aliases must not leak into location matching")
 	}
 }
+
+// "-senior" is the entire exclusion syntax: literal, case-insensitive, and it
+// always wins over a positive match.
+func TestNegativeKeywords(t *testing.T) {
+	criteria := Criteria{Keywords: []string{"engineer", "-senior", "-intern"}}
+	if !Matches(criteria, providers.Job{Title: "Backend Engineer"}) {
+		t.Error("plain engineer should match")
+	}
+	for _, title := range []string{"Senior Backend Engineer", "Engineering Intern", "SENIOR Engineer"} {
+		if Matches(criteria, providers.Job{Title: title}) {
+			t.Errorf("%q should be excluded", title)
+		}
+	}
+
+	// Only negatives: everything except the excluded.
+	onlyNegative := Criteria{Keywords: []string{"-manager"}}
+	if !Matches(onlyNegative, providers.Job{Title: "Engineer"}) {
+		t.Error("only-negatives should match any non-excluded title")
+	}
+	if Matches(onlyNegative, providers.Job{Title: "Engineering Manager"}) {
+		t.Error("only-negatives should still exclude")
+	}
+
+	// Negatives are literal — no alias expansion. "-frontend" must not exclude
+	// a "Software Engineer" merely because the alias dictionary links them.
+	literal := Criteria{Keywords: []string{"-frontend"}}
+	if !Matches(literal, providers.Job{Title: "Software Engineer"}) {
+		t.Error("negative keywords must not expand through aliases")
+	}
+	if Matches(literal, providers.Job{Title: "Frontend Developer"}) {
+		t.Error("literal negative should still exclude")
+	}
+
+	// A lone minus is garbage-only input, and garbage keyword lists match
+	// nothing — same contract as a list of blanks.
+	if Matches(Criteria{Keywords: []string{"-"}}, providers.Job{Title: "Anything"}) {
+		t.Error("a bare minus should match nothing, like a blank")
+	}
+}
