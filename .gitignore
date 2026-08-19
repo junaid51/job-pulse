@@ -9,7 +9,9 @@ app/.flutter-plugins-dependencies
 app/ios/Pods/
 app/ios/.symlinks/
 
-# Firebase credentials — never committed (M4)
+# The Firebase service account key is the one real secret: it can SEND
+# notifications. The client config (firebase_options.dart, the plist) is public
+# identifiers and is committed — a fork points at its own project by re-running
+# `flutterfire configure`.
 *.serviceaccount.json
-google-services.json
-GoogleService-Info.plist
+*firebase-adminsdk*.json

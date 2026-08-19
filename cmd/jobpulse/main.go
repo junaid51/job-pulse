@@ -67,12 +67,17 @@ func run() error {
 	}
 
 	var poller sync.WaitGroup
-	poller.Add(1)
-	go func() {
-		defer poller.Done()
-		poll.Run(ctx, pool, notifier, cfg.PollInterval)
-	}()
-	slog.Info("poller started", "interval", cfg.PollInterval.String())
+	if cfg.PollInterval > 0 {
+		poller.Add(1)
+		go func() {
+			defer poller.Done()
+			poll.Run(ctx, pool, notifier, cfg.PollInterval)
+		}()
+		slog.Info("poller started", "interval", cfg.PollInterval.String())
+	} else {
+		// Scale-to-zero mode: an external scheduler calls POST /api/poll.
+		slog.Info("internal poller disabled; poll via POST /api/poll")
+	}
 
 	errs := make(chan error, 1)
 	go func() {

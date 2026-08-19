@@ -137,7 +137,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | ---------------- | ---------------------------------------------------------------------- | ------------------------------ |
 | `DATABASE_URL`   | `postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable` |                                |
 | `PORT`           | `8080`                                                                 |                                |
-| `POLL_INTERVAL`  | `15m`                                                                  | Go duration, e.g. `90s`, `1h`  |
+| `POLL_INTERVAL`  | `15m`                                                                  | Go duration; `0` disables the internal ticker |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
 | `POSTGRES_PORT`  | `5432`                                                                 | host port published by Compose |
@@ -165,3 +165,18 @@ into `migrations/`. Nothing else needs changing.
 `go build ./cmd/jobpulse` produces a binary that needs only a `DATABASE_URL`. It
 runs on any host with any PostgreSQL; Compose exists purely to hand you a local
 database. Nothing in the code knows about a cloud provider.
+
+Two shapes cover every host:
+
+**Always-on machine** (a VM, a Raspberry Pi): run the binary, done. The internal
+poller ticks every `POLL_INTERVAL`.
+
+**Scale-to-zero container** (the usual free tier): these give no persistent disk
+and no always-on process, so point `DATABASE_URL` at a free hosted Postgres, set
+`POLL_INTERVAL=0`, and have any free cron service call `POST /api/poll` every
+15 minutes. The request wakes the container, runs a full cycle, sends the
+notifications and returns its stats — the app was built around that endpoint
+being synchronous.
+
+The database is about a megabyte for thousands of jobs, so any free Postgres
+tier is two orders of magnitude more than enough.

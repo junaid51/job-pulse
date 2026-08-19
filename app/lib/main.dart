@@ -1,16 +1,16 @@
 // JobPulse — Flutter client.
 //
 // Three screens: Jobs, Notifications, Settings.
-//
-// TODO(M4): Firebase Messaging — register the token with POST /api/devices and
-// refresh the feed when a push arrives.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'push.dart';
 import 'router.dart';
 import 'theme.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initFirebase();
   runApp(const ProviderScope(child: JobPulseApp()));
 }
 

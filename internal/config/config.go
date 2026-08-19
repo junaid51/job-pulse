@@ -14,7 +14,9 @@ type Config struct {
 	DatabaseURL string
 	// Addr is the TCP address the HTTP server listens on.
 	Addr string
-	// PollInterval is how often every board is fetched.
+	// PollInterval is how often every board is fetched. Zero disables the
+	// internal ticker for scale-to-zero hosts, where an external cron calling
+	// POST /api/poll does the waking instead.
 	PollInterval time.Duration
 	// CompaniesFile lists the boards to poll.
 	CompaniesFile string
@@ -43,15 +45,19 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-// duration accepts Go duration strings such as "15m" or "90s". An unparseable
-// value is a typo worth mentioning rather than a reason to refuse to start.
+// duration accepts Go duration strings such as "15m" or "90s", and "0" to mean
+// disabled. An unparseable value is a typo worth mentioning rather than a
+// reason to refuse to start.
 func duration(key string, fallback time.Duration) time.Duration {
 	raw := os.Getenv(key)
 	if raw == "" {
 		return fallback
 	}
+	if raw == "0" {
+		return 0
+	}
 	d, err := time.ParseDuration(raw)
-	if err != nil || d <= 0 {
+	if err != nil || d < 0 {
 		slog.Warn("ignoring invalid duration", "key", key, "value", raw, "using", fallback.String())
 		return fallback
 	}

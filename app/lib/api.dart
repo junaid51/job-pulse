@@ -106,6 +106,11 @@ class JobPulseApi {
 
   Future<void> markSeen() => dio.post('/api/notifications/seen');
 
+  /// Registers this device's FCM token so the poller knows where to send.
+  /// Called on every app start — tokens rotate, and re-registering is a no-op.
+  Future<void> registerDevice({required String token, required String platform}) =>
+      dio.post('/api/devices', data: {'token': token, 'platform': platform});
+
   /// Starts a poll cycle. The server answers immediately and keeps working, so
   /// the results of this call show up on the next fetch, not in its response.
   Future<void> poll() => dio.post('/api/poll');
