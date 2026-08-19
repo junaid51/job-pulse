@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/junaid51/job-pulse/internal/match"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -51,12 +53,13 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
+		locations := locationPatterns(r)
 
 		// With a search term and no profile, the query runs over everything
 		// stored — a search bar that silently hides jobs because they missed
 		// your profile keywords answers a different question than the one asked.
-		if r.URL.Query().Get("profile_id") == "" && search != "" {
-			searchAllJobs(w, r, pool, search, limit)
+		if r.URL.Query().Get("profile_id") == "" && (search != "" || locations != nil) {
+			searchAllJobs(w, r, pool, search, locations, limit)
 			return
 		}
 
@@ -106,8 +109,9 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			  and ($5 = '' or j.title ilike '%' || $5 || '%'
 			       or j.company ilike '%' || $5 || '%'
 			       or j.location ilike '%' || $5 || '%')
+			  and ($7::text[] is null or j.location ilike any($7))
 			order by `+cursorExpr+` desc, j.id desc
-			limit $4`, profileID, at, atID, limit, search, deviceID(r))
+			limit $4`, profileID, at, atID, limit, search, deviceID(r), locations)
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return
@@ -163,8 +167,21 @@ func parseCursor(raw string) (time.Time, int64, error) {
 	return at, jobID, nil
 }
 
+// locationPatterns turns location= params into ilike patterns, expanded through
+// the same alias dictionary profile matching uses — "@uae" finds "Dubai" here
+// for exactly the reason a profile's "uae" does.
+func locationPatterns(r *http.Request) []string {
+	var patterns []string
+	for _, raw := range r.URL.Query()["location"] {
+		for _, term := range match.LocationTerms(raw) {
+			patterns = append(patterns, "%"+term+"%")
+		}
+	}
+	return patterns
+}
+
 // searchAllJobs is the profile-free search: every live job, newest first.
-func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, search string, limit int) {
+func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, search string, locations []string, limit int) {
 	var at any
 	var atID any
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
@@ -180,13 +197,14 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 		       salary, posted_at, first_seen_at, null::timestamptz, false,
 		       coalesce(posted_at, 'epoch'::timestamptz) as cursor_at
 		from jobs
-		where (title ilike '%' || $1 || '%'
+		where ($1 = '' or title ilike '%' || $1 || '%'
 		   or company ilike '%' || $1 || '%'
 		   or location ilike '%' || $1 || '%')
+		  and ($5::text[] is null or location ilike any($5))
 		  and ($3::timestamptz is null
 		       or (coalesce(posted_at, 'epoch'::timestamptz), id) < ($3, $4::bigint))
 		order by coalesce(posted_at, 'epoch'::timestamptz) desc, id desc
-		limit $2`, search, limit, at, atID)
+		limit $2`, search, limit, at, atID, locations)
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return

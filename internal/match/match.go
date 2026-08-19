@@ -84,6 +84,17 @@ func keywordMatches(title string, wanted []string) bool {
 	return false
 }
 
+// LocationTerms expands one location shorthand into every string worth
+// substring-matching — the needle itself plus its dictionary entry. The API
+// reuses it so a search filter behaves exactly like profile matching.
+func LocationTerms(raw string) []string {
+	needle := strings.ToLower(strings.TrimSpace(raw))
+	if needle == "" {
+		return nil
+	}
+	return append([]string{needle}, locationAliases[needle]...)
+}
+
 // locationMatches is containsAnyFold plus the alias expansion. Aliases apply to
 // locations only: expanding keywords the same way would be surprising.
 func locationMatches(location string, wanted []string) bool {

@@ -76,7 +76,7 @@ POST   /api/profiles          {name, keywords[], locations[], remote_only}
 PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
-GET    /api/jobs?profile_id=1&limit=50&cursor=…    sort=posted|matched|applied
+GET    /api/jobs?profile_id=1&limit=50&cursor=…    sort=posted|matched|applied; q= and location= search/filter
 GET    /api/boards                                 every board's health
 POST   /api/jobs/{id}/hide                         hide from this device's feeds
 POST   /api/jobs/{id}/applied                      toggle applied; answers the new state
