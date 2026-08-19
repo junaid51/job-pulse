@@ -21,6 +21,13 @@ import (
 // someone else's public API and a poll has fifteen minutes to finish.
 const concurrency = 4
 
+// minPollInterval slows selected providers down below the cycle cadence.
+// Aggregator APIs meter requests, and a search index refreshes far slower than
+// a company's own board; a cycle skips their boards until the interval passes.
+var minPollInterval = map[string]time.Duration{
+	"careerjet": 6 * time.Hour,
+}
+
 // ErrBusy is returned when a cycle is already running.
 var ErrBusy = errors.New("poll already in progress")
 
@@ -84,6 +91,7 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	if err != nil {
 		return Stats{}, err
 	}
+	companies = dueNow(companies, time.Now())
 	profiles, err := loadProfiles(ctx, pool)
 	if err != nil {
 		return Stats{}, err
@@ -130,6 +138,20 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	notifyProfiles(ctx, notifier, profiles, matched)
 
 	return stats, nil
+}
+
+// dueNow drops boards whose provider has a minimum poll interval that has not
+// passed yet. Everything else is always due.
+func dueNow(companies []Company, now time.Time) []Company {
+	due := make([]Company, 0, len(companies))
+	for _, c := range companies {
+		interval, metered := minPollInterval[c.Provider]
+		if metered && c.LastPolledAt != nil && now.Sub(*c.LastPolledAt) < interval {
+			continue
+		}
+		due = append(due, c)
+	}
+	return due
 }
 
 // notifyProfiles sends one push per profile that gained something this cycle.

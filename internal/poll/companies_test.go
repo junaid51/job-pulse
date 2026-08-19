@@ -1,8 +1,10 @@
 package poll
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseCompanies(t *testing.T) {
@@ -44,6 +46,28 @@ func TestParseCompaniesRejectsBadLines(t *testing.T) {
 				t.Errorf("ParseCompanies(%q) succeeded, want an error", line)
 			}
 		})
+	}
+}
+
+// Metered providers sit out cycles until their interval passes; everything
+// else is always due, including boards never polled before.
+func TestDueNow(t *testing.T) {
+	now := time.Now()
+	recent, stale := now.Add(-time.Hour), now.Add(-7*time.Hour)
+	companies := []Company{
+		{Provider: "greenhouse", Slug: "always", LastPolledAt: &recent},
+		{Provider: "careerjet", Slug: "fresh", LastPolledAt: &recent},
+		{Provider: "careerjet", Slug: "stale", LastPolledAt: &stale},
+		{Provider: "careerjet", Slug: "never"},
+	}
+
+	var slugs []string
+	for _, c := range dueNow(companies, now) {
+		slugs = append(slugs, c.Slug)
+	}
+	want := []string{"always", "stale", "never"}
+	if fmt.Sprint(slugs) != fmt.Sprint(want) {
+		t.Errorf("dueNow kept %v, want %v", slugs, want)
 	}
 }
 

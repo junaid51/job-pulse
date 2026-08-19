@@ -205,6 +205,7 @@ new file + one map entry. That is the whole "plugin system".
 | Workable | `apply.workable.com/api/v1/widget/accounts/{slug}?details=true` | `blueground`, `spotawheel` |
 | Recruitee | `{slug}.recruitee.com/api/offers/` | `channable` |
 | Teamtailor | `{slug}.teamtailor.com/jobs.json` | `propertyfinder`, `fresha` |
+| Careerjet | `search.api.careerjet.net/v4/query` (aggregator; slug is a saved search) | `software+engineer\|dubai\|en_AE` |
 
 | Provider | id | title | location | remote | url | posted |
 |---|---|---|---|---|---|---|
@@ -239,6 +240,13 @@ Gotchas worth knowing before you write the code:
   `_jobposting`. `jobLocation` is a list (multi-city postings) and sometimes
   absent; countries are ISO codes, expanded to names so profiles can match them.
   Large boards paginate via `next_url`. No remote flag at all.
+- **Careerjet**: the one aggregator, and different in kind. The slug is a saved
+  search, not a company. It needs credentials (`CAREERJET_API_KEY`,
+  `CAREERJET_SITE`), calls only work from IPs declared in its publisher
+  dashboard, postings have no stable id (identity is a hash of title, company,
+  location and date — the URLs are per-request tracking tokens), `page_size` is
+  silently capped at twenty, and the poller visits it every six hours rather
+  than every cycle.
 
 ### Politeness
 

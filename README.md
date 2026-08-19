@@ -70,7 +70,8 @@ The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
 `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`,
-`teamtailor`.
+`teamtailor` — plus `careerjet`, an aggregator whose "slug" is a saved search
+(`software+engineer|dubai|en_AE`) and which is polled every six hours.
 
 ## API
 
@@ -136,6 +137,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | `POLL_INTERVAL`  | `15m`                                                                  | Go duration; `0` disables the internal ticker |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
+| `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site; unset = careerjet lines error quietly |
 | `POSTGRES_PORT`  | `5432`                                                                 | host port published by Compose |
 
 ## Layout

@@ -236,7 +236,7 @@ func TestParseTimeIsLenient(t *testing.T) {
 }
 
 func TestAllProvidersRegistered(t *testing.T) {
-	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor"}
+	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet"}
 	if len(All) != len(want) {
 		t.Errorf("All has %d providers, want %d", len(All), len(want))
 	}

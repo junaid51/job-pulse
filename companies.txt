@@ -34,3 +34,8 @@ ashby              posthog      PostHog
 ashby              1password    1Password
 ashby              buffer       Buffer
 ashby              railway      Railway
+# Careerjet — market-wide searches, not company boards. Needs CAREERJET_API_KEY
+# and CAREERJET_SITE; polled every six hours, twenty newest per page, three pages.
+careerjet          software+engineer|dubai|en_AE  Careerjet
+careerjet          designer|dubai|en_AE           Careerjet
+careerjet          developer|dubai|en_AE          Careerjet
