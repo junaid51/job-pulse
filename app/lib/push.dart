@@ -29,44 +29,70 @@ Future<bool> initFirebase() async {
   }
 }
 
-/// pushProvider wires the pipeline once the UI is up: ask permission, fetch the
-/// token, register it with the backend, and refresh the feeds when a message
-/// arrives while the app is open. Returns whether push is live, for Settings.
-final pushProvider = FutureProvider<bool>((ref) async {
-  final messaging = FirebaseMessaging.instance;
+/// PushController owns the pipeline: permission, token, registration with the
+/// backend, and refreshing the feeds when a message arrives while the app is
+/// open. Its value — is push live? — is what Settings shows.
+///
+/// Building it never prompts: browsers (and iOS Home-Screen apps especially)
+/// only honor a permission request made from a tap, so the prompt lives behind
+/// enable(), wired to a button in Settings. If permission was granted on an
+/// earlier visit, build() quietly finishes the job.
+final pushProvider = AsyncNotifierProvider<PushController, bool>(PushController.new);
 
-  final settings = await messaging.requestPermission();
-  if (settings.authorizationStatus == AuthorizationStatus.denied) {
-    return false;
+class PushController extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    final messaging = FirebaseMessaging.instance;
+    final settings = await messaging.getNotificationSettings();
+    if (settings.authorizationStatus != AuthorizationStatus.authorized &&
+        settings.authorizationStatus != AuthorizationStatus.provisional) {
+      return false;
+    }
+    return _connect(messaging);
   }
 
-  Future<void> register(String token) => ref.read(apiProvider).registerDevice(
-    token: token,
-    platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
-  );
+  /// enable is the tap: ask for permission, then connect.
+  Future<void> enable() async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final messaging = FirebaseMessaging.instance;
+      final settings = await messaging.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        return false;
+      }
+      return _connect(messaging);
+    });
+  }
 
-  try {
-    final token = await messaging.getToken(
-      vapidKey: kIsWeb && _vapidKey.isNotEmpty ? _vapidKey : null,
+  Future<bool> _connect(FirebaseMessaging messaging) async {
+    Future<void> register(String token) => ref.read(apiProvider).registerDevice(
+      token: token,
+      platform: kIsWeb ? 'web' : defaultTargetPlatform.name,
     );
-    if (token == null || token.isEmpty) return false;
-    await register(token);
-  } on Object catch (error) {
-    // On iOS without an APNs key this is where it stops — expected until the
-    // Apple Developer enrollment happens. The app carries on without push.
-    debugPrint('push: token unavailable: $error');
-    return false;
+
+    try {
+      final token = await messaging.getToken(
+        vapidKey: kIsWeb && _vapidKey.isNotEmpty ? _vapidKey : null,
+      );
+      if (token == null || token.isEmpty) return false;
+      await register(token);
+    } on Object catch (error) {
+      // On native iOS without an APNs key this is where it stops — expected
+      // until an Apple Developer enrollment. The app carries on without push.
+      debugPrint('push: token unavailable: $error');
+      return false;
+    }
+
+    messaging.onTokenRefresh.listen((token) {
+      register(token).ignore();
+    });
+
+    // A push while the app is open refreshes the feeds instead of showing a
+    // system banner: the new match appearing is the notification.
+    FirebaseMessaging.onMessage.listen((_) {
+      ref.invalidate(notificationsProvider);
+    });
+
+    return true;
   }
-
-  messaging.onTokenRefresh.listen((token) {
-    register(token).ignore();
-  });
-
-  // A push while the app is open refreshes the feeds instead of showing a
-  // system banner: the new match appearing is the notification.
-  FirebaseMessaging.onMessage.listen((_) {
-    ref.invalidate(notificationsProvider);
-  });
-
-  return true;
-});
+}
