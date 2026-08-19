@@ -8,7 +8,7 @@ with three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Live.** The backend polls 32 boards across nine providers, stores what is new,
+**Live.** The backend polls 39 boards across eleven providers, stores what is new,
 matches it against search profiles, and pushes one summary per profile to the
 phone; the app is an installable PWA with search, sorting and push. A full cycle
 takes a few seconds; the deployment runs entirely on free tiers.
@@ -79,12 +79,13 @@ DELETE /api/profiles/{id}
 GET    /api/jobs?profile_id=1&limit=50&cursor=…    sort=posted|matched|applied; q= and location= search/filter
 GET    /api/boards                                 every board's health
 POST   /api/jobs/{id}/hide                         hide from this device's feeds
+POST   /api/jobs/{id}/unhide                       the undo
 POST   /api/jobs/{id}/applied                      toggle applied; answers the new state
 
 GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
 POST   /api/notifications/seen                     mark the feed read
 
-POST   /api/devices                                {token, platform} — FCM registration
+POST   /api/devices                                {token, platform, timezone} — FCM registration
 POST   /api/poll                                   run a cycle now; returns its stats
 ```
 
@@ -137,7 +138,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | ---------------- | ---------------------------------------------------------------------- | ------------------------------ |
 | `DATABASE_URL`   | `postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable` |                                |
 | `PORT`           | `8080`                                                                 |                                |
-| `POLL_INTERVAL`  | `15m`                                                                  | Go duration; `0` disables the internal ticker |
+| `POLL_INTERVAL`  | `5m`                                                                   | Go duration; `0` disables the internal ticker |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
 | `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site; unset = careerjet lines error quietly |
@@ -154,7 +155,7 @@ internal/match/     does a job satisfy a profile
 internal/poll/      the poll cycle and companies.txt
 internal/providers/ one file per job board
 migrations/         numbered .sql files, embedded into the binary
-web/src/            api.ts, hooks.ts, push.ts, App.tsx, styles.css
+web/src/            api.ts, query.ts, push.ts, toast.tsx, App.tsx, styles.css
 web/src/screens/    jobs, notifications, settings
 ```
 
@@ -175,7 +176,7 @@ poller ticks every `POLL_INTERVAL`.
 **Scale-to-zero container** (the usual free tier): these give no persistent disk
 and no always-on process, so point `DATABASE_URL` at a free hosted Postgres, set
 `POLL_INTERVAL=0`, and have any free cron service call `POST /api/poll` every
-15 minutes. The request wakes the container, runs a full cycle, sends the
+few minutes. The request wakes the container, runs a full cycle, sends the
 notifications and returns its stats — the app was built around that endpoint
 being synchronous.
 

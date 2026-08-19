@@ -1,8 +1,10 @@
 // Push via Firebase Cloud Messaging. Everything degrades to "no push" rather
 // than failing: denied permission, an unsupported browser, or a fork not yet
 // pointed at its own Firebase project all leave the rest of the app working.
-import { initializeApp } from 'firebase/app'
-import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging'
+//
+// Firebase is the heaviest dependency in the bundle and most sessions never
+// touch push, so it is imported lazily: the chunk downloads only once
+// permission is granted (or being asked for), never on a plain page load.
 import { api } from './api'
 import { invalidate } from './query'
 
@@ -22,7 +24,17 @@ const VAPID = import.meta.env.VITE_JOBPULSE_VAPID ?? ''
 
 export type PushState = 'unsupported' | 'off' | 'pending' | 'on'
 
+// The cheap pre-check that needs no Firebase: can this browser do push at all?
+const nativeSupport = () =>
+  'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
+
 async function connect(): Promise<PushState> {
+  const [{ initializeApp }, messagingModule] = await Promise.all([
+    import('firebase/app'),
+    import('firebase/messaging'),
+  ])
+  const { getMessaging, getToken, isSupported, onMessage } = messagingModule
+  if (!(await isSupported().catch(() => false))) return 'unsupported'
   const app = initializeApp(firebaseConfig)
   const messaging = getMessaging(app)
   const registration = await navigator.serviceWorker.ready
@@ -41,7 +53,7 @@ async function connect(): Promise<PushState> {
 /** Called on startup: connects only if permission was already granted —
  *  browsers (iOS especially) only honor a request made from a tap. */
 export async function initPush(): Promise<PushState> {
-  if (!(await isSupported().catch(() => false))) return 'unsupported'
+  if (!nativeSupport()) return 'unsupported'
   if (Notification.permission !== 'granted') return 'off'
   return connect().catch((error) => {
     console.warn('push: token unavailable:', error)
@@ -51,7 +63,7 @@ export async function initPush(): Promise<PushState> {
 
 /** The tap: ask for permission, then connect. */
 export async function enablePush(): Promise<PushState> {
-  if (!(await isSupported().catch(() => false))) return 'unsupported'
+  if (!nativeSupport()) return 'unsupported'
   const permission = await Notification.requestPermission()
   if (permission !== 'granted') return 'off'
   return connect().catch((error) => {

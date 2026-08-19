@@ -31,7 +31,7 @@ func Load() Config {
 	return Config{
 		DatabaseURL:   env("DATABASE_URL", "postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable"),
 		Addr:          ":" + env("PORT", "8080"),
-		PollInterval:  duration("POLL_INTERVAL", 15*time.Minute),
+		PollInterval:  duration("POLL_INTERVAL", 5*time.Minute),
 		CompaniesFile: env("COMPANIES_FILE", "companies.txt"),
 		// The same variable the Google libraries read, so there is one name for it.
 		FirebaseCredentials: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
