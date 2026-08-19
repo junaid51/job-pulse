@@ -29,7 +29,37 @@ func Matches(c Criteria, j providers.Job) bool {
 	if len(c.Locations) > 0 && !locationMatches(j.Location, c.Locations) {
 		return false
 	}
-	return len(c.Keywords) == 0 || keywordMatches(j.Title, c.Keywords)
+	positives, negatives := splitKeywords(c.Keywords)
+	// Negatives stay literal: expanding "-frontend" through the alias
+	// dictionary would silently exclude every "software engineer".
+	if containsAnyFold(j.Title, negatives) {
+		return false
+	}
+	if len(positives) > 0 {
+		return keywordMatches(j.Title, positives)
+	}
+	// No positives left: an empty keyword list means "any title", and so does a
+	// purely negative one — but a list of blanks keeps its old meaning of
+	// matching nothing, so a stray space never turns into match-everything.
+	return len(c.Keywords) == 0 || len(negatives) > 0
+}
+
+// splitKeywords separates excludes from includes: "designer, -senior" means
+// designer jobs that are not senior. A minus prefix is the entire syntax.
+func splitKeywords(keywords []string) (positives, negatives []string) {
+	for _, keyword := range keywords {
+		keyword = strings.TrimSpace(keyword)
+		if rest, negated := strings.CutPrefix(keyword, "-"); negated {
+			if rest != "" {
+				negatives = append(negatives, rest)
+			}
+			continue
+		}
+		if keyword != "" {
+			positives = append(positives, keyword)
+		}
+	}
+	return positives, negatives
 }
 
 // keywordMatches is containsAnyFold plus the role-alias expansion: a keyword is
