@@ -48,6 +48,7 @@ var All = map[string]Provider{
 	"careerjet":       fetchCareerjet,
 	"manatal":         fetchManatal,
 	"phenom":          fetchPhenom,
+	"oracle":          fetchOracle,
 }
 
 const userAgent = "jobpulse/0.1 (+https://github.com/junaid51/job-pulse)"
@@ -69,6 +70,14 @@ func getJSON(ctx context.Context, url string, v any) error {
 	return get(ctx, url, v)
 }
 
+// decodeJSON decodes a successful response body into v.
+func decodeJSON(resp *http.Response, v any) error {
+	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
+		return fmt.Errorf("decode %s: %w", resp.Request.URL, err)
+	}
+	return nil
+}
+
 func get(ctx context.Context, url string, v any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -86,10 +95,7 @@ func get(ctx context.Context, url string, v any) error {
 	if resp.StatusCode != http.StatusOK {
 		return statusError{code: resp.StatusCode, url: url}
 	}
-	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
-		return fmt.Errorf("decode %s: %w", url, err)
-	}
-	return nil
+	return decodeJSON(resp, v)
 }
 
 type statusError struct {

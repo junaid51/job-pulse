@@ -144,6 +144,23 @@ func TestParseBoards(t *testing.T) {
 			},
 		},
 		{
+			name:    "oracle",
+			fixture: "oracle.json",
+			parse: func(t *testing.T, raw []byte) []Job {
+				return decode[oracleResponse](t, raw).jobs("esbe.fa.em8.oraclecloud.com", "CX_1001")
+			},
+			count: 2,
+			want: Job{
+				ExternalID: "114298",
+				Company:    "",
+				Title:      "Security Supervisor (Saudi National Talent) - Security - Jumeirah The Red Sea",
+				Location:   "Saudi Arabia",
+				Remote:     false,
+				URL:        "https://esbe.fa.em8.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1001/job/114298",
+				PostedAt:   mustTime(t, oracleTimeLayout, "2026-08-19"),
+			},
+		},
+		{
 			name:    "recruitee",
 			fixture: "recruitee.json",
 			parse:   func(t *testing.T, raw []byte) []Job { return decode[recruiteeOffers](t, raw).jobs() },
@@ -268,7 +285,7 @@ func TestParseTimeIsLenient(t *testing.T) {
 }
 
 func TestAllProvidersRegistered(t *testing.T) {
-	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet", "manatal", "phenom"}
+	want := []string{"greenhouse", "lever", "ashby", "smartrecruiters", "workable", "recruitee", "teamtailor", "careerjet", "manatal", "phenom", "oracle"}
 	if len(All) != len(want) {
 		t.Errorf("All has %d providers, want %d", len(All), len(want))
 	}
