@@ -18,3 +18,19 @@ teamtailor         propertyfinder Property Finder
 teamtailor         dubizzle     Dubizzle Group
 teamtailor         wego         Wego
 teamtailor         fresha       Fresha
+# MENA — second sweep (2026-08-19)
+teamtailor         tappayments  Tap Payments
+workable           optasia      Optasia
+ashby              thndr        Thndr
+workable           tamatem      Tamatem
+# Remote-first employers, for remote profiles
+greenhouse         gitlab       GitLab
+greenhouse         remotecom    Remote.com
+greenhouse         grafanalabs  Grafana Labs
+greenhouse         clickhouse   ClickHouse
+greenhouse         vercel       Vercel
+ashby              supabase     Supabase
+ashby              posthog      PostHog
+ashby              1password    1Password
+ashby              buffer       Buffer
+ashby              railway      Railway
