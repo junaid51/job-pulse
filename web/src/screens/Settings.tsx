@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { API, api, describeError, deviceId, type Profile, type ProfileInput } from '../api'
 import { Loading } from '../components/States'
+import { TermPicker } from '../components/TermPicker'
 import { providerLabel, shortAgo } from '../format'
 import { useQuery } from '@tanstack/react-query'
 import { invalidate } from '../query'
 import { enablePush, type PushState } from '../push'
 
-const splitList = (raw: string) =>
-  raw.split(',').map((v) => v.trim()).filter(Boolean)
-
 export function Settings({ push, setPush }: { push: PushState; setPush: (s: PushState) => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
-  const [editing, setEditing] = useState<Profile | 'new' | null>(null)
+  // #/settings/new deep-links straight into the editor.
+  const [editing, setEditing] = useState<Profile | 'new' | null>(
+    () => location.hash === '#/settings/new' ? 'new' : null)
 
   const afterSave = () => {
     setEditing(null)
@@ -198,22 +198,39 @@ function ProfileRow(props: { profile: Profile; onEdit: () => void; onChanged: ()
   )
 }
 
+// The roles here ride the same alias dictionary the matcher uses, so tapping
+// "frontend" also finds React, Angular and plain Software Engineer titles.
+const ROLES = ['frontend', 'backend', 'full stack', 'mobile', 'devops', 'data', 'design', 'product', 'qa']
+const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'uk', 'usa']
+const NOISE = ['senior', 'lead', 'principal', 'manager', 'intern']
+
+const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase())
+
 function Editor(props: { existing: Profile | null; onClose: () => void; onSaved: () => void }) {
   const { existing } = props
   const [name, setName] = useState(existing?.name ?? '')
-  const [keywords, setKeywords] = useState(existing?.keywords.join(', ') ?? '')
-  const [locations, setLocations] = useState(existing?.locations.join(', ') ?? '')
+  // Stored keywords fold the exclusions in as "-term"; the editor keeps the
+  // two apart so nobody has to know that syntax exists.
+  const [keywords, setKeywords] = useState<string[]>(
+    existing?.keywords.filter((k) => !k.startsWith('-')) ?? [])
+  const [avoid, setAvoid] = useState<string[]>(
+    existing?.keywords.filter((k) => k.startsWith('-')).map((k) => k.slice(1)) ?? [])
+  const [locations, setLocations] = useState<string[]>(existing?.locations ?? [])
   const [remoteOnly, setRemoteOnly] = useState(existing?.remote_only ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const autoName =
+    [keywords[0], locations[0]].filter(Boolean).map((t) => titleCase(t!)).join(' · ')
+    || (remoteOnly ? 'Remote' : 'Everything')
 
   const save = async () => {
     setSaving(true)
     setError(null)
     const input: ProfileInput = {
-      name: name.trim(),
-      keywords: splitList(keywords),
-      locations: splitList(locations),
+      name: name.trim() || autoName,
+      keywords: [...keywords, ...avoid.map((t) => `-${t}`)],
+      locations,
       remote_only: remoteOnly,
     }
     try {
@@ -233,29 +250,40 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
         onClick={(event) => event.stopPropagation()}
         onSubmit={(event) => { event.preventDefault(); save() }}
       >
-        <h2>{existing ? 'Edit profile' : 'New profile'}</h2>
+        <h2>{existing ? 'Edit search' : 'New search'}</h2>
+
+        <div className="f-group">
+          <span className="f-label">What are you looking for?</span>
+          <TermPicker value={keywords} onChange={setKeywords}
+            suggestions={ROLES} placeholder="type a role or skill…" />
+          <small>Any one matches. Roles also find related titles — frontend covers React, Angular and plain Software Engineer.</small>
+        </div>
+
+        <div className="f-group">
+          <span className="f-label">Where?</span>
+          <TermPicker value={locations} onChange={setLocations}
+            suggestions={PLACES} placeholder="anywhere — or add a place…" />
+          <label className="switch-row">
+            <span>Remote roles only</span>
+            <input type="checkbox" checked={remoteOnly}
+              onChange={(e) => setRemoteOnly(e.target.checked)} />
+          </label>
+        </div>
+
+        <div className="f-group">
+          <span className="f-label">Skip jobs mentioning</span>
+          <TermPicker value={avoid} onChange={setAvoid}
+            suggestions={NOISE} placeholder="nothing — or add a word…" tone="danger" />
+        </div>
+
         <label>Name
           <input value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="Backend Go" autoFocus={!existing} required />
+            placeholder={autoName} autoCapitalize="words" />
         </label>
-        <label>Keywords
-          <input value={keywords} onChange={(e) => setKeywords(e.target.value)}
-            placeholder="go, backend, platform" />
-          <small>Comma separated; any one matches. Prefix with - to exclude: designer, -senior</small>
-        </label>
-        <label>Locations
-          <input value={locations} onChange={(e) => setLocations(e.target.value)}
-            placeholder="dubai, uae, remote" />
-          <small>Comma separated. Leave empty for anywhere.</small>
-        </label>
-        <label className="switch-row">
-          <span>Remote only</span>
-          <input type="checkbox" checked={remoteOnly}
-            onChange={(e) => setRemoteOnly(e.target.checked)} />
-        </label>
+
         {error && <p className="error-text">{error}</p>}
         <button className="btn-filled wide" disabled={saving} type="submit">
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving…' : existing ? 'Save changes' : `Watch for ${autoName.toLowerCase()}`}
         </button>
       </form>
     </div>
