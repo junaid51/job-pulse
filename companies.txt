@@ -64,3 +64,8 @@ greenhouse         tamara       Tamara
 ashby              ziina        Ziina
 workable           foodics      Foodics
 workable           salla        Salla
+
+# Remote feeds: keyless aggregator APIs, newest-window only (hourly, no absence-deletion)
+remotive           software-dev  Remotive
+himalayas          all           Himalayas
+jobicy             dev           Jobicy

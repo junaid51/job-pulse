@@ -33,6 +33,12 @@ const maxJobAge = 45 * 24 * time.Hour
 // a company's own board; a cycle skips their boards until the interval passes.
 var minPollInterval = map[string]time.Duration{
 	"careerjet": 6 * time.Hour,
+	// The remote-feed aggregators show only their newest window, so absence
+	// proves nothing (this map also gates deleteAbsent) — and a window that
+	// deep does not need five-minute polling.
+	"remotive":  time.Hour,
+	"himalayas": time.Hour,
+	"jobicy":    time.Hour,
 }
 
 // ErrBusy is returned when a cycle is already running.
