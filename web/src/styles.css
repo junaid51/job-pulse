@@ -41,9 +41,9 @@ main { flex: 1; overflow-y: auto; padding-bottom: 8px; }
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
   padding: max(14px, env(safe-area-inset-top)) 16px 10px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* No backdrop blur: it re-renders on every scrolled frame and is the
+     classic cause of janky lists. Near-opaque paint reads the same. */
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
   border-bottom: 1px solid var(--line);
 }
 .bar h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.4px; margin: 0; }
@@ -243,7 +243,7 @@ nav {
 .search input:focus-visible { outline: none; }
 
 /* sheet entrance */
-.sheet-backdrop { backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+/* (no backdrop blur on the sheet either — same scroll-frame cost) */
 .sheet { animation: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1); }
 @keyframes rise { from { transform: translateY(24px); opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) {

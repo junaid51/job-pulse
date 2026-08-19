@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import type { Job } from '../api'
 import { providerLabel, shortAgo } from '../format'
 
@@ -6,7 +7,13 @@ const DAY_MS = 24 * 60 * 60 * 1000
 /** One row of the Jobs and Notifications lists. The whole row opens the
  *  official posting — applying means forms and logins, which belong in the
  *  real page, not in this app. */
-export function JobRow(props: { job: Job; label?: string; showUnread?: boolean }) {
+/** Memoized: the search box lives beside a fifty-row list, and without this
+ *  every keystroke re-renders every row. */
+export const JobRow = memo(function JobRow(props: {
+  job: Job
+  label?: string
+  showUnread?: boolean
+}) {
   const { job } = props
   const locationSaysRemote = job.location.toLowerCase().includes('remote')
   const meta = [
@@ -39,7 +46,7 @@ export function JobRow(props: { job: Job; label?: string; showUnread?: boolean }
       </span>
     </a>
   )
-}
+})
 
 /** A letter mark with a hue derived from the company name — stable identity
  *  without logos, which the boards do not reliably provide. */
