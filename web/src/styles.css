@@ -354,7 +354,10 @@ mark.hit {
 /* Native list virtualization: off-screen rows skip layout and paint entirely,
    which is what keeps a deeply-scrolled infinite list flat. The intrinsic size
    keeps the scrollbar honest while a row is skipped. */
-.job-row { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+/* windowed list: TanStack Virtual positions the visible rows absolutely */
+.list.virtual { position: relative; }
+.vrow { position: absolute; top: 0; left: 0; width: 100%; }
+.vrow .job-row { border-bottom: 1px solid var(--line); }
 
 /* ---- desktop shell: the bottom bar becomes a sidebar ---- */
 .brand { display: none; }
