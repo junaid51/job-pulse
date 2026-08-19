@@ -8,22 +8,10 @@ with three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Milestone 3 — usable end to end.** The backend polls six providers, stores what
-is new, matches it against search profiles and serves them over REST; the app has
-its three screens and an Apply button on every job. A live cycle over the boards
-in `companies.txt` takes about three seconds.
-
-The backend half of push notifications (M4) is in: the poller sends one FCM
-summary per profile per cycle, or logs what it would have sent when
-`GOOGLE_APPLICATION_CREDENTIALS` is unset — so a clone still needs no Google
-account. Still to come: the Firebase Messaging wiring inside the app, which
-needs a Firebase project. Until then the app shows new matches when you open it
-or pull to refresh.
-
-The app is a React PWA (~80 KB gzipped): installed via Add to Home Screen, with
-push notifications working on iPhone that way — no Apple Developer account
-needed. It replaced a working Flutter implementation once the native targets
-were dropped; the web needed real HTML, not a canvas renderer.
+**Live.** The backend polls 32 boards across nine providers, stores what is new,
+matches it against search profiles, and pushes one summary per profile to the
+phone; the app is an installable PWA with search, sorting and push. A full cycle
+takes a few seconds; the deployment runs entirely on free tiers.
 
 ## Stack
 
@@ -125,7 +113,7 @@ make psql   # then: select provider, count(*) from jobs group by provider;
 The poll log line is the quickest check that a cycle worked:
 
 ```
-msg="poll cycle" companies=6 failed=0 new_jobs=1452 new_matches=0 duration=2.7s
+msg="poll cycle" companies=30 failed=0 new_jobs=77 new_matches=6 removed=0 duration=17.2s
 ```
 
 `new_jobs=0` on the second cycle is the point: it means new-job detection is
