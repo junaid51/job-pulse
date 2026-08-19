@@ -1,0 +1,15 @@
+.DS_Store
+/jobpulse
+
+# Flutter / Dart
+app/.dart_tool/
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/ios/Pods/
+app/ios/.symlinks/
+
+# Firebase credentials — never committed (M4)
+*.serviceaccount.json
+google-services.json
+GoogleService-Info.plist
