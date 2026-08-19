@@ -50,7 +50,7 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
             ))}
           </div>
         )}
-        <JobList profileId={profile.id} keywords={profile.keywords} />
+        <JobList profileId={profile.id} keywords={profile.keywords} profileName={profile.name} />
       </>
     )
   }
@@ -68,7 +68,9 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   )
 }
 
-function JobList({ profileId, keywords }: { profileId: number; keywords: string[] }) {
+function JobList({ profileId, keywords, profileName }: {
+  profileId: number; keywords: string[]; profileName: string
+}) {
   const [sort, setSort] = useState<JobSort>('posted')
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -166,8 +168,18 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
           />
         )
   } else {
+    // The two datasets look identical row by row, so the frame has to say
+    // which one is on screen: the profile's matches, or the whole corpus.
+    const scope = searching
+      ? 'every job from every board'
+      : sort === 'applied' ? 'jobs you applied to' : `your “${profileName}” matches`
     list = (
       <>
+        {searching && (
+          <p className="scope-note">
+            Searching every job from every board — not just your matches.
+          </p>
+        )}
         <div ref={listRef} className="list virtual"
           style={{ height: virtualizer.getTotalSize() }}>
           {windowed.map((item) => (
@@ -184,7 +196,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
         )}
         {!feed.hasNextPage && (
           <p className="feed-end">
-            That's all — {rows.length} {rows.length === 1 ? 'job' : 'jobs'}
+            That's all — {rows.length} {rows.length === 1 ? 'job' : 'jobs'} in {scope}
           </p>
         )}
       </>
@@ -200,7 +212,7 @@ function JobList({ profileId, keywords }: { profileId: number; keywords: string[
             ref={searchRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search"
+            placeholder="Search all jobs"
             aria-label="Search all jobs"
           />
           {query
