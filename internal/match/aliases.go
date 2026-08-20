@@ -55,6 +55,46 @@ var keywordAliases = map[string][]string{
 		"quality assurance", "test engineer", "sdet", "automation engineer",
 		"tester",
 	},
+
+	// --- the rest of the company ---
+	// Engineering had a dictionary and nothing else did, so every
+	// non-engineering search fell back to one literal substring and came back
+	// nearly empty.
+	"business analyst": {
+		"business systems analyst", "systems analyst", "business intelligence",
+		"bi analyst", "data analyst", "product owner", "functional consultant",
+		"process analyst", "reporting analyst", "business analysis",
+	},
+	"analyst": {
+		"analytics", "business intelligence", "bi analyst", "reporting analyst",
+	},
+	"project manager": {
+		"program manager", "programme manager", "delivery manager", "pmo",
+		"scrum master", "project management",
+	},
+	"finance": {
+		"accountant", "accounting", "financial analyst", "controller",
+		"treasury", "audit", "fp&a",
+	},
+	"marketing": {
+		"brand manager", "growth manager", "digital marketing",
+		"content marketing", "social media", "seo",
+	},
+	"human resources": {
+		"talent acquisition", "recruiter", "people partner", "hrbp",
+		"compensation", "learning and development",
+	},
+	"operations": {
+		"supply chain", "logistics", "operations manager", "process improvement",
+	},
+	"sales": {
+		"account executive", "account manager", "business development",
+		"partnerships", "sales manager",
+	},
+	"customer support": {
+		"customer success", "support specialist", "client services",
+		"customer service",
+	},
 }
 
 // locationAliases expands the shorthand people type into the strings job boards

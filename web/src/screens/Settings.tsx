@@ -204,8 +204,14 @@ function ProfileRow(props: { profile: Profile; onEdit: () => void; onChanged: ()
 }
 
 // The roles here ride the same alias dictionary the matcher uses, so tapping
-// "frontend" also finds React, Angular and plain Software Engineer titles.
-const ROLES = ['frontend', 'backend', 'full stack', 'mobile', 'devops', 'data', 'design', 'product', 'qa']
+// "frontend" also finds React and Angular titles.
+const ROLES = [
+  'frontend', 'backend', 'full stack', 'mobile', 'devops', 'data', 'design', 'product', 'qa',
+  // The company is not only its engineers: a business analyst opening this
+  // screen should find her own work in it.
+  'business analyst', 'project manager', 'finance', 'marketing', 'operations',
+  'sales', 'human resources', 'customer support',
+]
 const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'gulf', 'india', 'uk', 'usa']
 const NOISE = ['senior', 'lead', 'principal', 'manager', 'intern']
 
@@ -261,7 +267,7 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
           <span className="f-label">What are you looking for?</span>
           <TermPicker value={keywords} onChange={setKeywords}
             suggestions={ROLES} placeholder="type a role or skill…" />
-          <small>Any one matches. Roles also find related titles — frontend covers React, Angular and plain Software Engineer.</small>
+          <small>Any one matches. Roles find related titles too — frontend covers React and Angular, business analyst covers BI and systems analyst.</small>
         </div>
 
         <div className="f-group">

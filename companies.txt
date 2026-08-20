@@ -78,3 +78,13 @@ jobven             remote           Jobven
 
 # JobsPipe: scraped-board aggregator (JOBSPIPE_API_KEY), metered per job returned
 jobspipe           ae,sa|frontend,front+end,backend,back+end,full+stack,fullstack,mobile+developer,mobile+engineer,ios,android,react,devops,software+engineer,ui/ux,product+designer,-civil,-sales,-mechanic,-electrical,-technician  JobsPipe
+
+# Broad-function employers and feeds: the corpus was engineering-only, so every
+# non-engineering search came back nearly empty
+lever              aldar        Aldar
+jobicy             business     Jobicy
+jobicy             marketing    Jobicy
+jobicy             hr           Jobicy
+jobicy             management   Jobicy
+jobicy             supporting   Jobicy
+jobspipe           ae,sa|business+analyst,data+analyst,business+intelligence,product+owner,systems+analyst,reporting+analyst,functional+consultant  JobsPipe
