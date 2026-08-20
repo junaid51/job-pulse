@@ -50,8 +50,14 @@ var keywordAliases = map[string][]string{
 	"design": {
 		"designer", "ui/ux", "ux", "product designer", "graphic designer",
 	},
-	"product": {"product manager", "product owner", "technical program manager"},
+	"product": {
+		"product manager", "product owner", "technical product manager",
+		"product lead", "head of product", "group product manager",
+	},
+	// Two letters, so the aliases carry it alone (see shortKey): the literal
+	// "qa" also spells the first half of Qatar.
 	"qa": {
+		"qa ", "qa engineer", "qa analyst", "qa lead", "quality engineer",
 		"quality assurance", "test engineer", "sdet", "automation engineer",
 		"tester",
 	},
@@ -72,6 +78,36 @@ var keywordAliases = map[string][]string{
 		"program manager", "programme manager", "delivery manager", "pmo",
 		"scrum master", "project management",
 	},
+
+	// --- engineering's own management track ---
+	// The same shape as the analyst family: real titles for one job, not a
+	// widening into every job.
+	"program manager": {
+		"programme manager", "technical program manager",
+		"technical project manager", "delivery manager", "project manager",
+	},
+	"technical program manager": {
+		"technical project manager", "program manager", "tpm ",
+	},
+	"delivery manager": {"delivery lead", "program manager", "project manager"},
+	"scrum master":     {"agile coach", "agile delivery", "iteration manager"},
+	"agile":            {"scrum master", "agile coach", "agile delivery", "kanban"},
+	"engineering manager": {
+		"head of engineering", "director of engineering",
+		// Anchored to software: a bare "development manager" is a Business
+		// Development Manager four times out of five, which is sales.
+		"software development manager", "software engineering manager",
+		"tech lead manager", "engineering lead",
+	},
+	"product owner": {
+		"technical product owner", "product manager", "product management",
+	},
+	// Also two letters, and the literal spells the middle of "development".
+	"pm": {
+		"product manager", "program manager", "project manager",
+		"programme manager", "delivery manager", "technical program manager",
+	},
+	"tpm": {"technical program manager", "technical project manager"},
 	"finance": {
 		"accountant", "accounting", "financial analyst", "controller",
 		"treasury", "audit", "fp&a",

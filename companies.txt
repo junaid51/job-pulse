@@ -88,3 +88,4 @@ jobicy             hr           Jobicy
 jobicy             management   Jobicy
 jobicy             supporting   Jobicy
 jobspipe           ae,sa|business+analyst,data+analyst,business+intelligence,product+owner,systems+analyst,reporting+analyst,functional+consultant  JobsPipe
+jobspipe           ae,sa|product+manager,product+owner,technical+product+manager,technical+program+manager,program+manager,delivery+manager,scrum+master,agile+coach,engineering+manager,-civil,-construction,-mechanical,-fmcg,-food  JobsPipe

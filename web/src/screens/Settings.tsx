@@ -209,8 +209,9 @@ const ROLES = [
   'frontend', 'backend', 'full stack', 'mobile', 'devops', 'data', 'design', 'product', 'qa',
   // The company is not only its engineers: a business analyst opening this
   // screen should find her own work in it.
-  'business analyst', 'project manager', 'finance', 'marketing', 'operations',
-  'sales', 'human resources', 'customer support',
+  'product owner', 'program manager', 'engineering manager', 'business analyst',
+  'project manager', 'finance', 'marketing', 'operations', 'sales',
+  'human resources', 'customer support',
 ]
 const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'gulf', 'india', 'uk', 'usa']
 const NOISE = ['senior', 'lead', 'principal', 'manager', 'intern']

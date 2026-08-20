@@ -72,10 +72,11 @@ func keywordMatches(title string, wanted []string) bool {
 		if w == "" {
 			continue
 		}
-		if strings.Contains(title, w) {
+		aliases := keywordAliases[w]
+		if !shortKey(w, aliases) && strings.Contains(title, w) {
 			return true
 		}
-		for _, alias := range keywordAliases[w] {
+		for _, alias := range aliases {
 			if strings.Contains(title, alias) {
 				return true
 			}
@@ -93,7 +94,22 @@ func KeywordTerms(raw string) []string {
 	if needle == "" {
 		return nil
 	}
-	return append([]string{needle}, keywordAliases[needle]...)
+	aliases := keywordAliases[needle]
+	if shortKey(needle, aliases) {
+		return aliases
+	}
+	return append([]string{needle}, aliases...)
+}
+
+// shortKey reports whether an abbreviation should be matched by its expansions
+// alone. Two or three letters hide inside ordinary words — "pm" spells the
+// middle of "development", "qa" the first half of "Qatar" — so for an
+// abbreviation the dictionary already explains, the expansions are what the
+// searcher meant and the literal is only noise. Each such entry therefore
+// carries an anchored form of itself ("qa ", "tpm ") to keep the plain title
+// reachable.
+func shortKey(needle string, aliases []string) bool {
+	return len(needle) <= 3 && len(aliases) > 0
 }
 
 // LocationTerms expands one location shorthand into every string worth
