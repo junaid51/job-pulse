@@ -183,8 +183,11 @@ func deleteProfile(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-// backfill matches a profile against every job already stored, so a new or
-// edited profile is not empty until the next poll.
+// backfill makes a profile's matches agree with its criteria: every stored job
+// that matches is added, and every match that no longer does is removed, so a
+// new profile is not empty and an edited one is not haunted by what it used to
+// look for. Jobs marked applied are never removed — that is the user's own
+// record of having applied, not a match the profile happens to own.
 //
 // The matching itself is Go, not SQL, so this reads the jobs and filters them
 // here — the same match.Matches the poller uses, which is the point.
@@ -197,7 +200,7 @@ func backfill(r *http.Request, pool *pgxpool.Pool, p profile) (int, error) {
 	defer rows.Close()
 
 	criteria := p.criteria()
-	var ids []int64
+	ids := []int64{}
 	for rows.Next() {
 		var (
 			id  int64
@@ -211,6 +214,14 @@ func backfill(r *http.Request, pool *pgxpool.Pool, p profile) (int, error) {
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if _, err := pool.Exec(ctx, `
+		delete from matches
+		where profile_id = $1
+		  and applied_at is null
+		  and not (job_id = any($2::bigint[]))`, p.ID, ids); err != nil {
 		return 0, err
 	}
 	if len(ids) == 0 {

@@ -122,9 +122,10 @@ export const api = {
   /** Searches every stored job, not just one profile's matches — a search bar
    *  that hides jobs because they missed your keywords answers the wrong
    *  question. */
-  searchJobs: (q: string, locations: string[] = [], remote = false, cursor?: string) =>
+  searchJobs: (q: string, locations: string[] = [], remote = false,
+    sort: JobSort = 'posted', cursor?: string) =>
     request<{ jobs: Job[]; next_cursor?: string }>(
-      `/api/jobs?limit=50&q=${encodeURIComponent(q)}` +
+      `/api/jobs?limit=50&sort=${sort}&q=${encodeURIComponent(q)}` +
       locations.map((l) => `&location=${encodeURIComponent(l)}`).join('') +
       (remote ? '&remote=1' : '') +
       (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),

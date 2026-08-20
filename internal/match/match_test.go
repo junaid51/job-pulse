@@ -152,15 +152,24 @@ func TestKeywordAliases(t *testing.T) {
 		"Frontend Developer",
 		"Front-End Engineer",
 		"Senior React Engineer",
-		"Software Engineer, Payments",
 		"TypeScript Developer",
+		"Web Developer",
 	} {
 		if !Matches(frontend, providers.Job{Title: title}) {
 			t.Errorf("keywords=[Frontend] should match %q", title)
 		}
 	}
-	if Matches(frontend, providers.Job{Title: "Accountant"}) {
-		t.Error("keywords=[Frontend] must not match Accountant")
+	// Aliases name the same job; they do not widen a role into every role.
+	// "Software Engineer, Payments" is a backend job on most days, and a
+	// frontend search that returns it returns everything.
+	for _, title := range []string{
+		"Accountant",
+		"Software Engineer, Payments",
+		"Data Engineer",
+	} {
+		if Matches(frontend, providers.Job{Title: title}) {
+			t.Errorf("keywords=[Frontend] must not match %q", title)
+		}
 	}
 
 	backend := Criteria{Keywords: []string{"backend"}}
@@ -220,5 +229,61 @@ func TestNegativeKeywords(t *testing.T) {
 	// nothing — same contract as a list of blanks.
 	if Matches(Criteria{Keywords: []string{"-"}}, providers.Job{Title: "Anything"}) {
 		t.Error("a bare minus should match nothing, like a blank")
+	}
+}
+
+// The search bar reuses this: typing a role must reach the same jobs a profile
+// keyed on that role matched, or the two disagree about what "frontend" means.
+func TestKeywordTerms(t *testing.T) {
+	terms := KeywordTerms(" Frontend ")
+	if len(terms) < 2 || terms[0] != "frontend" {
+		t.Fatalf("KeywordTerms = %v, want the term itself first", terms)
+	}
+	var sawReact, sawGeneric bool
+	for _, term := range terms {
+		switch term {
+		case "react":
+			sawReact = true
+		case "software engineer":
+			sawGeneric = true
+		}
+	}
+	if !sawReact {
+		t.Error("frontend should expand to react")
+	}
+	if sawGeneric {
+		t.Error("frontend must not expand to a generic title")
+	}
+	if KeywordTerms("  ") != nil {
+		t.Error("a blank term expands to nothing")
+	}
+	if got := KeywordTerms("kubernetes engineer"); len(got) != 1 {
+		t.Errorf("an unknown phrase stays literal, got %v", got)
+	}
+}
+
+// Substring aliases are cheap but sharp: an alias short enough to hide inside
+// unrelated words hands the search jobs from another planet.
+func TestAliasesDoNotMatchUnrelatedWords(t *testing.T) {
+	mobile := Criteria{Keywords: []string{"mobile"}}
+	for _, title := range []string{
+		"Field Sales Executive - Kiosk",
+		"Producer, Ubisoft Studios",
+		"Radios and Broadcast Technician",
+	} {
+		if Matches(mobile, providers.Job{Title: title}) {
+			t.Errorf("keywords=[mobile] must not match %q", title)
+		}
+	}
+	for _, title := range []string{
+		"Software Engineer, iOS Core Product",
+		"Senior IOS Engineer",
+		"iOS Developer",
+		"Staff Android Engineer",
+		"React Native Engineer",
+	} {
+		if !Matches(mobile, providers.Job{Title: title}) {
+			t.Errorf("keywords=[mobile] should match %q", title)
+		}
 	}
 }

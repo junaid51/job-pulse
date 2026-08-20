@@ -90,8 +90,12 @@ POST   /api/poll                                   run a cycle now; returns its 
 ```
 
 Profile keywords match case-insensitive substrings, expanded through a small
-role dictionary ("frontend" also finds React and plain Software Engineer
-titles); a `-` prefix excludes (`designer, -senior`). Salaries are shown when a
+role dictionary ("frontend" also finds React and Angular titles, but not bare
+"Software Engineer" — an alias has to name the same job, not a wider one); a
+`-` prefix excludes (`designer, -senior`). The search bar expands the same way,
+so a profile and a typed query agree about what a role means. Matches are
+re-derived every cycle, so editing [aliases.go](internal/match/aliases.go) or a
+profile fixes what is already stored, not just what arrives next. Salaries are shown when a
 board publishes them. Creating or editing a profile backfills it against every
 job already stored, so it is never mysteriously empty. `/api/jobs` returns `next_cursor` when another
 page exists; pass it back as `cursor` and treat it as opaque.
@@ -144,6 +148,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site; unset = careerjet lines error quietly |
 | `JOBVEN_API_KEY` | *(unset)*                                                              | metered aggregator key; unset = jobven lines error quietly |
 | `JOBSPIPE_API_KEY` | *(unset)*                                                            | metered aggregator key; unset = jobspipe lines error quietly |
+| `APP_URL`        | `https://jobpulse-junaid.web.app`                                      | where a tapped notification opens |
 | `POSTGRES_PORT`  | `5432`                                                                 | host port published by Compose |
 
 ## Layout
