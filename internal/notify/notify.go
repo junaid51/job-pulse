@@ -127,21 +127,43 @@ func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs [
 	slog.Info("notification sent", "title", title, "devices", sent)
 }
 
-// send posts one message. The payload is deliberately just a title and a body:
-// the app refetches from the API rather than trusting anything in a push.
-func (n *Notifier) send(ctx context.Context, token, title, body string) error {
-	payload, err := json.Marshal(map[string]any{
+// buildMessage is the FCM HTTP v1 body. webpush.fcm_options.link is what makes
+// a tap open the notifications screen; the service worker handles it, so no
+// click handler of ours is involved.
+func buildMessage(token, title, body, link string) map[string]any {
+	return map[string]any{
 		"message": map[string]any{
 			"token":        token,
 			"notification": map[string]string{"title": title, "body": body},
+			"webpush": map[string]any{
+				"fcm_options": map[string]string{"link": link},
+			},
 		},
-	})
+	}
+}
+
+// appURL is where a tapped notification lands. Overridable because a fork
+// deploys somewhere else; the path is the notifications screen, since a push
+// that announces new matches and then opens the jobs list makes the reader
+// hunt for what it just told them about.
+func appURL() string {
+	if url := os.Getenv("APP_URL"); url != "" {
+		return strings.TrimSuffix(url, "/")
+	}
+	return "https://jobpulse-junaid.web.app"
+}
+
+// send posts one message. The payload is deliberately just a title, a body and
+// the link to open: the app refetches from the API rather than trusting
+// anything in a push.
+func (n *Notifier) send(ctx context.Context, token, title, body string) error {
+	payload, err := json.Marshal(buildMessage(token, title, body, appURL()+"/#/notifications"))
 	if err != nil {
 		return err
 	}
 
-	url := fmt.Sprintf("https://fcm.googleapis.com/v1/projects/%s/messages:send", n.projectID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	fcmURL := fmt.Sprintf("https://fcm.googleapis.com/v1/projects/%s/messages:send", n.projectID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fcmURL, bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}

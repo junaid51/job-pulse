@@ -60,10 +60,6 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 
 /* toolbar: search + sort */
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 18px 10px; }
-@media (max-width: 480px) {
-  .search { flex: 1 1 100%; }
-  .place { flex: 1; width: auto; }
-}
 .search {
   flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
   height: 36px; padding: 0 12px; border-radius: 10px;
@@ -477,3 +473,17 @@ mark.hit {
   transition: background 0.12s ease, color 0.12s ease;
 }
 .remote-toggle.on { background: var(--accent-soft); color: var(--accent); }
+
+/* Mobile toolbar: the search bar owns the first row and everything else sits
+   below it. This block lives at the end of the file on purpose — the base
+   .search rule is later in source than the old media query was, and won the
+   cascade, which is how the search box ended up sharing a row and shrinking. */
+@media (max-width: 560px) {
+  .toolbar { gap: 8px; }
+  .search { flex: 1 1 100%; order: 1; }
+  .place { flex: 1 1 140px; width: auto; order: 2; }
+  .remote-toggle { flex: none; order: 3; }
+  .save-search { flex: none; order: 4; }
+  .segment { flex: 1 1 100%; order: 5; }
+  .segment button { flex: 1; text-align: center; }
+}

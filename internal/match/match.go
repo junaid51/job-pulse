@@ -84,6 +84,18 @@ func keywordMatches(title string, wanted []string) bool {
 	return false
 }
 
+// KeywordTerms expands one keyword into every string worth substring-matching —
+// the term itself plus its role-dictionary entry. The search bar reuses it so
+// typing "frontend" finds the jobs a profile keyed on "frontend" matched,
+// instead of the strict subset whose title spells the word out.
+func KeywordTerms(raw string) []string {
+	needle := strings.ToLower(strings.TrimSpace(raw))
+	if needle == "" {
+		return nil
+	}
+	return append([]string{needle}, keywordAliases[needle]...)
+}
+
 // LocationTerms expands one location shorthand into every string worth
 // substring-matching — the needle itself plus its dictionary entry. The API
 // reuses it so a search filter behaves exactly like profile matching.

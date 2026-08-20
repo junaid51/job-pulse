@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,38 @@ const concurrency = 4
 // sweep existed, a still-listed old posting would be re-ingested next cycle
 // and re-announced forever.
 const maxJobAge = 45 * 24 * time.Hour
+
+// excludedLocations are places the owner has taken out of their hunt. Enforced
+// in the same two places maxJobAge is — the ingest filter and the sweep — and
+// for the same reason: if only the sweep knew, a still-listed posting would be
+// re-ingested and re-announced every cycle. Substring, case-insensitive, so
+// city names are listed alongside the country for the boards that write only
+// the city.
+var excludedLocations = []string{
+	"israel", "tel aviv", "tel-aviv", "jerusalem", "haifa", "herzliya",
+	"ramat gan", "petah tikva", "netanya", "ra'anana", "raanana", "rehovot",
+	"be'er sheva", "beer sheva", "yokneam", "caesarea",
+}
+
+// allowed reports whether a posting's location clears the exclusion list.
+func allowed(location string) bool {
+	location = strings.ToLower(location)
+	for _, term := range excludedLocations {
+		if strings.Contains(location, term) {
+			return false
+		}
+	}
+	return true
+}
+
+// excludedPatterns is the exclusion list as SQL ilike patterns, for the sweep.
+func excludedPatterns() []string {
+	patterns := make([]string, 0, len(excludedLocations))
+	for _, term := range excludedLocations {
+		patterns = append(patterns, "%"+term+"%")
+	}
+	return patterns
+}
 
 // minPollInterval slows selected providers down below the cycle cadence.
 // Aggregator APIs meter requests, and a search index refreshes far slower than
@@ -60,6 +93,7 @@ type Stats struct {
 	NewJobs    int   `json:"new_jobs"`
 	NewMatches int   `json:"new_matches"`
 	Removed    int64 `json:"removed"`
+	Pruned     int64 `json:"pruned"`
 }
 
 // Run polls immediately, then every interval until ctx is cancelled.
@@ -94,6 +128,7 @@ func logCycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier
 		"new_jobs", stats.NewJobs,
 		"new_matches", stats.NewMatches,
 		"removed", stats.Removed,
+		"pruned", stats.Pruned,
 		"duration", time.Since(start).Round(time.Millisecond).String(),
 	)
 }
@@ -168,9 +203,88 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	}
 	stats.Removed += tag.RowsAffected()
 
+	// The exclusion sweep, paired with the ingest filter above.
+	excluded, err := pool.Exec(ctx, `delete from jobs where location ilike any($1)`,
+		excludedPatterns())
+	if err != nil {
+		return stats, err
+	}
+	stats.Removed += excluded.RowsAffected()
+
+	// Matches are derived data, so every cycle re-derives them: editing the
+	// alias dictionary is meant to fix what a profile finds, and without this
+	// it would only affect jobs arriving afterwards while the stale matches sat
+	// in the feed forever.
+	pruned, err := reconcileMatches(ctx, pool, profiles)
+	if err != nil {
+		return stats, err
+	}
+	stats.Pruned = pruned
+
 	notifyProfiles(ctx, notifier, profiles, matched)
 
 	return stats, nil
+}
+
+// reconcileMatches brings stored matches back in line with what the profiles
+// mean today: matches whose job no longer satisfies its profile are dropped,
+// and jobs that now qualify are added. Additions here are silent — a widened
+// dictionary should not push a hundred notifications — and applied jobs are
+// never dropped, because that record belongs to the user, not the query.
+func reconcileMatches(ctx context.Context, pool *pgxpool.Pool, profiles []profile) (int64, error) {
+	if len(profiles) == 0 {
+		return 0, nil
+	}
+	rows, err := pool.Query(ctx, `select id, title, location, remote from jobs`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type stored struct {
+		id  int64
+		job providers.Job
+	}
+	var all []stored
+	for rows.Next() {
+		var s stored
+		if err := rows.Scan(&s.id, &s.job.Title, &s.job.Location, &s.job.Remote); err != nil {
+			return 0, err
+		}
+		all = append(all, s)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	var pruned int64
+	for _, p := range profiles {
+		ids := []int64{}
+		for _, s := range all {
+			if match.Matches(p.criteria, s.job) {
+				ids = append(ids, s.id)
+			}
+		}
+		tag, err := pool.Exec(ctx, `
+			delete from matches
+			where profile_id = $1
+			  and applied_at is null
+			  and not (job_id = any($2::bigint[]))`, p.id, ids)
+		if err != nil {
+			return pruned, err
+		}
+		pruned += tag.RowsAffected()
+		if len(ids) == 0 {
+			continue
+		}
+		if _, err := pool.Exec(ctx, `
+			insert into matches (profile_id, job_id)
+			select $1, id from unnest($2::bigint[]) as id
+			on conflict do nothing`, p.id, ids); err != nil {
+			return pruned, err
+		}
+	}
+	return pruned, nil
 }
 
 // dueNow drops boards whose provider has a minimum poll interval that has not
@@ -253,10 +367,14 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 }
 
 // youngEnough drops postings already past maxJobAge, so the sweep and the
-// ingest agree about what belongs in the database.
+// ingest agree about what belongs in the database. It applies the location
+// exclusions in the same pass, for the same reason.
 func youngEnough(jobs []providers.Job, now time.Time) []providers.Job {
 	kept := make([]providers.Job, 0, len(jobs))
 	for _, j := range jobs {
+		if !allowed(j.Location) {
+			continue
+		}
 		if j.PostedAt.IsZero() || now.Sub(j.PostedAt) < maxJobAge {
 			kept = append(kept, j)
 		}

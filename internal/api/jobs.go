@@ -54,13 +54,23 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
+		// The search term expands through the same role dictionary profile
+		// matching uses, so "frontend" finds React roles in both places.
+		titlePatterns := keywordPatterns(search)
+		// Company and location are searched too, but only for terms long
+		// enough to mean something there: "qa" would otherwise match every
+		// job in Qatar and at DigitalQatalyst.
+		rawPattern := ""
+		if len(search) >= 3 {
+			rawPattern = "%" + search + "%"
+		}
 		locations := locationPatterns(r)
 
 		// With a search term and no profile, the query runs over everything
 		// stored — a search bar that silently hides jobs because they missed
 		// your profile keywords answers a different question than the one asked.
 		if r.URL.Query().Get("profile_id") == "" && (search != "" || locations != nil) {
-			searchAllJobs(w, r, pool, search, locations, limit)
+			searchAllJobs(w, r, pool, titlePatterns, rawPattern, locations, sort, limit)
 			return
 		}
 
@@ -107,14 +117,13 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			where m.profile_id = $1
 			  and m.hidden_at is null`+extraWhere+`
 			  and ($2::timestamptz is null or (`+cursorExpr+`, j.id) < ($2, $3::bigint))
-			  and ($5 = '' or j.title ilike '%' || $5 || '%'
-			       or j.company ilike '%' || $5 || '%'
-			       or j.location ilike '%' || $5 || '%')
+			  and ($5::text[] is null or j.title ilike any($5)
+			       or ($9 <> '' and (j.company ilike $9 or j.location ilike $9)))
 			  and ($7::text[] is null or j.location ilike any($7))
 			  and (not $8 or j.remote)
 			order by `+cursorExpr+` desc, j.id desc
-			limit $4`, profileID, at, atID, limit, search, deviceID(r), locations,
-			r.URL.Query().Get("remote") == "1")
+			limit $4`, profileID, at, atID, limit, titlePatterns, deviceID(r), locations,
+			r.URL.Query().Get("remote") == "1", rawPattern)
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return
@@ -183,8 +192,27 @@ func locationPatterns(r *http.Request) []string {
 	return patterns
 }
 
-// searchAllJobs is the profile-free search: every live job, newest first.
-func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, search string, locations []string, limit int) {
+// keywordPatterns turns a search term into ilike patterns, expanded through the
+// role dictionary so the search bar and a profile keyed on the same word find
+// the same jobs.
+func keywordPatterns(search string) []string {
+	var patterns []string
+	for _, term := range match.KeywordTerms(search) {
+		patterns = append(patterns, "%"+term+"%")
+	}
+	return patterns
+}
+
+// searchAllJobs is the profile-free search over every stored job.
+//
+// It still left-joins this device's matches, because hunt state has to survive
+// a search: a job marked applied is marked applied wherever it appears. The
+// join is aggregated per job — several profiles can match one posting, and the
+// row must not multiply — which also makes sort=matched and sort=applied
+// meaningful here: "the ones my searches caught" and "the ones I applied to",
+// narrowed by whatever is typed.
+func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
+	titlePatterns []string, rawPattern string, locations []string, sort string, limit int) {
 	var at any
 	var atID any
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
@@ -195,22 +223,42 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool, s
 		}
 		at, atID = t, id
 	}
+
+	cursorExpr := `coalesce(j.posted_at, 'epoch'::timestamptz)`
+	extraWhere := ``
+	switch sort {
+	case "matched":
+		cursorExpr = `m.matched_at`
+		extraWhere = ` and m.matched_at is not null`
+	case "applied":
+		cursorExpr = `m.applied_at`
+		extraWhere = ` and m.applied_at is not null`
+	}
+
 	rows, err := pool.Query(r.Context(), `
-		select id, provider, company, title, location, remote, url,
-		       salary, posted_at, first_seen_at, null::timestamptz, false,
-		       null::timestamptz,
-		       coalesce(posted_at, 'epoch'::timestamptz) as cursor_at
-		from jobs
-		where ($1 = '' or title ilike '%' || $1 || '%'
-		   or company ilike '%' || $1 || '%'
-		   or location ilike '%' || $1 || '%')
-		  and ($5::text[] is null or location ilike any($5))
-		  and (not $6 or remote)
+		select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
+		       j.salary, j.posted_at, coalesce(m.matched_at, j.first_seen_at),
+		       m.seen_at, m.applied_at is not null, m.applied_at,
+		       `+cursorExpr+` as cursor_at
+		from jobs j
+		left join (
+			select mm.job_id,
+			       max(mm.created_at) as matched_at,
+			       max(mm.seen_at)    as seen_at,
+			       max(mm.applied_at) as applied_at
+			from matches mm
+			join profiles p on p.id = mm.profile_id and p.owner = $7
+			group by mm.job_id
+		) m on m.job_id = j.id
+		where ($1::text[] is null or j.title ilike any($1)
+		   or ($6 <> '' and (j.company ilike $6 or j.location ilike $6)))
+		  and ($5::text[] is null or j.location ilike any($5))
+		  and (not $8 or j.remote)`+extraWhere+`
 		  and ($3::timestamptz is null
-		       or (coalesce(posted_at, 'epoch'::timestamptz), id) < ($3, $4::bigint))
-		order by coalesce(posted_at, 'epoch'::timestamptz) desc, id desc
-		limit $2`, search, limit, at, atID, locations,
-		r.URL.Query().Get("remote") == "1")
+		       or (`+cursorExpr+`, j.id) < ($3, $4::bigint))
+		order by `+cursorExpr+` desc, j.id desc
+		limit $2`, titlePatterns, limit, at, atID, locations, rawPattern,
+		deviceID(r), r.URL.Query().Get("remote") == "1")
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return

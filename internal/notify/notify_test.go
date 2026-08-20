@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -153,5 +154,39 @@ func TestIsQuietHours(t *testing.T) {
 	}
 	if isQuietHours("Not/AZone", nightUTC) {
 		t.Error("an unparseable timezone must not eat notifications")
+	}
+}
+
+// A push that says "3 new jobs" has to open the screen listing them.
+func TestBuildMessageLinksToNotifications(t *testing.T) {
+	raw, err := json.Marshal(buildMessage("tok", "1 new job · UAE", "Careem",
+		"https://example.test/#/notifications"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Message struct {
+			Token        string            `json:"token"`
+			Notification map[string]string `json:"notification"`
+			Webpush      struct {
+				FCMOptions map[string]string `json:"fcm_options"`
+			} `json:"webpush"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if link := got.Message.Webpush.FCMOptions["link"]; link != "https://example.test/#/notifications" {
+		t.Errorf("webpush link = %q, want the notifications screen", link)
+	}
+	if got.Message.Notification["title"] != "1 new job · UAE" || got.Message.Token != "tok" {
+		t.Errorf("title and token must survive the build: %s", raw)
+	}
+}
+
+func TestAppURLTrimsTrailingSlash(t *testing.T) {
+	t.Setenv("APP_URL", "https://fork.example/")
+	if got := appURL(); got != "https://fork.example" {
+		t.Errorf("appURL() = %q, want no trailing slash", got)
 	}
 }

@@ -16,6 +16,19 @@ export function App() {
       (candidate) => location.hash.startsWith(`#/${candidate}`)) ?? 'jobs')
   useEffect(() => { location.hash = `#/${tab}` }, [tab])
 
+  // A tapped notification points at #/notifications. If the app was closed the
+  // initial state above reads it; if it was already open the service worker
+  // just changes the hash on the live window, and only this listener notices.
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = (['jobs', 'notifications', 'settings'] as const).find(
+        (candidate) => location.hash.startsWith(`#/${candidate}`))
+      if (next && next !== tab) setTab(next)
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [tab])
+
   const [push, setPush] = useState<PushState>('off')
   useEffect(() => { initPush().then(setPush) }, [])
 

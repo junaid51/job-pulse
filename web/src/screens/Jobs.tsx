@@ -130,9 +130,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
     || (profileId === null && debouncedPlace !== '')
 
   const feed = useInfiniteQuery({
-    queryKey: ['jobs', searching ? 'search' : profileId, searching ? term : sort, locations, remoteOnly],
+    queryKey: ['jobs', searching ? 'search' : 'profile',
+      searching ? term : profileId, sort, locations, remoteOnly],
     queryFn: ({ pageParam }) => searching
-      ? api.searchJobs(term, locations, remoteOnly, pageParam)
+      ? api.searchJobs(term, locations, remoteOnly, sort, pageParam)
       : api.jobs(profileId!, sort, locations, remoteOnly, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
@@ -189,12 +190,16 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   } else if (!rows) {
     list = <SkeletonList />
   } else if (rows.length === 0) {
-    list = searching || debouncedPlace
+    list = sort === 'applied'
+      ? <Empty title="Nothing marked applied" detail={searching || debouncedPlace
+          ? 'Nothing you have applied to matches this search.'
+          : "The check on a job row records where you've applied."} />
+      : searching || debouncedPlace
       ? <Empty title="Nothing here" detail={debouncedPlace
           ? `No ${searching ? 'results' : 'matches'} in “${debouncedPlace}” — shorthands like uae and uk are understood.`
           : 'Search covers every live job the boards currently list.'} />
-      : sort === 'applied'
-        ? <Empty title="Nothing marked applied" detail="The check on a job row records where you've applied." />
+      : sort === 'matched'
+        ? <Empty title="Nothing matched yet" detail="Your searches have not caught anything with this filter." />
         : (
           <Empty
             title="Nothing matched yet"
@@ -206,16 +211,22 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   } else {
     // The two datasets look identical row by row, so the frame has to say
     // which one is on screen: the profile's matches, or the whole corpus.
-    const scope = searching
-      ? 'every job from every board'
-      : sort === 'applied' ? 'jobs you applied to' : `your “${profileName}” matches`
+    const scope = sort === 'applied'
+      ? 'jobs you applied to'
+      : searching
+        ? (sort === 'matched' ? 'jobs your searches caught' : 'every job from every board')
+        : `your “${profileName}” matches`
     list = (
       <>
         {searching && (
           <p className="scope-note">
-            {profileId === null
-              ? 'Searching every job from every board. Tap Save to turn this into a standing search.'
-              : 'Searching every job from every board — not just your matches.'}
+            {sort === 'applied'
+              ? 'Searching the jobs you marked applied.'
+              : sort === 'matched'
+                ? 'Searching the jobs your saved searches caught.'
+                : profileId === null
+                  ? 'Searching every job from every board. Tap Save to turn this into a standing search.'
+                  : 'Searching every job from every board — not just your matches.'}
           </p>
         )}
         <div ref={listRef} className="list virtual"
@@ -225,7 +236,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
               className="vrow"
               style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}>
               <JobRow job={rows[item.index]} actions highlight={highlight}
-                ageOf={sort === 'applied' && !searching ? 'applied' : 'posted'} />
+                ageOf={sort === 'applied' ? 'applied' : 'posted'} />
             </div>
           ))}
         </div>
@@ -300,7 +311,9 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
             + Save
           </button>
         )}
-        {searching || profileId === null ? null : (
+        {/* The views stay put while searching: a control that vanishes as you
+            type takes your place in the app with it. */}
+        {profileId === null && !searching ? null : (
           <div className="segment" role="tablist" aria-label="View">
             <button role="tab" aria-selected={sort === 'posted'}
               className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>

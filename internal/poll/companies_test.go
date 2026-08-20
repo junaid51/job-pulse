@@ -103,3 +103,35 @@ func TestYoungEnough(t *testing.T) {
 		t.Errorf("youngEnough kept %v, want %v", kept, want)
 	}
 }
+
+// Excluded locations are dropped at ingest and swept from storage; if only one
+// side knew, a still-listed posting would be re-ingested every cycle.
+func TestExcludedLocations(t *testing.T) {
+	now := time.Now()
+	jobs := []providers.Job{
+		{Title: "Backend Engineer", Location: "Tel Aviv, Israel"},
+		{Title: "Backend Engineer", Location: "Herzliya"},
+		{Title: "Backend Engineer", Location: "Remote - Israel"},
+		{Title: "Backend Engineer", Location: "Dubai, United Arab Emirates"},
+		{Title: "Backend Engineer", Location: "Remote"},
+	}
+	var kept []string
+	for _, j := range youngEnough(jobs, now) {
+		kept = append(kept, j.Location)
+	}
+	want := []string{"Dubai, United Arab Emirates", "Remote"}
+	if fmt.Sprint(kept) != fmt.Sprint(want) {
+		t.Errorf("youngEnough kept %v, want %v", kept, want)
+	}
+
+	// Every ingest-filtered term must also be sweepable, or storage and ingest
+	// disagree about the same posting.
+	if len(excludedPatterns()) != len(excludedLocations) {
+		t.Error("the sweep must cover every excluded term")
+	}
+	for i, pattern := range excludedPatterns() {
+		if pattern != "%"+excludedLocations[i]+"%" {
+			t.Errorf("pattern %q does not wrap %q", pattern, excludedLocations[i])
+		}
+	}
+}

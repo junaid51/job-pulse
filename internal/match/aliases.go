@@ -4,10 +4,15 @@
 package match
 
 // keywordAliases expands common role names into the words job titles actually
-// use. "Frontend" should find "React Engineer" and plain "Software Engineer",
-// because those are the same job wearing different titles. Deliberately a
-// small curated dictionary: no AI, no embeddings, no fuzzy matching — an entry
-// earns its place when a real search misses real jobs.
+// use: "frontend" should find "React Engineer", because that is the same job
+// wearing a different title. Deliberately a small curated dictionary: no AI,
+// no embeddings, no fuzzy matching — an entry earns its place when a real
+// search misses real jobs.
+//
+// Every alias must be a title a person searching the key would actually want.
+// Generic titles are therefore banned: "frontend" once expanded to bare
+// "software engineer", which handed a frontend search every backend, data and
+// embedded job in the corpus. A generic title is still reachable — type it.
 //
 // Substring matching does the stemming for free: "react" also matches
 // "reactjs", "node" matches "nodejs". Short aliases cut both ways — "java"
@@ -15,27 +20,40 @@ package match
 // dictionary instead of a language model.
 var keywordAliases = map[string][]string{
 	"frontend": {
-		"front-end", "front end",
-		"software engineer", "software developer",
-		"react", "javascript", "typescript", "angular", "vue",
-		"web developer",
+		"front-end", "front end", "front‑end",
+		"react", "angular", "vue", "svelte", "nextjs", "next.js",
+		"javascript", "typescript",
+		"web developer", "web engineer", "ui engineer", "ui developer",
 	},
 	"backend": {
 		"back-end", "back end",
-		"software engineer", "software developer",
-		"golang", "java", "spring", "node", "python",
+		"golang", "java", "spring", "node", "python", "django", "rails",
+		"api engineer", "api developer",
 	},
-	"full stack": {
-		"full-stack", "fullstack",
-		"software engineer", "software developer",
+	"full stack": {"full-stack", "fullstack", "mern", "mean stack"},
+	"full-stack": {"full stack", "fullstack", "mern", "mean stack"},
+	"fullstack":  {"full stack", "full-stack", "mern", "mean stack"},
+	"mobile": {
+		// "ios" cannot ride alone: as a substring it also spells Kiosk,
+		// Studios and Radios. A leading space or a following noun anchors it.
+		" ios", "ios developer", "ios engineer", "ios app",
+		"android", "react native", "flutter", "swift", "kotlin",
 	},
-	"full-stack": {
-		"full stack", "fullstack",
-		"software engineer", "software developer",
+	"devops": {
+		"sre", "site reliability", "platform engineer", "kubernetes",
+		"infrastructure engineer", "cloud engineer",
 	},
-	"fullstack": {
-		"full stack", "full-stack",
-		"software engineer", "software developer",
+	"data": {
+		"data engineer", "data scientist", "analytics engineer",
+		"machine learning", "ml engineer",
+	},
+	"design": {
+		"designer", "ui/ux", "ux", "product designer", "graphic designer",
+	},
+	"product": {"product manager", "product owner", "technical program manager"},
+	"qa": {
+		"quality assurance", "test engineer", "sdet", "automation engineer",
+		"tester",
 	},
 }
 
