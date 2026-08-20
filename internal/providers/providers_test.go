@@ -327,3 +327,32 @@ func equalJob(got, want Job) bool {
 		got.Salary == want.Salary &&
 		got.PostedAt.Equal(want.PostedAt)
 }
+
+// A single hourly rate (20.88) used to abort the decode for the entire
+// Himalayas board, so the salary fields are floats and print like money.
+func TestHimalayasSalaryHandlesFractionalRates(t *testing.T) {
+	raw := []byte(`{"jobs":[
+		{"guid":"a","title":"Contract Engineer","companyName":"Acme",
+		 "applicationLink":"https://x.test/a","locationRestrictions":["India"],
+		 "minSalary":20.88,"maxSalary":31.5,"currency":"USD","salaryPeriod":"hour","pubDate":1787142855},
+		{"guid":"b","title":"Staff Engineer","companyName":"Acme",
+		 "applicationLink":"https://x.test/b","locationRestrictions":[],
+		 "minSalary":180000,"maxSalary":220000,"currency":"USD","salaryPeriod":"year","pubDate":1787142855},
+		{"guid":"c","title":"No Salary","companyName":"Acme",
+		 "applicationLink":"https://x.test/c","locationRestrictions":null,
+		 "minSalary":null,"maxSalary":null,"currency":null,"salaryPeriod":"year","pubDate":1787142855}
+	]}`)
+	var feed himalayasFeed
+	if err := json.Unmarshal(raw, &feed); err != nil {
+		t.Fatalf("a fractional rate must not break the board: %v", err)
+	}
+	if len(feed.Jobs) != 3 {
+		t.Fatalf("parsed %d jobs, want 3", len(feed.Jobs))
+	}
+	if got := money(feed.Jobs[0].MinSalary); got != "20.88" {
+		t.Errorf("hourly rate = %q, want 20.88", got)
+	}
+	if got := money(feed.Jobs[1].MinSalary); got != "180000" {
+		t.Errorf("annual band = %q, want no decimals", got)
+	}
+}

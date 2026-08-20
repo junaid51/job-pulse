@@ -3,6 +3,8 @@ package providers
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -17,11 +19,14 @@ type himalayasFeed struct {
 		Company      string   `json:"companyName"`
 		Application  string   `json:"applicationLink"`
 		Restrictions []string `json:"locationRestrictions"`
-		MinSalary    int64    `json:"minSalary"`
-		MaxSalary    int64    `json:"maxSalary"`
-		Currency     string   `json:"currency"`
-		SalaryPeriod string   `json:"salaryPeriod"`
-		PubDate      int64    `json:"pubDate"`
+		// Floats, not integers: an hourly posting reads 20.88, and an int64
+		// here aborts the decode for the whole board — one contractor rate
+		// used to take the entire feed down.
+		MinSalary    float64 `json:"minSalary"`
+		MaxSalary    float64 `json:"maxSalary"`
+		Currency     string  `json:"currency"`
+		SalaryPeriod string  `json:"salaryPeriod"`
+		PubDate      int64   `json:"pubDate"`
 	} `json:"jobs"`
 }
 
@@ -38,7 +43,8 @@ func fetchHimalayas(ctx context.Context, _ string) ([]Job, error) {
 		}
 		var salary string
 		if j.MinSalary > 0 && j.MaxSalary > 0 {
-			salary = fmt.Sprintf("%s %d–%d / %s", j.Currency, j.MinSalary, j.MaxSalary, j.SalaryPeriod)
+			salary = strings.TrimSpace(fmt.Sprintf("%s %s–%s / %s", j.Currency,
+				money(j.MinSalary), money(j.MaxSalary), j.SalaryPeriod))
 		}
 		jobs = append(jobs, Job{
 			ExternalID: j.GUID,
@@ -52,4 +58,13 @@ func fetchHimalayas(ctx context.Context, _ string) ([]Job, error) {
 		})
 	}
 	return jobs, nil
+}
+
+// money prints a salary figure the way the posting wrote it: whole numbers for
+// annual bands, cents for the hourly rates that come as fractions.
+func money(v float64) string {
+	if v == math.Trunc(v) {
+		return strconv.FormatFloat(v, 'f', 0, 64)
+	}
+	return strconv.FormatFloat(v, 'f', 2, 64)
 }
