@@ -287,3 +287,70 @@ func TestAliasesDoNotMatchUnrelatedWords(t *testing.T) {
 		}
 	}
 }
+
+// The engineering management track: product and delivery titles reach each
+// other, and an abbreviation is matched by what it stands for rather than by
+// the words it hides inside.
+func TestManagementRoleAliases(t *testing.T) {
+	product := Criteria{Keywords: []string{"product"}}
+	for _, title := range []string{
+		"Product Manager, Cards",
+		"Technical Product Owner",
+		"Group Product Manager - Payments",
+		"Head of Product",
+	} {
+		if !Matches(product, providers.Job{Title: title}) {
+			t.Errorf("keywords=[product] should match %q", title)
+		}
+	}
+
+	pm := Criteria{Keywords: []string{"pm"}}
+	for _, title := range []string{"Product Manager", "Technical Program Manager", "Delivery Manager"} {
+		if !Matches(pm, providers.Job{Title: title}) {
+			t.Errorf("keywords=[pm] should match %q", title)
+		}
+	}
+	// The literal "pm" spells the middle of "development" and "employment".
+	for _, title := range []string{"Business Development Executive", "Employment Lawyer"} {
+		if Matches(pm, providers.Job{Title: title}) {
+			t.Errorf("keywords=[pm] must not match %q", title)
+		}
+	}
+
+	qa := Criteria{Keywords: []string{"qa"}}
+	for _, title := range []string{"QA Engineer", "Senior QA Analyst", "SDET Engineer", "Quality Assurance Lead"} {
+		if !Matches(qa, providers.Job{Title: title}) {
+			t.Errorf("keywords=[qa] should match %q", title)
+		}
+	}
+	// The literal "qa" is the first half of Qatar.
+	if Matches(qa, providers.Job{Title: "Reporting Officer - Qatar"}) {
+		t.Error("keywords=[qa] must not match a job in Qatar")
+	}
+
+	// An engineering manager search is not a sales search.
+	em := Criteria{Keywords: []string{"engineering manager"}}
+	if !Matches(em, providers.Job{Title: "Engineering Manager, Build"}) {
+		t.Error("keywords=[engineering manager] should match Engineering Manager, Build")
+	}
+	for _, title := range []string{
+		"Business Development Manager",
+		"Senior Business Development Manager (Amsterdam)",
+	} {
+		if Matches(em, providers.Job{Title: title}) {
+			t.Errorf("keywords=[engineering manager] must not match %q", title)
+		}
+	}
+
+	// "product owner" reaches the manager titles the same job wears.
+	if !Matches(Criteria{Keywords: []string{"product owner"}},
+		providers.Job{Title: "Senior Product Manager, Lending"}) {
+		t.Error("keywords=[product owner] should reach Product Manager titles")
+	}
+
+	// A longer key keeps its literal: "agile" is a word, not an abbreviation.
+	if !Matches(Criteria{Keywords: []string{"agile"}},
+		providers.Job{Title: "Agile Delivery Lead"}) {
+		t.Error("keywords=[agile] should match Agile Delivery Lead")
+	}
+}

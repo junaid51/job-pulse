@@ -74,9 +74,14 @@ var minPollInterval = map[string]time.Duration{
 	"jobicy":    time.Hour,
 	// Metered: ~700 calls/month free; four searches at this cadence use ~480.
 	"jobven": 6 * time.Hour,
-	// Metered in jobs returned (1,000/month free); the shipped search measures
-	// ~250/month at this cadence.
-	"jobspipe": 12 * time.Hour,
+	// Metered in jobs returned, a thousand a month on the free tier, and the
+	// arithmetic decides the cadence: three searches hold roughly 220 fresh
+	// postings a month between them, and a two-day window fetches each one
+	// once per poll, so daily polling costs about 440 credits and twice-daily
+	// would cost 880 of the 1,000. A day's delay on the subset of postings
+	// only this provider carries is the cheaper mistake — running the tier dry
+	// mid-month would cost all of them.
+	"jobspipe": 24 * time.Hour,
 }
 
 // ErrBusy is returned when a cycle is already running.
