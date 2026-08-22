@@ -75,7 +75,6 @@ jobicy             dev           Jobicy
 jobven             dubai            Jobven
 jobven             saudi+arabia     Jobven
 jobven             india            Jobven
-jobven             remote           Jobven
 
 # JobsPipe: scraped-board aggregator (JOBSPIPE_API_KEY), metered per job returned
 jobspipe           ae,sa|frontend,front+end,backend,back+end,full+stack,fullstack,mobile+developer,mobile+engineer,ios,android,react,devops,software+engineer,ui/ux,product+designer,-civil,-sales,-mechanic,-electrical,-technician  JobsPipe
@@ -226,3 +225,15 @@ ashby              livekit                      LiveKit
 ashby              camunda                      Camunda
 ashby              coder                        Coder
 ashby              nomic.ai                     Nomic AI
+
+# Gulf sweep: 140 employers probed across all seven platforms, six reachable.
+# The low yield is the finding — Gulf enterprises run Workday, SuccessFactors
+# and Taleo, which are walled, and a probe of thirty guessed Phenom career
+# hosts returned only the one already watched. Dubizzle was found again and
+# skipped again: its newest posting is from 2023.
+workable           robusta                      Robusta
+teamtailor         gmg                          GMG
+workable           agility                      Agility
+smartrecruiters    masdar                       Masdar
+teamtailor         rasan                        Rasan
+lever              fresha                       Fresha
