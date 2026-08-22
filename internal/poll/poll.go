@@ -176,6 +176,16 @@ func boardInterval(c Company) (time.Duration, bool) {
 	return interval, metered
 }
 
+// reconcileEvery bounds how often matches are re-derived from scratch. The
+// pass reads every stored job, which at five-minute polling came to four
+// gigabytes a month of the same rows — real money on a metered database and
+// seconds added to every cycle. It exists to heal criteria that changed, not
+// to find new jobs (ingest does that on every cycle), so an hour is soon
+// enough. Resetting on restart is deliberate: a deploy usually is the change.
+const reconcileEvery = time.Hour
+
+var lastReconcile time.Time
+
 // ErrBusy is returned when a cycle is already running.
 var ErrBusy = errors.New("poll already in progress")
 
@@ -342,11 +352,14 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	// alias dictionary is meant to fix what a profile finds, and without this
 	// it would only affect jobs arriving afterwards while the stale matches sat
 	// in the feed forever.
-	pruned, err := reconcileMatches(ctx, pool, profiles)
-	if err != nil {
-		return stats, err
+	if time.Since(lastReconcile) >= reconcileEvery {
+		pruned, err := reconcileMatches(ctx, pool, profiles)
+		if err != nil {
+			return stats, err
+		}
+		stats.Pruned = pruned
+		lastReconcile = time.Now()
 	}
-	stats.Pruned = pruned
 
 	// A notification problem must not fail the cycle: the jobs are stored, and
 	// the queue below retries the announcement next time round.
