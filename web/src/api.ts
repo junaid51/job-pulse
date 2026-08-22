@@ -151,6 +151,15 @@ export const api = {
       }),
     }),
 
+  /** What the server knows about this browser's push: the browser's own
+   *  permission says nothing about whether a usable token ever reached us. */
+  pushStatus: () => request<{
+    registered: boolean; devices: number; timezone?: string; last_notified_at?: string
+  }>('/api/devices/status'),
+
+  /** Proves the whole chain in one tap. */
+  testPush: () => request<{ sent: number }>('/api/devices/test', { method: 'POST' }),
+
   // Best effort: a deployed backend reserves this for its cron and answers 401.
   poll: () => request<unknown>('/api/poll', { method: 'POST' }),
 

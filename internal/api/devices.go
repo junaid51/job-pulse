@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/junaid51/job-pulse/internal/notify"
 )
 
 // registerDevice stores an FCM registration token so the poller knows where to
@@ -42,5 +45,47 @@ func registerDevice(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// deviceStatus answers what the server knows about this browser's push setup.
+// The app could only ever report the browser's own permission, which says
+// nothing about whether a usable token reached us — so a token that expired
+// weeks ago was indistinguishable from a quiet week.
+func deviceStatus(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var (
+			count    int
+			timezone *string
+			last     *time.Time
+		)
+		err := pool.QueryRow(r.Context(), `
+			select count(*), max(timezone), max(last_notified_at)
+			from devices where owner = $1`, deviceID(r)).Scan(&count, &timezone, &last)
+		if err != nil {
+			serverError(w, "reading device status", err)
+			return
+		}
+		body := map[string]any{"registered": count > 0, "devices": count}
+		if timezone != nil {
+			body["timezone"] = *timezone
+		}
+		if last != nil {
+			body["last_notified_at"] = *last
+		}
+		writeJSON(w, http.StatusOK, body)
+	}
+}
+
+// testDevice pushes one message to this browser's devices, proving the chain
+// end to end without waiting for a job to appear.
+func testDevice(notifier *notify.Notifier) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sent, err := notifier.SendTest(r.Context(), deviceID(r))
+		if err != nil {
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
 	}
 }

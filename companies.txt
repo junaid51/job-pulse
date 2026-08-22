@@ -144,3 +144,25 @@ greenhouse         goguardian                   Goguardian
 smartrecruiters    KanadeviaInova               Kanadeviainova
 ashby              ambient.ai                   Ambient Ai
 greenhouse         encora10                     Encora10
+
+# Second discovery sweep. The big three here are throttled to hourly (see
+# heavyBoards): they page 100 at a time, so ServiceNow costs six requests and
+# 1.4 MB a poll, Experian five, Intuitive seven. Worth it at 40-63 in-market
+# jobs each. Skipped again on cost: OpenAI's board is 12.4 MB per fetch and
+# Airwallex 10.4 MB — nine gigabytes a month apiece even hourly, for twelve and
+# nine in-market jobs. Skipped again on noise: Domino's, Accor, AECOM, SGS,
+# Anduril, Syngenta, Avery Dennison, Alliance Animal Health.
+smartrecruiters    ServiceNow                   ServiceNow
+smartrecruiters    Experian                     Experian
+smartrecruiters    Intuitive                    Intuitive Surgical
+greenhouse         launchdarkly                 LaunchDarkly
+greenhouse         stackadapt                   StackAdapt
+greenhouse         apolloio                     Apollo.io
+greenhouse         startree                     StarTree
+greenhouse         humaninterest                Human Interest
+greenhouse         myriad360                    Myriad360
+greenhouse         plootocareers                Plooto
+ashby              replit                       Replit
+ashby              terac                        Terac
+smartrecruiters    Acumatica                    Acumatica
+smartrecruiters    Promptcloud                  PromptCloud
