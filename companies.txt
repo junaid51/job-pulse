@@ -90,3 +90,57 @@ jobicy             management   Jobicy
 jobicy             supporting   Jobicy
 jobspipe           ae,sa|business+analyst,data+analyst,business+intelligence,product+owner,systems+analyst,reporting+analyst,functional+consultant  JobsPipe
 jobspipe           ae,sa|product+manager,product+owner,technical+product+manager,technical+program+manager,program+manager,delivery+manager,scrum+master,agile+coach,engineering+manager,-civil,-construction,-mechanical,-fmcg,-food  JobsPipe
+
+# Discovered from our own corpus: every one of these companies reached us
+# through an aggregator, hours or days after posting. Watching their boards
+# directly turns that into one poll cycle. Each was probed before inclusion and
+# kept only if it currently lists jobs in the Gulf, India or worldwide-remote,
+# and only if the board is small enough to fetch often — Domino's (24,578
+# postings), Accor (5,899) and AECOM (4,978) are mass hiring of store, hotel
+# and site staff, which would bury the feed and cost megabytes a cycle.
+greenhouse         purestorage                  Purestorage
+greenhouse         point72                      Point72
+lever              extremenetworks              Extremenetworks
+greenhouse         appian                       Appian
+smartrecruiters    InformaGroupPlc              Informagroupplc
+greenhouse         precisionmedicinegroup       Precisionmedicinegroup
+ashby              riveron                      Riveron
+ashby              snowflake                    Snowflake
+greenhouse         freshprints                  Freshprints
+lever              bpmcpa                       Bpmcpa
+greenhouse         scopely                      Scopely
+greenhouse         neweratech                   Neweratech
+greenhouse         okx                          Okx
+greenhouse         twilio                       Twilio
+ashby              elevenlabs                   Elevenlabs
+ashby              jellyfishcareers             Jellyfishcareers
+greenhouse         litify                       Litify
+smartrecruiters    TheracareINC                 Theracareinc
+greenhouse         6sense                       6Sense
+greenhouse         blinkhealth                  Blinkhealth
+smartrecruiters    Grab                         Grab
+greenhouse         cresta                       Cresta
+greenhouse         veristainc                   Veristainc
+smartrecruiters    SoftwareMind                 Softwaremind
+smartrecruiters    Xplor                        Xplor
+smartrecruiters    Canva                        Canva
+ashby              oneapp                       Oneapp
+greenhouse         globalizationpartners        Globalizationpartners
+greenhouse         behavox                      Behavox
+smartrecruiters    Dungarvin                    Dungarvin
+greenhouse         taketwo                      Taketwo
+ashby              cohere                       Cohere
+ashby              deepgram                     Deepgram
+ashby              junipersquare                Junipersquare
+ashby              demandbase                   Demandbase
+ashby              delinea                      Delinea
+ashby              finni-health                 Finni Health
+ashby              tilthq                       Tilthq
+greenhouse         gomotive                     Gomotive
+smartrecruiters    PSLogistics                  Pslogistics
+ashby              abby-care                    Abby Care
+greenhouse         beyondtrust                  Beyondtrust
+greenhouse         goguardian                   Goguardian
+smartrecruiters    KanadeviaInova               Kanadeviainova
+ashby              ambient.ai                   Ambient Ai
+greenhouse         encora10                     Encora10

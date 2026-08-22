@@ -148,6 +148,27 @@ var minPollInterval = map[string]time.Duration{
 	"jobspipe": 24 * time.Hour,
 }
 
+// heavyBoards are polled hourly rather than every cycle. Ashby inlines every
+// description and offers no way to ask it not to, so these boards answer with
+// megabytes: Snowflake is 4.7 MB, ElevenLabs 3.4, Cohere 2.4. At a five-minute
+// cadence that is forty gigabytes a month for one company. An hour behind on a
+// big employer is still hours ahead of the aggregator that used to carry them.
+var heavyBoards = map[string]time.Duration{
+	"ashby:snowflake":  time.Hour,
+	"ashby:elevenlabs": time.Hour,
+	"ashby:cohere":     time.Hour,
+}
+
+// boardInterval is the minimum gap between polls of one board: the provider's
+// own limit, or a longer one for a board too expensive to fetch every cycle.
+func boardInterval(c Company) (time.Duration, bool) {
+	if interval, heavy := heavyBoards[c.Provider+":"+c.Slug]; heavy {
+		return interval, true
+	}
+	interval, metered := minPollInterval[c.Provider]
+	return interval, metered
+}
+
 // ErrBusy is returned when a cycle is already running.
 var ErrBusy = errors.New("poll already in progress")
 
@@ -384,10 +405,13 @@ func dueNow(companies []Company, now time.Time) []Company {
 	// while each still keeps its own interval.
 	taken := map[string]bool{}
 	for _, c := range companies {
-		interval, metered := minPollInterval[c.Provider]
-		if metered && c.LastPolledAt != nil && now.Sub(*c.LastPolledAt) < interval {
+		interval, limited := boardInterval(c)
+		if limited && c.LastPolledAt != nil && now.Sub(*c.LastPolledAt) < interval {
 			continue
 		}
+		// One board per cycle applies to metered providers, whose rate limits
+		// are per key; a heavy board is only heavy for itself.
+		_, metered := minPollInterval[c.Provider]
 		if metered {
 			if taken[c.Provider] {
 				continue
