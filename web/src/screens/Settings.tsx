@@ -6,6 +6,7 @@ import { providerLabel, shortAgo } from '../format'
 import { useQuery } from '@tanstack/react-query'
 import { invalidate } from '../query'
 import { enablePush, type PushState } from '../push'
+import { showToast } from '../toast'
 
 export function Settings({ push, setPush }: { push: PushState; setPush: (s: PushState) => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
@@ -44,6 +45,7 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
 
       <h2 className="section-h">Notifications</h2>
       <div className="kv"><span>Push</span><span className="kv-value">{describePush(push)}</span></div>
+      <PushHealth enabled={push === 'on'} />
       {push !== 'on' && (
         <div className="pad stack">
           <button
@@ -110,6 +112,57 @@ function Boards() {
           </span>
         </div>
       ))}
+    </>
+  )
+}
+
+/** What the server actually knows, as opposed to what the browser reports.
+ *  A token can expire silently, and until this existed the only symptom was
+ *  alerts quietly never arriving. */
+function PushHealth({ enabled }: { enabled: boolean }) {
+  const status = useQuery({ queryKey: ['push-status'], queryFn: api.pushStatus })
+  const [testing, setTesting] = useState(false)
+  if (!status.data) return null
+  const { registered, last_notified_at, timezone } = status.data
+  return (
+    <>
+      <div className="kv">
+        <span>Server has a token</span>
+        <span className="kv-value">{registered ? 'Yes' : 'No — alerts cannot arrive'}</span>
+      </div>
+      {registered && (
+        <div className="kv">
+          <span>Last alert delivered</span>
+          <span className="kv-value">
+            {last_notified_at ? shortAgo(last_notified_at) + ' ago' : 'never yet'}
+          </span>
+        </div>
+      )}
+      {timezone && (
+        <div className="kv"><span>Quiet hours</span><span className="kv-value">22:00–08:00 {timezone}</span></div>
+      )}
+      {registered && enabled && (
+        <div className="pad">
+          <button
+            className="btn-tonal wide"
+            disabled={testing}
+            onClick={async () => {
+              setTesting(true)
+              try {
+                await api.testPush()
+                showToast('Test sent — it should arrive within a second or two')
+                invalidate('push-status')
+              } catch (error) {
+                showToast(describeError(error))
+              } finally {
+                setTesting(false)
+              }
+            }}
+          >
+            {testing ? 'Sending…' : 'Send a test notification'}
+          </button>
+        </div>
+      )}
     </>
   )
 }

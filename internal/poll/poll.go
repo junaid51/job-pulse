@@ -22,18 +22,20 @@ import (
 // someone else's public API and a poll has fifteen minutes to finish.
 const concurrency = 4
 
-// maxJobAge is how old a posting can be and still be worth applying to. It
-// rules in two places that must agree: postings older than this never enter
-// the database, and stored jobs are deleted once they cross it — if only the
-// sweep existed, a still-listed old posting would be re-ingested next cycle
-// and re-announced forever.
-const maxJobAge = 45 * 24 * time.Hour
+// maxJobAge is how old a posting can be and still be worth applying to. Two
+// weeks: past that the early applicants have been through a screen already,
+// and this app exists to be early. It rules in two places that must agree —
+// postings older than this never enter the database, and stored jobs are
+// deleted once they cross it. If only the sweep existed, a still-listed old
+// posting would be re-ingested next cycle and re-announced forever.
+const maxJobAge = 14 * 24 * time.Hour
 
-// maxAggregatorJobAge is the same rule, shortened, for providers that serve a
-// window rather than a board. Absence proves nothing there — a posting closed
-// last week looks exactly like one still open — so the only defence against
-// dead listings is to trust them for less time.
-const maxAggregatorJobAge = 21 * 24 * time.Hour
+// maxAggregatorJobAge is the same rule, shortened again, for providers that
+// serve a window rather than a board. Absence proves nothing there — a posting
+// closed last week looks exactly like one still open — so the only defence
+// against dead listings is to trust them for less time. One week costs almost
+// nothing: these providers are asked for the last two or three days anyway.
+const maxAggregatorJobAge = 7 * 24 * time.Hour
 
 // ageLimit is how long a posting from this provider is worth keeping.
 func ageLimit(provider string) time.Duration {
@@ -157,6 +159,11 @@ var heavyBoards = map[string]time.Duration{
 	"ashby:snowflake":  time.Hour,
 	"ashby:elevenlabs": time.Hour,
 	"ashby:cohere":     time.Hour,
+	// SmartRecruiters pages a hundred at a time, so a large board is expensive
+	// in requests as much as bytes: ServiceNow is six round trips and 1.4 MB.
+	"smartrecruiters:ServiceNow": time.Hour,
+	"smartrecruiters:Experian":   time.Hour,
+	"smartrecruiters:Intuitive":  time.Hour,
 }
 
 // boardInterval is the minimum gap between polls of one board: the provider's
@@ -296,6 +303,22 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 		return stats, err
 	}
 	stats.Removed += staleAggregated.RowsAffected()
+
+	// Orphan sweep: a board removed from companies.txt stops being polled, but
+	// its jobs used to sit in the corpus until they aged out — up to a
+	// fortnight of listings from a source we deliberately stopped trusting.
+	// Rows from before the slug column are exempt; they are claimed by their
+	// board when re-seen, and age out on their own if never claimed.
+	orphans, err := pool.Exec(ctx, `
+		delete from jobs j
+		where j.slug <> ''
+		  and not exists (
+			select 1 from companies c
+			where c.provider = j.provider and c.slug = j.slug)`)
+	if err != nil {
+		return stats, err
+	}
+	stats.Removed += orphans.RowsAffected()
 
 	// The reachability sweep, paired with the remote-feed filter at ingest.
 	unreachable, err := pool.Exec(ctx, `

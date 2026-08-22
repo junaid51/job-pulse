@@ -122,6 +122,7 @@ func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs [
 		switch err := n.send(ctx, token, title, body); {
 		case err == nil:
 			sent++
+			n.recordDelivery(ctx, token)
 		case isTokenDead(err):
 			// The app was uninstalled or the token rotated. Forget it.
 			n.forget(ctx, token)
@@ -137,6 +138,53 @@ func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs [
 	// Nothing went out. Retry only if something might change: a device asleep
 	// or an error that could pass. Every token being dead is not retryable.
 	return deferred == 0 && failed == 0
+}
+
+// recordDelivery stamps a token with the moment a push actually reached it, so
+// the app can show the reader when they were last alerted rather than making
+// them guess whether the chain is working.
+func (n *Notifier) recordDelivery(ctx context.Context, token string) {
+	if n.pool == nil {
+		return
+	}
+	if _, err := n.pool.Exec(ctx,
+		`update devices set last_notified_at = now() where token = $1`, token); err != nil {
+		slog.Error("recording delivery", "error", err)
+	}
+}
+
+// SendTest pushes a single message to every device of one owner, bypassing the
+// match queue and quiet hours. It exists so the whole chain — credentials,
+// token, FCM, the phone — can be proved in one tap instead of by waiting for a
+// job to appear.
+func (n *Notifier) SendTest(ctx context.Context, owner string) (int, error) {
+	if n.client == nil {
+		return 0, errors.New("push is not configured on the server")
+	}
+	tokens, err := n.tokens(ctx, owner)
+	if err != nil {
+		return 0, err
+	}
+	if len(tokens) == 0 {
+		return 0, errors.New("no device registered for this browser")
+	}
+	sent := 0
+	for _, device := range tokens {
+		switch err := n.send(ctx, device.token, "JobPulse test",
+			"Push is working. Real alerts name the company."); {
+		case err == nil:
+			sent++
+			n.recordDelivery(ctx, device.token)
+		case isTokenDead(err):
+			n.forget(ctx, device.token)
+		default:
+			return sent, err
+		}
+	}
+	if sent == 0 {
+		return 0, errors.New("every registered token was rejected; enable push again")
+	}
+	return sent, nil
 }
 
 // buildMessage is the FCM HTTP v1 body. webpush.fcm_options.link is what makes
