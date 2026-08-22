@@ -159,3 +159,34 @@ func TestReachable(t *testing.T) {
 		t.Error("the sweep must cover every reachable region")
 	}
 }
+
+// A board too expensive to fetch every cycle gets its own interval, without
+// being treated as a metered provider (whose limit is per key, not per board).
+func TestBoardInterval(t *testing.T) {
+	if interval, limited := boardInterval(Company{Provider: "ashby", Slug: "snowflake"}); !limited || interval != time.Hour {
+		t.Errorf("heavy board = (%v, %v), want (1h, true)", interval, limited)
+	}
+	if _, limited := boardInterval(Company{Provider: "ashby", Slug: "ziina"}); limited {
+		t.Error("an ordinary ashby board should poll every cycle")
+	}
+	if interval, limited := boardInterval(Company{Provider: "jobven", Slug: "dubai"}); !limited || interval != 6*time.Hour {
+		t.Errorf("metered provider = (%v, %v), want (6h, true)", interval, limited)
+	}
+
+	// Two heavy boards of the same provider are independent; two metered
+	// boards of the same provider still take turns.
+	now := time.Now()
+	companies := []Company{
+		{Provider: "ashby", Slug: "snowflake"},
+		{Provider: "ashby", Slug: "cohere"},
+		{Provider: "jobven", Slug: "dubai"},
+		{Provider: "jobven", Slug: "india"},
+	}
+	var slugs []string
+	for _, c := range dueNow(companies, now) {
+		slugs = append(slugs, c.Slug)
+	}
+	if fmt.Sprint(slugs) != fmt.Sprint([]string{"snowflake", "cohere", "dubai"}) {
+		t.Errorf("dueNow kept %v, want [snowflake cohere dubai]", slugs)
+	}
+}
