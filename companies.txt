@@ -166,3 +166,63 @@ ashby              replit                       Replit
 ashby              terac                        Terac
 smartrecruiters    Acumatica                    Acumatica
 smartrecruiters    Promptcloud                  PromptCloud
+
+# Boards previously skipped on cost, reinstated now that the constraints were
+# measured rather than assumed. Storage is 30 MB of 2 GB, so size was never the
+# issue; what matters is bytes per poll and noise in the feed.
+#
+# SmartRecruiters can filter at the source, which is what makes the global
+# mass-hirers usable: "AccorHotel|ae,sa" asks for 532 postings instead of
+# 5,898, and none of them are hotel jobs in Alberta. Domino's stays out on
+# evidence — filtered to our markets it has exactly zero.
+smartrecruiters    AccorHotel|ae,sa             Accor
+smartrecruiters    AECOM2|ae,sa,in              AECOM
+smartrecruiters    SGS|ae,sa,in                 SGS
+smartrecruiters    SyngentaGroup|in             Syngenta
+smartrecruiters    AveryDennison|in             Avery Dennison
+# Ashby cannot filter, so these two pay their 12.4 MB and 10.4 MB hourly
+# instead of every cycle. An hour behind OpenAI still beats a day behind an
+# aggregator.
+ashby              openai                       OpenAI
+ashby              airwallex                    Airwallex
+
+# Quality employers probed by name rather than found by mining, once apply-link
+# analysis showed the platforms were already covered and what we lacked was
+# tenants: SmartRecruiters, Greenhouse, Ashby and Lever carry 3,063 of the
+# 3,366 sampled jobs, and everything unsupported is single digits.
+#
+# Kept only where the board currently lists work in the Gulf, India or
+# worldwide-remote. Where a company publishes on two platforms, one is chosen —
+# dedup keys on the apply URL, and two hosts would store the same job twice.
+greenhouse         canonical                    Canonical
+workable           apna                         Apna
+smartrecruiters    swiggy                       Swiggy
+greenhouse         mongodb                      MongoDB
+greenhouse         fivetran                     Fivetran
+ashby              clickhouse                   ClickHouse
+greenhouse         stripe                       Stripe
+lever              hevodata                     Hevo Data
+greenhouse         inmobi                       InMobi
+smartrecruiters    wise                         Wise
+lever              zeta                         Zeta
+lever              mindtickle                   Mindtickle
+greenhouse         elastic                      Elastic
+greenhouse         scaleai                      Scale AI
+greenhouse         airbnb                       Airbnb
+greenhouse         druva                        Druva
+greenhouse         hala                         Hala
+greenhouse         datadog                      Datadog
+greenhouse         observeai                    Observe.AI
+greenhouse         adyen                        Adyen
+ashby              atlan                        Atlan
+greenhouse         cockroachlabs                Cockroach Labs
+greenhouse         anthropic                    Anthropic
+greenhouse         cloudflare                   Cloudflare
+ashby              confluent                    Confluent
+smartrecruiters    unacademy                    Unacademy
+greenhouse         planetscale                  PlanetScale
+ashby              redis                        Redis
+ashby              livekit                      LiveKit
+ashby              camunda                      Camunda
+ashby              coder                        Coder
+ashby              nomic.ai                     Nomic AI

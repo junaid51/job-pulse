@@ -18,9 +18,12 @@ import (
 	"github.com/junaid51/job-pulse/internal/providers"
 )
 
-// concurrency is how many boards are fetched at once. Low on purpose: this is
-// someone else's public API and a poll has fifteen minutes to finish.
-const concurrency = 4
+// concurrency is how many boards are fetched at once. Raised from four when
+// the watchlist passed a hundred: a cycle has five minutes and these are
+// nearly all different hosts, so the politeness argument for a small number
+// applies per host rather than in total. Boards of one provider still queue
+// behind each other often enough in practice.
+const concurrency = 8
 
 // maxJobAge is how old a posting can be and still be worth applying to. Two
 // weeks: past that the early applicants have been through a screen already,
@@ -164,6 +167,11 @@ var heavyBoards = map[string]time.Duration{
 	"smartrecruiters:ServiceNow": time.Hour,
 	"smartrecruiters:Experian":   time.Hour,
 	"smartrecruiters:Intuitive":  time.Hour,
+	"ashby:openai":               time.Hour,
+	"ashby:airwallex":            time.Hour,
+	// Country-filtered but still several pages per country.
+	"smartrecruiters:AccorHotel|ae,sa": time.Hour,
+	"smartrecruiters:AECOM2|ae,sa,in":  time.Hour,
 }
 
 // boardInterval is the minimum gap between polls of one board: the provider's
