@@ -1,13 +1,17 @@
-# The poller for scale-to-zero hosting: the backend runs with POLL_INTERVAL=0
-# and this schedule wakes it. One request runs a full cycle and sends the
-# notifications; the free host sleeping in between is the point.
+# A manual poll, kept as the fallback for when the real scheduler is broken.
+#
+# The schedule that used to live here is gone. GitHub honours a */5 cron as
+# best effort, and measured over a day it fired every 25 minutes on average and
+# once went 52 — which for an app whose whole promise is seeing a posting
+# before other applicants is the difference between the promise and a rounding
+# error. An external scheduler (cron-job.org) now calls the same endpoint every
+# five minutes, which also keeps the free host awake and therefore cold-start
+# free. Run this workflow by hand if that scheduler ever stops.
 #
 # Secrets: JOBPULSE_URL (the deployment), JOBPULSE_POLL_TOKEN (same value as
 # the POLL_TOKEN env on the server).
 name: poll
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
