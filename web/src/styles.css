@@ -451,9 +451,17 @@ mark.hit {
 .sheet input.pick-input::placeholder { color: var(--muted); opacity: 0.75; }
 
 /* iOS Safari zooms into any focused input below 16px; on touch screens give
-   every text input real size instead of fighting the zoom with viewport caps. */
+   every text input real size instead of fighting the zoom with viewport caps.
+   The selectors below carry the same weight as the base rules on purpose: those
+   set `font: inherit`, and the shorthand quietly resets size back to whatever
+   the label inherits — 12.5px — which is what made the editor zoom. */
 @media (pointer: coarse) {
-  .sheet input, .search input, .place input, .adopt input { font-size: 16px; }
+  .sheet input[type="text"],
+  .sheet input:not([type]),
+  .sheet input.pick-input,
+  .search input,
+  .place input,
+  .adopt input { font-size: 16px; }
 }
 
 /* the difference between "no more pages" and "pages not loading" */

@@ -41,7 +41,21 @@ var keywordAliases = map[string][]string{
 	},
 	"devops": {
 		"sre", "site reliability", "platform engineer", "kubernetes",
-		"infrastructure engineer", "cloud engineer",
+		"infrastructure engineer", "cloud engineer", "devsecops", "gitops",
+	},
+	// Developer experience is its own discipline and the app understood none
+	// of its names until someone doing the job said so.
+	"dev ex": {
+		"developer experience", "devex", "developer productivity",
+		"developer platform", "internal tools", "platform engineer",
+	},
+	"devex": {
+		"developer experience", "dev ex", "developer productivity",
+		"developer platform", "internal tools", "platform engineer",
+	},
+	"developer experience": {
+		"devex", "dev ex", "developer productivity", "developer platform",
+		"internal tools", "platform engineer",
 	},
 	"data": {
 		"data engineer", "data scientist", "analytics engineer",
@@ -146,6 +160,10 @@ var locationAliases = map[string][]string{
 	"kuwait":  {"kuwait city"},
 	"bahrain": {"manama"},
 	"oman":    {"muscat"},
+	// Remote feeds spell the restriction into the location: "United States",
+	// "EMEA", "Worldwide". This is how someone filters for the unrestricted
+	// ones instead of scrolling past jobs they cannot legally take.
+	"worldwide": {"anywhere", "global", "remote - global", "no restriction"},
 	"gulf": {"united arab emirates", "dubai", "abu dhabi", "sharjah", "saudi",
 		"riyadh", "jeddah", "dammam", "khobar", "qatar", "doha", "kuwait",
 		"bahrain", "manama", "oman", "muscat"},

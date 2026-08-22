@@ -36,6 +36,10 @@ type jobsPipePage struct {
 		URL        string `json:"url"`
 		Salary     string `json:"salary_string"`
 		DatePosted string `json:"date_posted"`
+		// Liveness: this provider re-checks its sources and says so. A
+		// posting it has seen close is worse than no posting at all.
+		Status   string  `json:"status"`
+		ClosedAt *string `json:"closed_at"`
 	} `json:"data"`
 }
 
@@ -101,6 +105,9 @@ func fetchJobsPipe(ctx context.Context, slug string) ([]Job, error) {
 
 	jobs := make([]Job, 0, len(page.Data))
 	for _, j := range page.Data {
+		if j.ClosedAt != nil || (j.Status != "" && j.Status != "active") {
+			continue
+		}
 		location := j.Location
 		if location == "" {
 			location = j.ShortLoc

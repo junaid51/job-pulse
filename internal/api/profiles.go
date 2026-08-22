@@ -228,9 +228,11 @@ func backfill(r *http.Request, pool *pgxpool.Pool, p profile) (int, error) {
 		return 0, nil
 	}
 
+	// notified_at is stamped now: the user is looking at these results as they
+	// are created, so announcing them would be telling them what they can see.
 	tag, err := pool.Exec(ctx, `
-		insert into matches (profile_id, job_id)
-		select $1, id from unnest($2::bigint[]) as id
+		insert into matches (profile_id, job_id, notified_at)
+		select $1, id, now() from unnest($2::bigint[]) as id
 		on conflict do nothing`, p.ID, ids)
 	if err != nil {
 		return 0, err
