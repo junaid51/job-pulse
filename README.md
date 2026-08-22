@@ -62,9 +62,15 @@ The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
 `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, `himalayas`, `jobicy`,
-`teamtailor`, `manatal`, `phenom`, `oracle` — plus `careerjet`, an aggregator whose "slug" is a
-saved search (`software+engineer|dubai|en_AE`) and which is polled every six
-hours.
+`teamtailor`, `manatal`, `phenom`, `oracle`, plus the metered aggregators
+`jobven` and `jobspipe`, whose "slug" is a saved search rather than a company.
+`careerjet` is implemented but parked: its API is IP-allowlisted and free
+hosting has no fixed egress address.
+
+Remote feeds (`himalayas`, `jobicy`) are filtered by reachability — a posting
+restricted to a country this hunt cannot work in is dropped at ingest. The list
+lives in `reachableRegions` in [internal/poll](internal/poll/poll.go); widen it
+there to accept, say, US-remote roles.
 
 ## API
 
