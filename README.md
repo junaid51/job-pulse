@@ -8,7 +8,7 @@ with three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Live.** The backend polls 67 boards across sixteen providers, stores what is new,
+**Live.** The backend polls 54 boards across fourteen providers, stores what is new,
 matches it against search profiles, and pushes one summary per profile to the
 phone; the app is an installable PWA with search, sorting and push. A full cycle
 takes a few seconds; the deployment runs entirely on free tiers.
@@ -61,7 +61,7 @@ at all.
 The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
-`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, `remotive`, `himalayas`, `jobicy`,
+`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, `himalayas`, `jobicy`,
 `teamtailor`, `manatal`, `phenom`, `oracle` — plus `careerjet`, an aggregator whose "slug" is a
 saved search (`software+engineer|dubai|en_AE`) and which is polled every six
 hours.
