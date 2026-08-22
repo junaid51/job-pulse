@@ -6,6 +6,7 @@ package config
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -34,12 +35,17 @@ func Load() Config {
 		PollInterval:  duration("POLL_INTERVAL", 5*time.Minute),
 		CompaniesFile: env("COMPANIES_FILE", "companies.txt"),
 		// The same variable the Google libraries read, so there is one name for it.
-		FirebaseCredentials: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+		FirebaseCredentials: strings.TrimSpace(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")),
 	}
 }
 
+// env reads a variable, trimming surrounding whitespace. The trim is not
+// fussiness: pasting a connection string into a hosting dashboard picks up a
+// trailing newline easily, and Go's URL parser rejects the control character —
+// which takes the whole deployment down with an error that names everything
+// except the invisible character at fault.
 func env(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
 	}
 	return fallback
@@ -49,7 +55,7 @@ func env(key, fallback string) string {
 // disabled. An unparseable value is a typo worth mentioning rather than a
 // reason to refuse to start.
 func duration(key string, fallback time.Duration) time.Duration {
-	raw := os.Getenv(key)
+	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
 		return fallback
 	}
