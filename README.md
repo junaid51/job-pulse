@@ -192,7 +192,22 @@ and no always-on process, so point `DATABASE_URL` at a free hosted Postgres, set
 five minutes. Use a real scheduler, not GitHub Actions: a `*/5` cron there is
 best effort and measured out at a 25-minute median, which defeats the point.
 Calling it every five minutes also keeps a scale-to-zero host awake, so the
-cold start disappears — watch the host's free-hours allowance if it has one. The request wakes the container, runs a full cycle, sends the
+cold start disappears — watch the host's free-hours allowance if it has one.
+
+Two things that bite when picking the database, both learned the hard way:
+
+- **Metered compute and frequent polling do not mix.** A host that bills for
+  the time the database is awake, and suspends it after five idle minutes,
+  charges for the whole month once something knocks every five minutes. Prefer
+  a plan metered on storage and transfer.
+- **Put the database in the host's own region.** Every cycle makes hundreds of
+  round trips across a hundred boards, so a cross-continent database turns a
+  two-second cycle into a minute of waiting.
+
+There are no backups, on purpose. The corpus is rebuilt from the boards within
+one cycle, and the only irreplaceable rows — profiles and their applied history
+— are a few dozen. Losing them costs a minute of retyping, which is cheaper
+than any backup worth maintaining. The request wakes the container, runs a full cycle, sends the
 notifications and returns its stats — the app was built around that endpoint
 being synchronous.
 
