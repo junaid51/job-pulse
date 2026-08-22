@@ -95,7 +95,7 @@ func TestYoungEnough(t *testing.T) {
 		{Title: "undated"}, // no posting date: ages from first sight, so kept
 	}
 	var kept []string
-	for _, j := range youngEnough(jobs, now) {
+	for _, j := range youngEnough(jobs, now, maxJobAge) {
 		kept = append(kept, j.Title)
 	}
 	want := []string{"fresh", "borderline", "undated"}
@@ -116,7 +116,7 @@ func TestExcludedLocations(t *testing.T) {
 		{Title: "Backend Engineer", Location: "Remote"},
 	}
 	var kept []string
-	for _, j := range youngEnough(jobs, now) {
+	for _, j := range youngEnough(jobs, now, maxJobAge) {
 		kept = append(kept, j.Location)
 	}
 	want := []string{"Dubai, United Arab Emirates", "Remote"}

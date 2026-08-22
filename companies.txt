@@ -15,7 +15,6 @@ workable           foodics      Foodics
 workable           salla        Salla
 recruitee          unifonic     Unifonic
 teamtailor         propertyfinder Property Finder
-teamtailor         dubizzle     Dubizzle Group
 teamtailor         wego         Wego
 teamtailor         fresha       Fresha
 # MENA — second sweep (2026-08-19)
@@ -33,16 +32,14 @@ ashby              supabase     Supabase
 ashby              posthog      PostHog
 ashby              1password    1Password
 ashby              buffer       Buffer
-ashby              railway      Railway
 # Careerjet — market-wide searches, not company boards. Needs CAREERJET_API_KEY
 # and CAREERJET_SITE; polled every six hours, twenty newest per page, three pages.
-careerjet          software+engineer|dubai|en_AE  Careerjet
-careerjet          designer|dubai|en_AE           Careerjet
-careerjet          developer|dubai|en_AE          Careerjet
-careerjet          frontend||en_AE                Careerjet
-careerjet          react||en_AE                   Careerjet
-careerjet          ui+ux+designer||en_AE          Careerjet
-smartrecruiters    Namshi       Namshi
+# careerjet          software+engineer|dubai|en_AE  Careerjet
+# careerjet          designer|dubai|en_AE           Careerjet
+# careerjet          developer|dubai|en_AE          Careerjet
+# careerjet          frontend||en_AE                Careerjet
+# careerjet          react||en_AE                   Careerjet
+# careerjet          ui+ux+designer||en_AE          Careerjet
 manatal            nathanhr     NathanHR
 manatal            sundus       Sundus
 phenom             careers.majidalfuttaim.com  Majid Al Futtaim
@@ -52,7 +49,6 @@ oracle             fa-ewnx-saasfaprod1.fa.ocs.oraclecloud.com|CX_1001  du
 # India: verified live boards, city-name locations (the "india" alias maps them)
 greenhouse         postman      Postman
 greenhouse         phonepe      PhonePe
-greenhouse         groww        Groww
 lever              paytm        Paytm
 lever              cred         CRED
 lever              meesho       Meesho

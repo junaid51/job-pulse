@@ -29,6 +29,29 @@ const concurrency = 4
 // and re-announced forever.
 const maxJobAge = 45 * 24 * time.Hour
 
+// maxAggregatorJobAge is the same rule, shortened, for providers that serve a
+// window rather than a board. Absence proves nothing there — a posting closed
+// last week looks exactly like one still open — so the only defence against
+// dead listings is to trust them for less time.
+const maxAggregatorJobAge = 21 * 24 * time.Hour
+
+// ageLimit is how long a posting from this provider is worth keeping.
+func ageLimit(provider string) time.Duration {
+	if _, window := minPollInterval[provider]; window {
+		return maxAggregatorJobAge
+	}
+	return maxJobAge
+}
+
+// windowProviders lists the providers whose postings age out early.
+func windowProviders() []string {
+	names := make([]string, 0, len(minPollInterval))
+	for name := range minPollInterval {
+		names = append(names, name)
+	}
+	return names
+}
+
 // excludedLocations are places the owner has taken out of their hunt. Enforced
 // in the same two places maxJobAge is — the ingest filter and the sweep — and
 // for the same reason: if only the sweep knew, a still-listed posting would be
@@ -159,10 +182,6 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 
 	stats := Stats{Companies: len(companies)}
 
-	// Matched jobs are collected across every board and notified once at the end,
-	// so a profile that matches something at four companies gets one push.
-	matched := map[int64][]providers.Job{}
-
 	var (
 		mu   sync.Mutex
 		wg   sync.WaitGroup
@@ -185,9 +204,6 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 			}
 			stats.NewJobs += newJobs
 			stats.NewMatches += len(newMatches)
-			for _, m := range newMatches {
-				matched[m.profileID] = append(matched[m.profileID], m.job)
-			}
 		}()
 	}
 	wg.Wait()
@@ -208,6 +224,17 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	}
 	stats.Removed += tag.RowsAffected()
 
+	// The short sweep for window providers, paired with ageLimit at ingest.
+	staleAggregated, err := pool.Exec(ctx, `
+		delete from jobs
+		where provider = any($1)
+		  and coalesce(posted_at, first_seen_at) < now() - $2::interval`,
+		windowProviders(), maxAggregatorJobAge.String())
+	if err != nil {
+		return stats, err
+	}
+	stats.Removed += staleAggregated.RowsAffected()
+
 	// The exclusion sweep, paired with the ingest filter above.
 	excluded, err := pool.Exec(ctx, `delete from jobs where location ilike any($1)`,
 		excludedPatterns())
@@ -226,7 +253,11 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	}
 	stats.Pruned = pruned
 
-	notifyProfiles(ctx, notifier, profiles, matched)
+	// A notification problem must not fail the cycle: the jobs are stored, and
+	// the queue below retries the announcement next time round.
+	if err := deliverNotifications(ctx, pool, notifier, profiles); err != nil {
+		slog.Error("delivering notifications", "error", err)
+	}
 
 	return stats, nil
 }
@@ -283,8 +314,8 @@ func reconcileMatches(ctx context.Context, pool *pgxpool.Pool, profiles []profil
 			continue
 		}
 		if _, err := pool.Exec(ctx, `
-			insert into matches (profile_id, job_id)
-			select $1, id from unnest($2::bigint[]) as id
+			insert into matches (profile_id, job_id, notified_at)
+			select $1, id, now() from unnest($2::bigint[]) as id
 			on conflict do nothing`, p.id, ids); err != nil {
 			return pruned, err
 		}
@@ -317,14 +348,67 @@ func dueNow(companies []Company, now time.Time) []Company {
 	return due
 }
 
-// notifyProfiles sends one push per profile that gained something this cycle,
-// routed to the device that owns the profile.
-func notifyProfiles(ctx context.Context, notifier *notify.Notifier, profiles []profile, matched map[int64][]providers.Job) {
+// deliverNotifications announces the matches nobody has been told about yet,
+// one push per profile, and records what went out.
+//
+// The queue lives in the database rather than in this cycle's results, which is
+// the whole point: a push that fails, or a phone inside its quiet hours, is
+// offered again next cycle instead of vanishing with the cycle that found it.
+func deliverNotifications(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier, profiles []profile) error {
+	// Past a day it is not news any more. Mark it announced rather than
+	// buzzing about yesterday after an outage.
+	if _, err := pool.Exec(ctx, `
+		update matches set notified_at = now()
+		where notified_at is null and created_at < now() - interval '24 hours'`); err != nil {
+		return err
+	}
+
+	rows, err := pool.Query(ctx, `
+		select m.profile_id, m.job_id, j.company, j.title
+		from matches m
+		join jobs j on j.id = m.job_id
+		where m.notified_at is null and m.hidden_at is null
+		order by m.profile_id, m.job_id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	pendingJobs := map[int64][]providers.Job{}
+	pendingIDs := map[int64][]int64{}
+	for rows.Next() {
+		var profileID, jobID int64
+		var job providers.Job
+		if err := rows.Scan(&profileID, &jobID, &job.Company, &job.Title); err != nil {
+			return err
+		}
+		pendingJobs[profileID] = append(pendingJobs[profileID], job)
+		pendingIDs[profileID] = append(pendingIDs[profileID], jobID)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	owners := make(map[int64]profile, len(profiles))
 	for _, p := range profiles {
-		if jobs := matched[p.id]; len(jobs) > 0 {
-			notifier.Notify(ctx, p.owner, p.name, jobs)
+		owners[p.id] = p
+	}
+	for profileID, jobs := range pendingJobs {
+		p, known := owners[profileID]
+		if !known {
+			continue
+		}
+		if !notifier.Notify(ctx, p.owner, p.name, jobs) {
+			continue
+		}
+		if _, err := pool.Exec(ctx, `
+			update matches set notified_at = now()
+			where profile_id = $1 and job_id = any($2::bigint[])`,
+			profileID, pendingIDs[profileID]); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []profile) (int, []newMatch, error) {
@@ -341,7 +425,7 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 		recordResult(ctx, pool, c, err)
 		return 0, nil, err
 	}
-	jobs = youngEnough(jobs, time.Now())
+	jobs = youngEnough(jobs, time.Now(), ageLimit(c.Provider))
 
 	newJobs, err := insertJobs(ctx, pool, c, jobs)
 	if err != nil {
@@ -374,13 +458,13 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 // youngEnough drops postings already past maxJobAge, so the sweep and the
 // ingest agree about what belongs in the database. It applies the location
 // exclusions in the same pass, for the same reason.
-func youngEnough(jobs []providers.Job, now time.Time) []providers.Job {
+func youngEnough(jobs []providers.Job, now time.Time, maxAge time.Duration) []providers.Job {
 	kept := make([]providers.Job, 0, len(jobs))
 	for _, j := range jobs {
 		if !allowed(j.Location) {
 			continue
 		}
-		if j.PostedAt.IsZero() || now.Sub(j.PostedAt) < maxJobAge {
+		if j.PostedAt.IsZero() || now.Sub(j.PostedAt) < maxAge {
 			kept = append(kept, j)
 		}
 	}

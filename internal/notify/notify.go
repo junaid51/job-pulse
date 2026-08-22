@@ -82,35 +82,40 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentialsFile string) *Notif
 // Notify sends one summary for one profile, to the device that owns it —
 // profiles belong to devices, and a match on your search should not buzz
 // someone else's phone.
-func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs []providers.Job) {
+//
+// The bool is whether this announcement is finished with. False means try
+// again next cycle, and it carries the quiet-hours case: a 3am match is not
+// dropped any more, it waits for morning and goes out then.
+func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs []providers.Job) bool {
 	if len(jobs) == 0 {
-		return
+		return true
 	}
 	title, body := Summarize(profileName, jobs)
 
 	if n.client == nil {
 		slog.Info("notification (not sent: push disabled)", "title", title, "body", body)
-		return
+		return true
 	}
 
 	tokens, err := n.tokens(ctx, owner)
 	if err != nil {
 		slog.Error("reading device tokens", "error", err)
-		return
+		return false
 	}
 	if len(tokens) == 0 {
 		slog.Info("notification (no devices registered)", "title", title, "body", body)
-		return
+		return true
 	}
 
 	// One user with one or two devices, so a loop is clearer than a batch API and
 	// gives each token its own error to act on.
-	sent := 0
+	sent, deferred, failed := 0, 0, 0
 	for _, device := range tokens {
 		if isQuietHours(device.timezone, time.Now()) {
-			// A 3am match waits for morning. The feed has it either way; only
-			// the buzz is suppressed, so nothing needs a retry queue.
+			// A 3am match waits for morning: the caller keeps it unannounced
+			// and offers it again next cycle.
 			slog.Info("notification held for quiet hours", "title", title, "tz", device.timezone)
+			deferred++
 			continue
 		}
 		token := device.token
@@ -122,9 +127,16 @@ func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs [
 			n.forget(ctx, token)
 		default:
 			slog.Error("sending notification", "error", err)
+			failed++
 		}
 	}
-	slog.Info("notification sent", "title", title, "devices", sent)
+	if sent > 0 {
+		slog.Info("notification sent", "title", title, "devices", sent)
+		return true
+	}
+	// Nothing went out. Retry only if something might change: a device asleep
+	// or an error that could pass. Every token being dead is not retryable.
+	return deferred == 0 && failed == 0
 }
 
 // buildMessage is the FCM HTTP v1 body. webpush.fcm_options.link is what makes
