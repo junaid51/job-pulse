@@ -40,8 +40,6 @@ ashby              buffer       Buffer
 # careerjet          frontend||en_AE                Careerjet
 # careerjet          react||en_AE                   Careerjet
 # careerjet          ui+ux+designer||en_AE          Careerjet
-manatal            nathanhr     NathanHR
-manatal            sundus       Sundus
 phenom             careers.majidalfuttaim.com  Majid Al Futtaim
 oracle             esbe.fa.em8.oraclecloud.com|CX_1001  Dubai Holding
 oracle             fa-ewnx-saasfaprod1.fa.ocs.oraclecloud.com|CX_1001  du
@@ -61,8 +59,15 @@ ashby              ziina        Ziina
 workable           foodics      Foodics
 workable           salla        Salla
 
-# Remote feeds: keyless aggregator APIs, newest-window only (hourly, no absence-deletion)
-remotive           software-dev  Remotive
+# Remote feeds: keyless aggregator APIs, newest-window only (hourly, no
+# absence-deletion). Their postings are filtered by reachability — see
+# reachableRegions in internal/poll: a remote job restricted to one country is
+# not a remote job for someone in another one.
+#
+# Dropped after measuring: remotive (19 jobs, a capped public window, US-heavy
+# and redundant with jobicy) and manatal (9 jobs across two recruiters, all
+# sales and content roles, and no posting dates at all — undated listings
+# cannot be told apart from dead ones).
 himalayas          all           Himalayas
 jobicy             dev           Jobicy
 

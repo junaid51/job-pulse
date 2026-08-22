@@ -84,6 +84,47 @@ func excludedPatterns() []string {
 	return patterns
 }
 
+// remoteFeedProviders publish worldwide remote jobs, but most of those jobs
+// carry a country restriction — measured on a live Himalayas page, eighteen of
+// twenty were open only to the United States, the UK, Canada, China, Namibia,
+// Macao or Luxembourg. A restriction the reader cannot satisfy is not a job
+// offer, it is a row to scroll past, so these feeds are filtered on the way in.
+//
+// Company boards are exempt: those are in companies.txt because someone chose
+// that employer, and their locations mean where the office is.
+var remoteFeedProviders = map[string]bool{"himalayas": true, "jobicy": true}
+
+// reachableRegions is where this hunt can actually take work. A remote posting
+// passes if it names one of these, or names nowhere at all.
+var reachableRegions = []string{
+	"worldwide", "anywhere", "global", "emea", "middle east",
+	"united arab", "uae", "dubai", "abu dhabi", "saudi", "qatar", "kuwait",
+	"bahrain", "oman", "egypt", "india", "pakistan",
+}
+
+// reachable reports whether a remote posting is open to this hunt.
+func reachable(location string) bool {
+	location = strings.ToLower(strings.TrimSpace(location))
+	if location == "" {
+		return true // unstated restriction is no restriction
+	}
+	for _, region := range reachableRegions {
+		if strings.Contains(location, region) {
+			return true
+		}
+	}
+	return false
+}
+
+// reachablePatterns is the same list as SQL ilike patterns, for the sweep.
+func reachablePatterns() []string {
+	patterns := make([]string, 0, len(reachableRegions))
+	for _, region := range reachableRegions {
+		patterns = append(patterns, "%"+region+"%")
+	}
+	return patterns
+}
+
 // minPollInterval slows selected providers down below the cycle cadence.
 // Aggregator APIs meter requests, and a search index refreshes far slower than
 // a company's own board; a cycle skips their boards until the interval passes.
@@ -234,6 +275,16 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 		return stats, err
 	}
 	stats.Removed += staleAggregated.RowsAffected()
+
+	// The reachability sweep, paired with the remote-feed filter at ingest.
+	unreachable, err := pool.Exec(ctx, `
+		delete from jobs
+		where provider = any($1) and location <> '' and not (location ilike any($2))`,
+		[]string{"himalayas", "jobicy"}, reachablePatterns())
+	if err != nil {
+		return stats, err
+	}
+	stats.Removed += unreachable.RowsAffected()
 
 	// The exclusion sweep, paired with the ingest filter above.
 	excluded, err := pool.Exec(ctx, `delete from jobs where location ilike any($1)`,
@@ -426,6 +477,15 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 		return 0, nil, err
 	}
 	jobs = youngEnough(jobs, time.Now(), ageLimit(c.Provider))
+	if remoteFeedProviders[c.Provider] {
+		open := jobs[:0]
+		for _, j := range jobs {
+			if reachable(j.Location) {
+				open = append(open, j)
+			}
+		}
+		jobs = open
+	}
 
 	newJobs, err := insertJobs(ctx, pool, c, jobs)
 	if err != nil {

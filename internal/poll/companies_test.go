@@ -135,3 +135,27 @@ func TestExcludedLocations(t *testing.T) {
 		}
 	}
 }
+
+// A remote job restricted to a country the reader cannot work in is noise, and
+// on the live Himalayas feed that was nine listings in ten.
+func TestReachable(t *testing.T) {
+	for _, location := range []string{
+		"Worldwide", "Anywhere", "EMEA", "India", "United Arab Emirates",
+		"Saudi Arabia", "Global", "", "United States, India", "Middle East",
+	} {
+		if !reachable(location) {
+			t.Errorf("reachable(%q) = false, want true", location)
+		}
+	}
+	for _, location := range []string{
+		"United States", "Canada", "United Kingdom", "China", "Macao",
+		"Luxembourg", "Philippines", "Remote - US",
+	} {
+		if reachable(location) {
+			t.Errorf("reachable(%q) = true, want false", location)
+		}
+	}
+	if len(reachablePatterns()) != len(reachableRegions) {
+		t.Error("the sweep must cover every reachable region")
+	}
+}
