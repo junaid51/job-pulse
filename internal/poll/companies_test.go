@@ -169,8 +169,8 @@ func TestBoardInterval(t *testing.T) {
 	if _, limited := boardInterval(Company{Provider: "ashby", Slug: "ziina"}); limited {
 		t.Error("an ordinary ashby board should poll every cycle")
 	}
-	if interval, limited := boardInterval(Company{Provider: "jobven", Slug: "dubai"}); !limited || interval != 6*time.Hour {
-		t.Errorf("metered provider = (%v, %v), want (6h, true)", interval, limited)
+	if interval, limited := boardInterval(Company{Provider: "jobven", Slug: "dubai"}); !limited || interval != 4*time.Hour {
+		t.Errorf("metered provider = (%v, %v), want (4h, true)", interval, limited)
 	}
 
 	// Two heavy boards of the same provider are independent; two metered

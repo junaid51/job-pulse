@@ -141,8 +141,14 @@ var minPollInterval = map[string]time.Duration{
 	"remotive":  time.Hour,
 	"himalayas": time.Hour,
 	"jobicy":    time.Hour,
-	// Metered: ~700 calls/month free; four searches at this cadence use ~480.
-	"jobven": 6 * time.Hour,
+	// Metered at ~700 calls/month free, and worth spending down: measured
+	// against production, jobven supplies most of the Gulf postings we detect
+	// and does it with a five-hour median lag, the slowest thing feeding the
+	// market this app is actually for. Dropping its "remote" search — remote
+	// work arrives through himalayas, jobicy and a hundred direct boards
+	// anyway — pays for the remaining three to run every four hours instead of
+	// six: 3 searches x 6 polls x 30 days = 540 of 700.
+	"jobven": 4 * time.Hour,
 	// Metered in jobs returned, a thousand a month on the free tier, and the
 	// arithmetic decides the cadence: three searches hold roughly 220 fresh
 	// postings a month between them, and a two-day window fetches each one
