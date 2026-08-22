@@ -188,8 +188,11 @@ poller ticks every `POLL_INTERVAL`.
 
 **Scale-to-zero container** (the usual free tier): these give no persistent disk
 and no always-on process, so point `DATABASE_URL` at a free hosted Postgres, set
-`POLL_INTERVAL=0`, and have any free cron service call `POST /api/poll` every
-few minutes. The request wakes the container, runs a full cycle, sends the
+`POLL_INTERVAL=0`, and have an external scheduler call `POST /api/poll` every
+five minutes. Use a real scheduler, not GitHub Actions: a `*/5` cron there is
+best effort and measured out at a 25-minute median, which defeats the point.
+Calling it every five minutes also keeps a scale-to-zero host awake, so the
+cold start disappears — watch the host's free-hours allowance if it has one. The request wakes the container, runs a full cycle, sends the
 notifications and returns its stats — the app was built around that endpoint
 being synchronous.
 
