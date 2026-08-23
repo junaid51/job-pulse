@@ -226,6 +226,14 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
         : `your “${profileName}” matches`
     list = (
       <>
+        {myMarkets && (
+          <p className="scope-note">
+            Showing roles open to the Gulf, India, or anywhere remote.{' '}
+            <button className="linkish" onClick={() => setMyMarkets(false)}>
+              Include every region
+            </button>
+          </p>
+        )}
         {searching && (
           <p className="scope-note">
             {sort === 'applied'
@@ -298,10 +306,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
         <button
           className={`remote-toggle ${myMarkets ? 'on' : ''}`}
           aria-pressed={myMarkets}
-          title="Hide jobs restricted to places you cannot work"
+          title="Hide roles restricted to regions you cannot work from"
           onClick={() => setMyMarkets((v) => !v)}
         >
-          My markets
+          Gulf + India
         </button>
         {(searching || debouncedPlace) && (
           <button
