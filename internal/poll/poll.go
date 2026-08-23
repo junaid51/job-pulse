@@ -99,35 +99,16 @@ func excludedPatterns() []string {
 // that employer, and their locations mean where the office is.
 var remoteFeedProviders = map[string]bool{"himalayas": true, "jobicy": true}
 
-// reachableRegions is where this hunt can actually take work. A remote posting
-// passes if it names one of these, or names nowhere at all.
-var reachableRegions = []string{
-	"worldwide", "anywhere", "global", "emea", "middle east",
-	"united arab", "uae", "dubai", "abu dhabi", "saudi", "qatar", "kuwait",
-	"bahrain", "oman", "egypt", "india", "pakistan",
-}
-
-// reachable reports whether a remote posting is open to this hunt.
+// reachable reports whether a posting is open to this hunt. The region list
+// lives in match, because the search bar filters on the same definition and two
+// copies would drift.
 func reachable(location string) bool {
-	location = strings.ToLower(strings.TrimSpace(location))
-	if location == "" {
-		return true // unstated restriction is no restriction
-	}
-	for _, region := range reachableRegions {
-		if strings.Contains(location, region) {
-			return true
-		}
-	}
-	return false
+	return match.Reachable(location)
 }
 
 // reachablePatterns is the same list as SQL ilike patterns, for the sweep.
 func reachablePatterns() []string {
-	patterns := make([]string, 0, len(reachableRegions))
-	for _, region := range reachableRegions {
-		patterns = append(patterns, "%"+region+"%")
-	}
-	return patterns
+	return match.ReachablePatterns()
 }
 
 // minPollInterval slows selected providers down below the cycle cadence.
@@ -173,8 +154,10 @@ var heavyBoards = map[string]time.Duration{
 	"smartrecruiters:ServiceNow": time.Hour,
 	"smartrecruiters:Experian":   time.Hour,
 	"smartrecruiters:Intuitive":  time.Hour,
-	"ashby:openai":               time.Hour,
-	"ashby:airwallex":            time.Hour,
+	// Workable inlines descriptions too: Rentokil is 4.1 MB a fetch and
+	// Apt Resources 1.5, for boards whose postings change slowly.
+	"workable:rentokil-initial": time.Hour,
+	"workable:apt-resources":    time.Hour,
 	// Country-filtered but still several pages per country.
 	"smartrecruiters:AccorHotel|ae,sa": time.Hour,
 	"smartrecruiters:AECOM2|ae,sa,in":  time.Hour,

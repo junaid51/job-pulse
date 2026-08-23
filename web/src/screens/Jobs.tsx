@@ -88,6 +88,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
 }) {
   const [sort, setSort] = useState<JobSort>('posted')
   const [remoteOnly, setRemoteOnly] = useState(false)
+  // Seven jobs in ten in the corpus are restricted somewhere this reader
+  // cannot work: a company board is chosen whole, and brings its Ohio roles
+  // along with its Dubai one. On by default, one tap to see everything.
+  const [myMarkets, setMyMarkets] = useState(true)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [place, setPlace] = useState('')
@@ -131,10 +135,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
 
   const feed = useInfiniteQuery({
     queryKey: ['jobs', searching ? 'search' : 'profile',
-      searching ? term : profileId, sort, locations, remoteOnly],
+      searching ? term : profileId, sort, locations, remoteOnly, myMarkets],
     queryFn: ({ pageParam }) => searching
-      ? api.searchJobs(term, locations, remoteOnly, sort, pageParam)
-      : api.jobs(profileId!, sort, locations, remoteOnly, pageParam),
+      ? api.searchJobs(term, locations, remoteOnly, myMarkets, sort, pageParam)
+      : api.jobs(profileId!, sort, locations, remoteOnly, myMarkets, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
     enabled: searching || profileId !== null,
@@ -286,6 +290,14 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
           onClick={() => setRemoteOnly((v) => !v)}
         >
           Remote
+        </button>
+        <button
+          className={`remote-toggle ${myMarkets ? 'on' : ''}`}
+          aria-pressed={myMarkets}
+          title="Hide jobs restricted to places you cannot work"
+          onClick={() => setMyMarkets((v) => !v)}
+        >
+          My markets
         </button>
         {(searching || debouncedPlace) && (
           <button

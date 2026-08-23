@@ -111,23 +111,23 @@ export const api = {
     request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
 
   jobs: (profileId: number, sort: JobSort = 'posted', locations: string[] = [],
-    remote = false, cursor?: string) =>
+    remote = false, market = false, cursor?: string) =>
     request<{ jobs: Job[]; next_cursor?: string }>(
       `/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}` +
       locations.map((l) => `&location=${encodeURIComponent(l)}`).join('') +
-      (remote ? '&remote=1' : '') +
+      (remote ? '&remote=1' : '') + (market ? '&market=1' : '') +
       (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
     ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
 
   /** Searches every stored job, not just one profile's matches — a search bar
    *  that hides jobs because they missed your keywords answers the wrong
    *  question. */
-  searchJobs: (q: string, locations: string[] = [], remote = false,
+  searchJobs: (q: string, locations: string[] = [], remote = false, market = false,
     sort: JobSort = 'posted', cursor?: string) =>
     request<{ jobs: Job[]; next_cursor?: string }>(
       `/api/jobs?limit=50&sort=${sort}&q=${encodeURIComponent(q)}` +
       locations.map((l) => `&location=${encodeURIComponent(l)}`).join('') +
-      (remote ? '&remote=1' : '') +
+      (remote ? '&remote=1' : '') + (market ? '&market=1' : '') +
       (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
     ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
 
