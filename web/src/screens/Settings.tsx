@@ -116,6 +116,59 @@ function Boards() {
   )
 }
 
+/** When to stay silent, in this device's own timezone. Off by default: a
+ *  posting that lands at 06:45 is exactly the one worth waking up for, and
+ *  silence should be asked for rather than assumed. */
+function QuietHours({ from, to, timezone }: { from: number; to: number; timezone?: string }) {
+  const [saving, setSaving] = useState(false)
+  const on = from !== to
+  const hours = Array.from({ length: 24 }, (_, h) => h)
+  const label = (h: number) => `${String(h).padStart(2, '0')}:00`
+
+  const save = async (nextFrom: number, nextTo: number) => {
+    setSaving(true)
+    try {
+      await api.setQuietHours(nextFrom, nextTo)
+      invalidate('push-status')
+      showToast(nextFrom === nextTo ? 'Quiet hours off' : `Silent ${label(nextFrom)}–${label(nextTo)}`)
+    } catch (error) {
+      showToast(describeError(error))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <label className="kv switch-row">
+        <span>Quiet hours</span>
+        <input type="checkbox" checked={on} disabled={saving}
+          onChange={(e) => save(0, e.target.checked ? 8 : 0)} />
+      </label>
+      {on && (
+        <div className="pad stack">
+          <div className="quiet-range">
+            <select value={from} disabled={saving} aria-label="Silent from"
+              onChange={(e) => save(Number(e.target.value), to)}>
+              {hours.map((h) => <option key={h} value={h}>{label(h)}</option>)}
+            </select>
+            <span>to</span>
+            <select value={to} disabled={saving} aria-label="Silent until"
+              onChange={(e) => save(from, Number(e.target.value))}>
+              {hours.map((h) => <option key={h} value={h}>{label(h)}</option>)}
+            </select>
+          </div>
+          <p className="state-detail">
+            Alerts inside this window wait for it to end rather than being
+            dropped{timezone ? `, on ${timezone} time` : ''}. The job still
+            appears in the feed immediately.
+          </p>
+        </div>
+      )}
+    </>
+  )
+}
+
 /** What the server actually knows, as opposed to what the browser reports.
  *  A token can expire silently, and until this existed the only symptom was
  *  alerts quietly never arriving. */
@@ -138,9 +191,7 @@ function PushHealth({ enabled }: { enabled: boolean }) {
           </span>
         </div>
       )}
-      {timezone && (
-        <div className="kv"><span>Quiet hours</span><span className="kv-value">22:00–08:00 {timezone}</span></div>
-      )}
+      <QuietHours from={status.data.quiet_from ?? 0} to={status.data.quiet_to ?? 0} timezone={timezone} />
       {registered && enabled && (
         <div className="pad">
           <button

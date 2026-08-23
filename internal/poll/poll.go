@@ -149,14 +149,14 @@ var minPollInterval = map[string]time.Duration{
 	// anyway — pays for the remaining three to run every four hours instead of
 	// six: 3 searches x 6 polls x 30 days = 540 of 700.
 	"jobven": 4 * time.Hour,
-	// Metered in jobs returned, a thousand a month on the free tier, and the
-	// arithmetic decides the cadence: three searches hold roughly 220 fresh
-	// postings a month between them, and a two-day window fetches each one
-	// once per poll, so daily polling costs about 440 credits and twice-daily
-	// would cost 880 of the 1,000. A day's delay on the subset of postings
-	// only this provider carries is the cheaper mistake — running the tier dry
-	// mid-month would cost all of them.
-	"jobspipe": 24 * time.Hour,
+	// Metered in jobs returned, a thousand a month on the free tier. Four
+	// searches hold roughly 220 fresh postings between them and a two-day
+	// window re-fetches each about four times at this cadence, so twice-daily
+	// costs around 880 of the 1,000 — chosen deliberately over the safer daily
+	// poll, because a measured median lag of twenty-one hours was the worst
+	// number in the system and headroom is worth less than being early. If the
+	// meter runs hot, halve the window before halving the cadence.
+	"jobspipe": 12 * time.Hour,
 }
 
 // heavyBoards are polled hourly rather than every cycle. Ashby inlines every

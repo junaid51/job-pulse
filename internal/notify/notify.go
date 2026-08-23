@@ -111,7 +111,7 @@ func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs [
 	// gives each token its own error to act on.
 	sent, deferred, failed := 0, 0, 0
 	for _, device := range tokens {
-		if isQuietHours(device.timezone, time.Now()) {
+		if isQuietHours(device.timezone, device.quietFrom, device.quietTo, time.Now()) {
 			// A 3am match waits for morning: the caller keeps it unannounced
 			// and offers it again next cycle.
 			slog.Info("notification held for quiet hours", "title", title, "tz", device.timezone)
@@ -267,12 +267,15 @@ func isTokenDead(err error) bool {
 }
 
 type deviceToken struct {
-	token    string
-	timezone string
+	token     string
+	timezone  string
+	quietFrom int
+	quietTo   int
 }
 
 func (n *Notifier) tokens(ctx context.Context, owner string) ([]deviceToken, error) {
-	rows, err := n.pool.Query(ctx, `select token, timezone from devices where owner = $1`, owner)
+	rows, err := n.pool.Query(ctx,
+		`select token, timezone, quiet_from, quiet_to from devices where owner = $1`, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +284,7 @@ func (n *Notifier) tokens(ctx context.Context, owner string) ([]deviceToken, err
 	var tokens []deviceToken
 	for rows.Next() {
 		var d deviceToken
-		if err := rows.Scan(&d.token, &d.timezone); err != nil {
+		if err := rows.Scan(&d.token, &d.timezone, &d.quietFrom, &d.quietTo); err != nil {
 			return nil, err
 		}
 		tokens = append(tokens, d)
@@ -293,8 +296,16 @@ func (n *Notifier) tokens(ctx context.Context, owner string) ([]deviceToken, err
 // 08:00, fixed on purpose — a preference screen for two numbers is not worth
 // its surface. No timezone means never quiet, which is what the row's default
 // gives devices registered before timezones existed.
-func isQuietHours(timezone string, now time.Time) bool {
-	if timezone == "" {
+// isQuietHours reports whether this device is asleep right now, in its own
+// timezone. The window wraps midnight in the ordinary case (22 to 8), reads
+// literally when it does not (13 to 14), and is off entirely when the two
+// hours are equal — which is how a reader says "always tell me".
+//
+// An unknown or unparseable timezone is never quiet: silence should need a
+// reason, and a match nobody hears about is the failure this app exists to
+// avoid.
+func isQuietHours(timezone string, from, to int, now time.Time) bool {
+	if timezone == "" || from == to {
 		return false
 	}
 	location, err := time.LoadLocation(timezone)
@@ -302,7 +313,10 @@ func isQuietHours(timezone string, now time.Time) bool {
 		return false
 	}
 	hour := now.In(location).Hour()
-	return hour >= 22 || hour < 8
+	if from < to {
+		return hour >= from && hour < to
+	}
+	return hour >= from || hour < to
 }
 
 func (n *Notifier) forget(ctx context.Context, token string) {
