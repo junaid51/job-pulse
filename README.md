@@ -8,7 +8,7 @@ with three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Live.** The backend polls 204 boards across fourteen providers, stores what is new,
+**Live.** The backend polls 220 boards across fourteen providers, stores what is new,
 matches it against search profiles, and pushes one summary per profile to the
 phone; the app is an installable PWA with search, sorting and push. A full cycle
 takes a few seconds; the deployment runs entirely on free tiers.
