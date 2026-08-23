@@ -163,11 +163,16 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
   color: var(--accent); font-size: 12.5px; font-weight: 600;
   padding: 3px 0; transition: opacity 0.12s ease;
 }
-/* Fifty accent "Apply"s are noise on a pointer device: show on row hover or
-   keyboard focus. Touch screens keep them always visible. */
+/* Fifty accent "Apply"s are noise: on a pointer device they appear on row
+   hover, and on a touch screen they do not appear at all — tapping the row
+   already opens the posting, so the word only labels what the row does and
+   costs every row a third line. */
 @media (hover: hover) {
   .apply { opacity: 0; }
   .job-row:hover .apply, .job-row:focus-visible .apply { opacity: 1; }
+}
+@media (hover: none) {
+  .apply { display: none; }
 }
 
 /* empty / error / loading states */
@@ -294,10 +299,10 @@ nav {
 }
 
 /* per-row hunt actions: quiet until pointed at, always reachable on touch */
-.row-actions { display: inline-flex; gap: 2px; margin-top: 1px; }
+.row-actions { display: inline-flex; gap: 2px; margin-top: 2px; margin-right: -6px; }
 .row-actions button {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 24px; height: 24px; border-radius: 6px; color: var(--muted);
+  width: 28px; height: 28px; border-radius: 7px; color: var(--muted);
   transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
 }
 .row-actions button:hover { background: var(--surface-2); color: var(--on-surface); }
@@ -487,13 +492,14 @@ mark.hit {
    .search rule is later in source than the old media query was, and won the
    cascade, which is how the search box ended up sharing a row and shrinking. */
 @media (max-width: 560px) {
+  /* Two rows, not four: the search owns the first, the view and the place
+     share the second. */
   .toolbar { gap: 8px; }
   .search { flex: 1 1 100%; order: 1; }
-  .place { flex: 1 1 140px; width: auto; order: 2; }
-  .remote-toggle { flex: none; order: 3; }
-  .save-search { flex: none; order: 4; }
-  .segment { flex: 1 1 100%; order: 5; }
+  .segment { flex: 1 1 auto; order: 2; }
   .segment button { flex: 1; text-align: center; }
+  .where-btn { flex: none; order: 3; }
+  .save-search { flex: none; order: 4; }
 }
 .quiet-range { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .quiet-range select {
@@ -511,3 +517,14 @@ mark.hit {
 }
 .disclosure:hover { color: var(--on-surface); background: var(--surface-2); }
 .disclosure-mark { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* One button for the whole "where" question */
+.where-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 13px; border-radius: 10px;
+  background: var(--surface-2); color: var(--on-surface);
+  font-size: 12.5px; font-weight: 550;
+  transition: background 0.12s ease;
+}
+.where-btn:hover { background: var(--line); }
+.where-btn svg { color: var(--muted); }

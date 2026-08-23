@@ -238,8 +238,11 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 	extraWhere := ``
 	switch sort {
 	case "matched":
-		cursorExpr = `m.matched_at`
-		extraWhere = ` and m.matched_at is not null`
+		// Arrival order across the whole corpus. Restricting this to matched
+		// rows, as the profile feed does, silently turned the search bar into
+		// a view of the reader's own matches — the opposite of what it is for.
+		// A job nobody matched still arrived when we first saw it.
+		cursorExpr = `coalesce(m.matched_at, j.first_seen_at)`
 	case "applied":
 		cursorExpr = `m.applied_at`
 		extraWhere = ` and m.applied_at is not null`
