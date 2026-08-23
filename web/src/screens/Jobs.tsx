@@ -86,7 +86,11 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   onCreateProfile: () => void
   onSavedSearch: (id: number) => void
 }) {
-  const [sort, setSort] = useState<JobSort>('posted')
+  // Default to arrival order, not publication order. A job discovered ten
+  // minutes ago but posted last week is news to this reader, and sorting by
+  // posted date buried it days down the list while the notification about it
+  // said "9m" — the two screens disagreed about the same job.
+  const [sort, setSort] = useState<JobSort>('matched')
   const [remoteOnly, setRemoteOnly] = useState(false)
   // Seven jobs in ten in the corpus are restricted somewhere this reader
   // cannot work: a company board is chosen whole, and brings its Ohio roles
@@ -240,7 +244,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
               className="vrow"
               style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}>
               <JobRow job={rows[item.index]} actions highlight={highlight}
-                ageOf={sort === 'applied' ? 'applied' : 'posted'} />
+                ageOf={sort === 'applied' ? 'applied' : sort === 'matched' ? 'matched' : 'posted'} />
             </div>
           ))}
         </div>
@@ -327,13 +331,13 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
             type takes your place in the app with it. */}
         {profileId === null && !searching ? null : (
           <div className="segment" role="tablist" aria-label="View">
-            <button role="tab" aria-selected={sort === 'posted'}
-              className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
-              Newest
-            </button>
             <button role="tab" aria-selected={sort === 'matched'}
               className={sort === 'matched' ? 'on' : ''} onClick={() => setSort('matched')}>
-              Matched
+              New to you
+            </button>
+            <button role="tab" aria-selected={sort === 'posted'}
+              className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
+              Newest posted
             </button>
             <button role="tab" aria-selected={sort === 'applied'}
               className={sort === 'applied' ? 'on' : ''} onClick={() => setSort('applied')}>
