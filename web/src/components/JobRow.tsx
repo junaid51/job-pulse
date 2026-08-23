@@ -4,8 +4,6 @@ import { providerLabel, shortAgo } from '../format'
 import { invalidate } from '../query'
 import { showToast } from '../toast'
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 /** One row of the Jobs and Notifications lists. The whole row opens the
  *  official posting — applying means forms and logins, which belong in the
  *  real page, not in this app. Memoized: the search box lives beside a
@@ -33,8 +31,6 @@ export const JobRow = memo(function JobRow(props: {
   const posted = (props.ageOf === 'applied' && job.applied_at)
     || (props.ageOf === 'matched' && job.matched_at)
     || job.posted_at || job.matched_at
-  const isFresh = props.ageOf !== 'applied' &&
-    Date.now() - new Date(posted).getTime() < DAY_MS
 
   const hide = (event: React.MouseEvent) => {
     event.preventDefault()
@@ -81,7 +77,6 @@ export const JobRow = memo(function JobRow(props: {
         {props.label && <span className="job-label">{props.label}</span>}
         <span className="job-title">
           <Highlighted text={job.title} terms={props.highlight} />
-          {isFresh && <span className="fresh">NEW</span>}
           {applied && <span className="applied-tag">APPLIED</span>}
         </span>
         <span className="job-meta">{meta}</span>

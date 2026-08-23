@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef, useState } from 'react'
-import { api, describeError, type JobSort } from '../api'
+import { api, describeError, type Job, type JobSort } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
@@ -78,6 +78,24 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   )
 }
 
+type Item =
+  | { kind: 'header'; key: string; label: string }
+  | { kind: 'job'; key: string; job: Job }
+
+// The feed is a timeline of arrivals, so the headers say when — and each row
+// is then free to be just the job. Deliberately the same words the
+// notifications screen uses: one vocabulary for one idea.
+function arrivalLabel(iso: string): string {
+  const at = new Date(iso)
+  if (Date.now() - at.getTime() < 60 * 60 * 1000) return 'Just now'
+  const today = new Date()
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+  if (sameDay(at, today)) return 'Earlier today'
+  if (sameDay(at, yesterday)) return 'Yesterday'
+  return at.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+}
+
 // profileId is null when no profile exists yet: the feed has nothing to show,
 // but the search bar still covers the whole corpus — browsing must not wait
 // for a profile to be created.
@@ -96,6 +114,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   // cannot work: a company board is chosen whole, and brings its Ohio roles
   // along with its Dubai one. On by default, one tap to see everything.
   const [myMarkets, setMyMarkets] = useState(true)
+  // Location, region and remote were three separate controls saying the same
+  // kind of thing. They are one sheet now, opened by one button that reads
+  // back the current answer.
+  const [whereOpen, setWhereOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [place, setPlace] = useState('')
@@ -160,16 +182,34 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
 
   const rows = feed.data?.pages.flatMap((page) => page.jobs) ?? null
 
+  // Headers ride in the same virtual list as the rows, so grouping costs no
+  // scrolling performance.
+  const items: Item[] = []
+  if (rows) {
+    let current = ''
+    for (const job of rows) {
+      const when = sort === 'applied' ? job.applied_at
+        : sort === 'matched' ? job.matched_at
+        : job.posted_at ?? job.matched_at
+      const label = when ? arrivalLabel(when) : 'Undated'
+      if (label !== current) {
+        current = label
+        items.push({ kind: 'header', key: `h:${label}`, label })
+      }
+      items.push({ kind: 'job', key: `j:${job.id}`, job })
+    }
+  }
+
   // Real windowing: only the rows near the viewport exist in the DOM. The
   // scroller is <main>, so the list's own offset inside it is the margin.
   const listRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
-    count: rows?.length ?? 0,
+    count: items.length,
     getScrollElement: () => listRef.current?.closest('main') ?? null,
     estimateSize: () => 100,
     overscan: 10,
     scrollMargin: listRef.current?.offsetTop ?? 0,
-    getItemKey: (index) => rows![index].id,
+    getItemKey: (index) => items[index].key,
   })
   const windowed = virtualizer.getVirtualItems()
 
@@ -179,7 +219,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   useEffect(() => {
     // Placeholder rows belong to the previous query — their cursor must not
     // be replayed against the new one.
-    if (!rows || feed.isPlaceholderData || lastIndex < rows.length - 8) return
+    if (!rows || feed.isPlaceholderData || lastIndex < items.length - 8) return
     if (feed.hasNextPage && !feed.isFetchingNextPage) feed.fetchNextPage()
   }, [lastIndex, rows, feed.isPlaceholderData, feed.hasNextPage, feed.isFetchingNextPage, feed])
 
@@ -226,35 +266,21 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
         : `your “${profileName}” matches`
     list = (
       <>
-        {myMarkets && (
-          <p className="scope-note">
-            Showing roles open to the Gulf, India, or anywhere remote.{' '}
-            <button className="linkish" onClick={() => setMyMarkets(false)}>
-              Include every region
-            </button>
-          </p>
-        )}
-        {searching && (
-          <p className="scope-note">
-            {sort === 'applied'
-              ? 'Searching the jobs you marked applied.'
-              : sort === 'matched'
-                ? 'Searching the jobs your saved searches caught.'
-                : profileId === null
-                  ? 'Searching every job from every board. Tap Save to turn this into a standing search.'
-                  : 'Searching every job from every board — not just your matches.'}
-          </p>
-        )}
         <div ref={listRef} className="list virtual"
           style={{ height: virtualizer.getTotalSize() }}>
-          {windowed.map((item) => (
-            <div key={item.key} data-index={item.index} ref={virtualizer.measureElement}
-              className="vrow"
-              style={{ transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)` }}>
-              <JobRow job={rows[item.index]} actions highlight={highlight}
-                ageOf={sort === 'applied' ? 'applied' : sort === 'matched' ? 'matched' : 'posted'} />
-            </div>
-          ))}
+          {windowed.map((virtual) => {
+            const item = items[virtual.index]
+            return (
+              <div key={virtual.key} data-index={virtual.index} ref={virtualizer.measureElement}
+                className="vrow"
+                style={{ transform: `translateY(${virtual.start - virtualizer.options.scrollMargin}px)` }}>
+                {item.kind === 'header'
+                  ? <div className="day-h">{item.label}</div>
+                  : <JobRow job={item.job} actions highlight={highlight}
+                      ageOf={sort === 'applied' ? 'applied' : sort === 'matched' ? 'matched' : 'posted'} />}
+              </div>
+            )
+          })}
         </div>
         {feed.isFetchingNextPage && (
           <div className="sentinel"><span className="spinner" /></div>
@@ -284,33 +310,12 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
             ? <button className="clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>
             : <kbd>/</kbd>}
         </div>
-        <div className="place">
+
+        <button className="where-btn" onClick={() => setWhereOpen(true)}>
           <PinIcon />
-          <input
-            value={place}
-            onChange={(event) => setPlace(event.target.value)}
-            placeholder="Location"
-            aria-label="Filter by location"
-          />
-          {place && (
-            <button className="clear" onClick={() => setPlace('')} aria-label="Clear location">✕</button>
-          )}
-        </div>
-        <button
-          className={`remote-toggle ${remoteOnly ? 'on' : ''}`}
-          aria-pressed={remoteOnly}
-          onClick={() => setRemoteOnly((v) => !v)}
-        >
-          Remote
+          <span>{whereLabel(place, remoteOnly, myMarkets)}</span>
         </button>
-        <button
-          className={`remote-toggle ${myMarkets ? 'on' : ''}`}
-          aria-pressed={myMarkets}
-          title="Hide roles restricted to regions you cannot work from"
-          onClick={() => setMyMarkets((v) => !v)}
-        >
-          Gulf + India
-        </button>
+
         {(searching || debouncedPlace) && (
           <button
             className="save-search"
@@ -324,7 +329,6 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
               }).then((r) => {
                 invalidate('profiles')
                 invalidate('jobs')
-                // Land on the saved search's own feed: the loop closes here.
                 onSavedSearch(r.profile.id)
                 setQuery('')
                 setPlace('')
@@ -335,17 +339,12 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
             + Save
           </button>
         )}
-        {/* The views stay put while searching: a control that vanishes as you
-            type takes your place in the app with it. */}
+
         {profileId === null && !searching ? null : (
           <div className="segment" role="tablist" aria-label="View">
             <button role="tab" aria-selected={sort === 'matched'}
               className={sort === 'matched' ? 'on' : ''} onClick={() => setSort('matched')}>
-              New to you
-            </button>
-            <button role="tab" aria-selected={sort === 'posted'}
-              className={sort === 'posted' ? 'on' : ''} onClick={() => setSort('posted')}>
-              Newest posted
+              New
             </button>
             <button role="tab" aria-selected={sort === 'applied'}
               className={sort === 'applied' ? 'on' : ''} onClick={() => setSort('applied')}>
@@ -354,8 +353,87 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
           </div>
         )}
       </div>
+
+      {whereOpen && (
+        <WhereSheet
+          place={place} setPlace={setPlace}
+          remoteOnly={remoteOnly} setRemoteOnly={setRemoteOnly}
+          myMarkets={myMarkets} setMyMarkets={setMyMarkets}
+          onClose={() => setWhereOpen(false)}
+        />
+      )}
       {list}
     </>
+  )
+}
+
+// One sentence for whatever "where" currently means, shown on the button so
+// the filter never hides anything silently.
+function whereLabel(place: string, remoteOnly: boolean, myMarkets: boolean): string {
+  const parts: string[] = []
+  if (place.trim()) parts.push(place.trim())
+  else parts.push(myMarkets ? 'Gulf + India' : 'Anywhere')
+  if (remoteOnly) parts.push('remote')
+  return parts.join(' · ')
+}
+
+/** Location, region and remote in one place, because they are one question. */
+function WhereSheet(props: {
+  place: string; setPlace: (v: string) => void
+  remoteOnly: boolean; setRemoteOnly: (v: boolean) => void
+  myMarkets: boolean; setMyMarkets: (v: boolean) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="sheet-backdrop" onClick={props.onClose}>
+      <div className="sheet" onClick={(e) => e.stopPropagation()}>
+        <h2>Where</h2>
+
+        <div className="f-group">
+          <span className="f-label">Region</span>
+          <div className="picker">
+            <button type="button" className={`pick ${props.myMarkets && !props.place ? 'on' : ''}`}
+              onClick={() => { props.setPlace(''); props.setMyMarkets(true) }}>
+              Gulf + India
+            </button>
+            <button type="button" className={`pick ${!props.myMarkets && !props.place ? 'on' : ''}`}
+              onClick={() => { props.setPlace(''); props.setMyMarkets(false) }}>
+              Anywhere
+            </button>
+          </div>
+          <small>
+            Gulf + India also keeps roles open worldwide. Anywhere includes jobs
+            restricted to regions you cannot work from.
+          </small>
+        </div>
+
+        <div className="f-group">
+          <span className="f-label">Or a specific place</span>
+          <div className="place">
+            <PinIcon />
+            <input
+              value={props.place}
+              autoFocus
+              onChange={(e) => props.setPlace(e.target.value)}
+              placeholder="dubai, india, london…"
+              aria-label="Filter by location"
+            />
+            {props.place && (
+              <button className="clear" onClick={() => props.setPlace('')} aria-label="Clear">✕</button>
+            )}
+          </div>
+          <small>Shorthands are understood: uae, gulf, ksa, uk.</small>
+        </div>
+
+        <label className="switch-row">
+          <span>Remote roles only</span>
+          <input type="checkbox" checked={props.remoteOnly}
+            onChange={(e) => props.setRemoteOnly(e.target.checked)} />
+        </label>
+
+        <button className="btn-filled wide" onClick={props.onClose}>Done</button>
+      </div>
+    </div>
   )
 }
 
