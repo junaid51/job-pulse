@@ -294,3 +294,29 @@ workable           zenara-health                Zenara Health
 workable           sealy-mattress-middle-east   Sealy Mattress Middle East
 workable           messe-muenchen-india         Messe Muenchen India
 workable           astrome-technologies         Astrome Technologies
+
+# Second pass of the Workable directory, widened from six locations to twenty
+# and from twelve pages to twenty: 191 further companies, 105 reachable, these
+# sixteen worth a request. Egypt Education Platform is 197 in-market of 199,
+# Nawy 104 of 104 — local employers again rather than global boards.
+#
+# Huzzle qualified on volume and was refused anyway: 10.3 MB a fetch for 152
+# relevant postings out of 2,365, and it is an aggregator, so those postings
+# are re-listings of boards already read here. That is the same trade OpenAI
+# and Airwallex were removed for this morning.
+workable           egypt-education-platform     Egypt Education Platform
+workable           nawy-real-estate             Nawy Real Estate
+workable           linah-group                  Linah Group
+workable           high-street-resources        High Street Resources
+workable           integrant                    Integrant
+workable           ischool                      Ischool
+workable           rgheeb                       Rgheeb
+workable           petroapp                     Petroapp
+workable           a2mac1                       A2Mac1
+workable           sarmad                       Sarmad
+workable           digital-zone                 Digital Zone
+workable           writesonic                   Writesonic
+workable           limitless-naturals           Limitless Naturals
+workable           bestex-research              Bestex Research
+workable           sedona-digital               Sedona Digital
+workable           blue-altair                  Blue Altair
