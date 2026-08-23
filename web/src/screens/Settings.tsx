@@ -11,6 +11,7 @@ import { showToast } from '../toast'
 export function Settings({ push, setPush }: { push: PushState; setPush: (s: PushState) => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
   // #/settings/new deep-links straight into the editor.
+  const [advanced, setAdvanced] = useState(false)
   const [editing, setEditing] = useState<Profile | 'new' | null>(
     () => location.hash === '#/settings/new' ? 'new' : null)
 
@@ -62,18 +63,30 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
         </div>
       )}
 
-      <h2 className="section-h">Boards</h2>
-      <Boards />
+      {/* Two hundred board rows and a device UUID are diagnostics, not
+          settings. They stay one tap away rather than in the way. */}
+      <button className="disclosure" aria-expanded={advanced}
+        onClick={() => setAdvanced((v) => !v)}>
+        <span>Advanced</span>
+        <span className="disclosure-mark">{advanced ? '−' : '+'}</span>
+      </button>
 
-      <h2 className="section-h">This device</h2>
-      <DeviceIdentity />
+      {advanced && (
+        <>
+          <h2 className="section-h">Boards</h2>
+          <Boards />
 
-      <h2 className="section-h">Backend</h2>
-      <div className="kv"><span>URL</span><span className="kv-value">{API}</span></div>
-      <p className="state-detail pad">
-        Fixed at build time. The boards are polled on a schedule; refresh any
-        screen to pick up what the last poll found.
-      </p>
+          <h2 className="section-h">This device</h2>
+          <DeviceIdentity />
+
+          <h2 className="section-h">Backend</h2>
+          <div className="kv"><span>URL</span><span className="kv-value">{API}</span></div>
+          <p className="state-detail pad">
+            Fixed at build time. The boards are polled on a schedule; refresh any
+            screen to pick up what the last poll found.
+          </p>
+        </>
+      )}
 
       {editing && (
         <Editor
