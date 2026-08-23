@@ -495,3 +495,8 @@ mark.hit {
   .segment { flex: 1 1 100%; order: 5; }
   .segment button { flex: 1; text-align: center; }
 }
+.quiet-range { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+.quiet-range select {
+  height: 36px; padding: 0 10px; border-radius: 9px; font-size: 16px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--on-surface);
+}

@@ -67,6 +67,12 @@ func deviceStatus(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		body := map[string]any{"registered": count > 0, "devices": count}
+		var from, to int
+		if err := pool.QueryRow(r.Context(), `
+			select coalesce(max(quiet_from), 0), coalesce(max(quiet_to), 0)
+			from devices where owner = $1`, deviceID(r)).Scan(&from, &to); err == nil {
+			body["quiet_from"], body["quiet_to"] = from, to
+		}
 		if timezone != nil {
 			body["timezone"] = *timezone
 		}
@@ -87,5 +93,32 @@ func testDevice(notifier *notify.Notifier) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"sent": sent})
+	}
+}
+
+// setQuietHours stores when this browser's devices should stay silent. It
+// applies to every device the browser owns, because the window describes the
+// person's night rather than one piece of hardware. from == to switches it off.
+func setQuietHours(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			From int `json:"from"`
+			To   int `json:"to"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		if in.From < 0 || in.From > 23 || in.To < 0 || in.To > 23 {
+			writeError(w, http.StatusBadRequest, "hours must be between 0 and 23")
+			return
+		}
+		if _, err := pool.Exec(r.Context(), `
+			update devices set quiet_from = $2, quiet_to = $3 where owner = $1`,
+			deviceID(r), in.From, in.To); err != nil {
+			serverError(w, "saving quiet hours", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"quiet_from": in.From, "quiet_to": in.To})
 	}
 }

@@ -140,19 +140,19 @@ func TestIsQuietHours(t *testing.T) {
 	nightUTC := time.Date(2026, 8, 19, 20, 0, 0, 0, time.UTC)   // 00:00 in Dubai
 	morningUTC := time.Date(2026, 8, 19, 4, 30, 0, 0, time.UTC) // 08:30 in Dubai
 
-	if isQuietHours("Asia/Dubai", noonUTC) {
+	if isQuietHours("Asia/Dubai", 22, 8, noonUTC) {
 		t.Error("4pm in Dubai is not quiet hours")
 	}
-	if !isQuietHours("Asia/Dubai", nightUTC) {
+	if !isQuietHours("Asia/Dubai", 22, 8, nightUTC) {
 		t.Error("midnight in Dubai is quiet hours")
 	}
-	if isQuietHours("Asia/Dubai", morningUTC) {
+	if isQuietHours("Asia/Dubai", 22, 8, morningUTC) {
 		t.Error("08:30 in Dubai is past quiet hours")
 	}
-	if isQuietHours("", nightUTC) {
+	if isQuietHours("", 22, 8, nightUTC) {
 		t.Error("no timezone means never quiet")
 	}
-	if isQuietHours("Not/AZone", nightUTC) {
+	if isQuietHours("Not/AZone", 22, 8, nightUTC) {
 		t.Error("an unparseable timezone must not eat notifications")
 	}
 }
@@ -188,5 +188,36 @@ func TestAppURLTrimsTrailingSlash(t *testing.T) {
 	t.Setenv("APP_URL", "https://fork.example/")
 	if got := appURL(); got != "https://fork.example" {
 		t.Errorf("appURL() = %q, want no trailing slash", got)
+	}
+}
+
+// The window is the reader's to choose, including choosing not to have one.
+func TestQuietHoursWindows(t *testing.T) {
+	// 06:45 in Dubai, the case that motivated this: silenced by the old fixed
+	// 22-08, and by a 23-07 window too, but audible once the reader narrows it
+	// to 23-06. That choice is now theirs to make.
+	early := time.Date(2026, 8, 23, 2, 45, 0, 0, time.UTC)
+	if !isQuietHours("Asia/Dubai", 22, 8, early) {
+		t.Error("06:45 is inside 22-08")
+	}
+	if !isQuietHours("Asia/Dubai", 23, 7, early) {
+		t.Error("06:45 is still inside 23-07")
+	}
+	if isQuietHours("Asia/Dubai", 23, 6, early) {
+		t.Error("06:45 is outside 23-06")
+	}
+	// Equal hours disable the window entirely.
+	for _, at := range []time.Time{early, time.Date(2026, 8, 23, 20, 0, 0, 0, time.UTC)} {
+		if isQuietHours("Asia/Dubai", 0, 0, at) {
+			t.Error("from == to means never quiet")
+		}
+	}
+	// A window that does not wrap midnight reads literally.
+	afternoon := time.Date(2026, 8, 23, 9, 30, 0, 0, time.UTC) // 13:30 in Dubai
+	if !isQuietHours("Asia/Dubai", 13, 14, afternoon) {
+		t.Error("13:30 is inside 13-14")
+	}
+	if isQuietHours("Asia/Dubai", 14, 15, afternoon) {
+		t.Error("13:30 is outside 14-15")
 	}
 }

@@ -92,6 +92,9 @@ GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
 POST   /api/notifications/seen                     mark the feed read
 
 POST   /api/devices                                {token, platform, timezone} — FCM registration
+GET    /api/devices/status                         does the server hold a token, and when did a push last land
+POST   /api/devices/test                           prove the push chain in one request
+PUT    /api/devices/quiet-hours                    {from, to} in the device's timezone; equal hours = off
 POST   /api/poll                                   run a cycle now; returns its stats
 ```
 

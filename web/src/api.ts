@@ -155,7 +155,14 @@ export const api = {
    *  permission says nothing about whether a usable token ever reached us. */
   pushStatus: () => request<{
     registered: boolean; devices: number; timezone?: string; last_notified_at?: string
+    quiet_from?: number; quiet_to?: number
   }>('/api/devices/status'),
+
+  /** Equal hours switch quiet hours off. */
+  setQuietHours: (from: number, to: number) =>
+    request<{ quiet_from: number; quiet_to: number }>('/api/devices/quiet-hours', {
+      method: 'PUT', body: JSON.stringify({ from, to }),
+    }),
 
   /** Proves the whole chain in one tap. */
   testPush: () => request<{ sent: number }>('/api/devices/test', { method: 'POST' }),
