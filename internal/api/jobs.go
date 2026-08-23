@@ -65,12 +65,20 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			rawPattern = "%" + search + "%"
 		}
 		locations := locationPatterns(r)
+		// market=1 hides postings nobody here could take. A company board is
+		// chosen as a whole, so it brings its Ohio roles along with its Dubai
+		// one; this is how a reader asks to see only the second kind.
+		inMarket := r.URL.Query().Get("market") == "1"
+		var marketPatterns []string
+		if inMarket {
+			marketPatterns = match.ReachablePatterns()
+		}
 
 		// With a search term and no profile, the query runs over everything
 		// stored — a search bar that silently hides jobs because they missed
 		// your profile keywords answers a different question than the one asked.
 		if r.URL.Query().Get("profile_id") == "" && (search != "" || locations != nil) {
-			searchAllJobs(w, r, pool, titlePatterns, rawPattern, locations, sort, limit)
+			searchAllJobs(w, r, pool, titlePatterns, rawPattern, locations, marketPatterns, sort, limit)
 			return
 		}
 
@@ -121,9 +129,10 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			       or ($9 <> '' and (j.company ilike $9 or j.location ilike $9)))
 			  and ($7::text[] is null or j.location ilike any($7))
 			  and (not $8 or j.remote)
+			  and ($10::text[] is null or j.location = '' or j.location ilike any($10))
 			order by `+cursorExpr+` desc, j.id desc
 			limit $4`, profileID, at, atID, limit, titlePatterns, deviceID(r), locations,
-			r.URL.Query().Get("remote") == "1", rawPattern)
+			r.URL.Query().Get("remote") == "1", rawPattern, marketPatterns)
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return
@@ -212,7 +221,8 @@ func keywordPatterns(search string) []string {
 // meaningful here: "the ones my searches caught" and "the ones I applied to",
 // narrowed by whatever is typed.
 func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
-	titlePatterns []string, rawPattern string, locations []string, sort string, limit int) {
+	titlePatterns []string, rawPattern string, locations, marketPatterns []string,
+	sort string, limit int) {
 	var at any
 	var atID any
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
@@ -253,12 +263,13 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		where ($1::text[] is null or j.title ilike any($1)
 		   or ($6 <> '' and (j.company ilike $6 or j.location ilike $6)))
 		  and ($5::text[] is null or j.location ilike any($5))
-		  and (not $8 or j.remote)`+extraWhere+`
+		  and (not $8 or j.remote)
+		  and ($9::text[] is null or j.location = '' or j.location ilike any($9))`+extraWhere+`
 		  and ($3::timestamptz is null
 		       or (`+cursorExpr+`, j.id) < ($3, $4::bigint))
 		order by `+cursorExpr+` desc, j.id desc
 		limit $2`, titlePatterns, limit, at, atID, locations, rawPattern,
-		deviceID(r), r.URL.Query().Get("remote") == "1")
+		deviceID(r), r.URL.Query().Get("remote") == "1", marketPatterns)
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return

@@ -179,11 +179,10 @@ smartrecruiters    AECOM2|ae,sa,in              AECOM
 smartrecruiters    SGS|ae,sa,in                 SGS
 smartrecruiters    SyngentaGroup|in             Syngenta
 smartrecruiters    AveryDennison|in             Avery Dennison
-# Ashby cannot filter, so these two pay their 12.4 MB and 10.4 MB hourly
-# instead of every cycle. An hour behind OpenAI still beats a day behind an
-# aggregator.
-ashby              openai                       OpenAI
-ashby              airwallex                    Airwallex
+# OpenAI and Airwallex were added here and removed a day later. Predicted from
+# their full boards: 12 and 9 in-market postings. Measured after the 14-day
+# retention took hold: 2 and 0, for 12.4 MB and 10.4 MB per fetch. The estimate
+# counted old postings that never persist; the boards do not pay.
 
 # Quality employers probed by name rather than found by mining, once apply-link
 # analysis showed the platforms were already covered and what we lacked was
@@ -237,3 +236,61 @@ workable           agility                      Agility
 smartrecruiters    masdar                       Masdar
 teamtailor         rasan                        Rasan
 lever              fresha                       Fresha
+
+# Workable tenants serving the Gulf and India, found through jobs.workable.com
+# — a keyless cross-tenant search over every Workable customer. It is no good
+# as a live feed (twenty results a page, no date ordering, so finding what is
+# new would cost hundreds of requests), but as a directory it is excellent:
+# 242 companies hiring in Dubai, Abu Dhabi, Riyadh, Qatar and India, of which
+# 136 answer on the per-company API we already speak. These 48 earned a line by
+# having at least ten in-market postings and either a fifth of the board or
+# fifty of them. Most are near 100% — they are local employers, not global
+# boards with a Dubai office.
+workable           apt-resources                Apt Resources
+workable           rentokil-initial             Rentokil Initial
+workable           eva-pharma                   Eva Pharma
+workable           pavago                       Pavago
+workable           hanmiglobal-saudi            Hanmiglobal Saudi
+workable           2070health                   2070Health
+workable           lokal-app                    Lokal App
+workable           abis                         Abis
+workable           tawantech                    Tawantech
+workable           gsstech-group                Gsstech Group
+workable           khibraty                     Khibraty
+workable           sihamco                      Sihamco
+workable           exponent-energy              Exponent Energy
+workable           jove                         Jove
+workable           innovationteam               Innovationteam
+workable           zaintech                     Zaintech
+workable           infotel-uk                   Infotel Uk
+workable           maker-lab                    Maker Lab
+workable           innovaccer-analytics         Innovaccer Analytics
+workable           lucidya                      Lucidya
+workable           al-jomaih-energy-and-water   Al Jomaih Energy And Water
+workable           algahwaalarabiya             Algahwaalarabiya
+workable           gridlines                    Gridlines
+workable           accellor                     Accellor
+workable           segadty                      Segadty
+workable           nowlun                       Nowlun
+workable           waad-education               Waad Education
+workable           partner-one-capital          Partner One Capital
+workable           visioneers                   Visioneers
+workable           alkaffary-group              Alkaffary Group
+workable           asico                        Asico
+workable           abc-center                   Abc Center
+workable           adree                        Adree
+workable           xenon7                       Xenon7
+workable           lrn-corporation              Lrn Corporation
+workable           azeus-convene                Azeus Convene
+workable           shipa                        Shipa
+workable           arcsen                       Arcsen
+workable           horizontal-digital           Horizontal Digital
+workable           deeplight                    Deeplight
+workable           evidence-action              Evidence Action
+workable           kayali                       Kayali
+workable           sweater                      Sweater
+workable           irth                         Irth
+workable           zenara-health                Zenara Health
+workable           sealy-mattress-middle-east   Sealy Mattress Middle East
+workable           messe-muenchen-india         Messe Muenchen India
+workable           astrome-technologies         Astrome Technologies

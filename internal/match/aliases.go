@@ -3,6 +3,8 @@
 // substring first, then each of its aliases. Case-insensitive throughout.
 package match
 
+import "strings"
+
 // keywordAliases expands common role names into the words job titles actually
 // use: "frontend" should find "React Engineer", because that is the same job
 // wearing a different title. Deliberately a small curated dictionary: no AI,
@@ -253,4 +255,40 @@ var locationAliases = map[string][]string{
 	"colombia":  {"bogota", "bogotá", "medellin", "medellín"},
 	"chile":     {"santiago"},
 	"peru":      {"lima"},
+}
+
+// reachableRegions is where this hunt can actually take work: the Gulf, the
+// subcontinent, and remote roles open to anybody. Postings restricted to
+// somewhere else are not offers, they are rows to scroll past — the remote
+// feeds are filtered on this at ingest, and the search bar offers it as a
+// switch, because a company board may carry both a Dubai role and forty in
+// Ohio and only the board as a whole was chosen.
+var reachableRegions = []string{
+	"worldwide", "anywhere", "global", "emea", "middle east",
+	"united arab", "uae", "dubai", "abu dhabi", "saudi", "qatar", "kuwait",
+	"bahrain", "oman", "egypt", "india", "pakistan",
+}
+
+// Reachable reports whether a posting's location is open to this hunt. An
+// unstated location counts as unrestricted.
+func Reachable(location string) bool {
+	location = strings.ToLower(strings.TrimSpace(location))
+	if location == "" {
+		return true
+	}
+	for _, region := range reachableRegions {
+		if strings.Contains(location, region) {
+			return true
+		}
+	}
+	return false
+}
+
+// ReachablePatterns is the same list as SQL ilike patterns.
+func ReachablePatterns() []string {
+	patterns := make([]string, 0, len(reachableRegions))
+	for _, region := range reachableRegions {
+		patterns = append(patterns, "%"+region+"%")
+	}
+	return patterns
 }
