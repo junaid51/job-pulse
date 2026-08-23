@@ -500,3 +500,14 @@ mark.hit {
   height: 36px; padding: 0 10px; border-radius: 9px; font-size: 16px;
   border: 1px solid var(--line); background: var(--surface); color: var(--on-surface);
 }
+
+/* Advanced disclosure: diagnostics live behind one tap */
+.disclosure {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 15px 18px; margin-top: 8px;
+  border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  transition: color 0.12s ease, background 0.12s ease;
+}
+.disclosure:hover { color: var(--on-surface); background: var(--surface-2); }
+.disclosure-mark { font-size: 15px; font-variant-numeric: tabular-nums; }
