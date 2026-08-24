@@ -10,7 +10,8 @@ import { showToast } from '../toast'
  *  fifty-row list, and without this every keystroke re-renders every row. */
 export const JobRow = memo(function JobRow(props: {
   job: Job
-  label?: string
+  /** The saved search that caught this, when the feed spans several. */
+  via?: string
   showUnread?: boolean
   actions?: boolean
   highlight?: string[]
@@ -23,7 +24,7 @@ export const JobRow = memo(function JobRow(props: {
     job.company,
     job.location || null,
     job.remote && !locationSaysRemote ? 'Remote' : null,
-    providerLabel(job.provider),
+    props.via ? `via ${props.via}` : providerLabel(job.provider),
   ].filter(Boolean).join('  ·  ')
 
   // Each view ages by its own event: the Applied view by when you applied, the
@@ -38,11 +39,11 @@ export const JobRow = memo(function JobRow(props: {
     api.hideJob(job.id)
       .then(() => {
         invalidate('jobs')
-        invalidate('notifications')
+        invalidate('profiles')
         showToast('Hidden', {
           label: 'Undo',
           run: () => api.unhideJob(job.id)
-            .then(() => { invalidate('jobs'); invalidate('notifications') })
+            .then(() => { invalidate('jobs'); invalidate('profiles') })
             .catch(() => showToast('Could not undo')),
         })
       })
@@ -74,7 +75,6 @@ export const JobRow = memo(function JobRow(props: {
       {props.showUnread && <span className={`dot ${job.seen_at ? '' : 'unread'}`} />}
       <CompanyMark name={job.company} />
       <span className="job-main">
-        {props.label && <span className="job-label">{props.label}</span>}
         <span className="job-title">
           <Highlighted text={job.title} terms={props.highlight} />
           {applied && <span className="applied-tag">APPLIED</span>}

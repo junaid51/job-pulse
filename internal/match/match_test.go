@@ -354,3 +354,21 @@ func TestManagementRoleAliases(t *testing.T) {
 		t.Error("keywords=[agile] should match Agile Delivery Lead")
 	}
 }
+
+// A board that writes only the city still describes a job in a place this hunt
+// can take work in. The default in-market filter used to hide all of these.
+func TestReachableAcceptsCitiesWithoutTheirCountry(t *testing.T) {
+	for _, in := range []string{"Riyadh", "Doha", "Jeddah", "Manama", "Muscat",
+		"Cairo", "Karachi", "Dubai", "Bengaluru, Karnataka", "Noida, Uttar Pradesh",
+		"Worldwide", "EMEA", ""} {
+		if !Reachable(in) {
+			t.Errorf("Reachable(%q) = false, want true", in)
+		}
+	}
+	for _, in := range []string{"Ohio, USA", "Berlin, Germany", "Tokyo",
+		"Toronto, Canada", "São Paulo, Brazil"} {
+		if Reachable(in) {
+			t.Errorf("Reachable(%q) = true, want false", in)
+		}
+	}
+}
