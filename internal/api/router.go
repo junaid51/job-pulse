@@ -31,7 +31,6 @@ func NewRouter(pool *pgxpool.Pool, notifier *notify.Notifier) http.Handler {
 		r.Post("/jobs/{id}/unhide", unhideJob(pool))
 		r.Post("/jobs/{id}/applied", toggleApplied(pool))
 
-		r.Get("/notifications", listNotifications(pool))
 		r.Post("/notifications/seen", markSeen(pool))
 
 		r.Get("/boards", listBoards(pool))
