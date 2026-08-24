@@ -10,6 +10,21 @@
   --muted: #8F8F9A;
   --line: #1D1D24;
   --danger: #F26D6D;
+
+  /* Glass is for chrome that floats over the feed — the header, the tab bar,
+     sheets, toasts — and nowhere else: a blur needs content behind it to blur,
+     and frosting a full-bleed list only muddies the type. --fill is the flat
+     translucent tint the controls sitting inside that chrome use, so they read
+     as part of the same pane instead of stacking a second blur. */
+  --fill: rgba(255, 255, 255, 0.07);
+  --fill-2: rgba(255, 255, 255, 0.12);
+  --glass: rgba(13, 13, 18, 0.66);
+  --glass-thick: rgba(16, 16, 22, 0.84);
+  --glass-line: rgba(255, 255, 255, 0.09);
+  --sheen: rgba(255, 255, 255, 0.07);
+  --blur: blur(24px) saturate(180%);
+  /* one easing for everything that moves: slow out, quick settle */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (prefers-color-scheme: light) {
   :root {
@@ -19,6 +34,20 @@
     --muted: #6E6E78;
     --line: #ECECEF;
     --danger: #C23B3B;
+
+    --fill: rgba(0, 0, 0, 0.05);
+    --fill-2: rgba(0, 0, 0, 0.09);
+    --glass: rgba(255, 255, 255, 0.72);
+    --glass-thick: rgba(255, 255, 255, 0.88);
+    --glass-line: rgba(0, 0, 0, 0.07);
+    --sheen: rgba(255, 255, 255, 0.7);
+  }
+  body {
+    background-image:
+      radial-gradient(115% 52% at 50% -10%,
+        color-mix(in srgb, var(--accent) 12%, transparent) 0%, transparent 62%),
+      radial-gradient(90% 45% at 12% 108%,
+        color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 60%);
   }
 }
 
@@ -26,7 +55,16 @@
 html, body, #root { height: 100%; margin: 0; }
 html { -webkit-tap-highlight-color: transparent; }
 body {
-  background: var(--surface);
+  /* Two soft pools of accent, fixed to the window. Without them the glass has
+     nothing to pick up: a blur over a near-black page is just a darker page.
+     They also give the feed a top and a bottom, which a flat black list lacks. */
+  background-color: var(--surface);
+  background-image:
+    radial-gradient(115% 52% at 50% -10%,
+      color-mix(in srgb, var(--accent) 22%, transparent) 0%, transparent 62%),
+    radial-gradient(90% 45% at 12% 108%,
+      color-mix(in srgb, var(--accent) 15%, transparent) 0%, transparent 60%);
+  background-attachment: fixed;
   color: var(--on-surface);
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -57,13 +95,16 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 
 main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 8px; }
 
-/* header: sticky, near-opaque, one hairline */
+/* header: sticky glass, one hairline, a single specular edge */
 .bar {
   position: sticky; top: 0; z-index: 5;
   display: flex; align-items: center; justify-content: space-between;
   padding: max(16px, env(safe-area-inset-top)) 18px 12px;
-  background: color-mix(in srgb, var(--surface) 96%, transparent);
-  border-bottom: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border-bottom: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--sheen);
 }
 .bar h1 { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; margin: 0; }
 .icon-btn {
@@ -71,15 +112,15 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
   width: 32px; height: 32px; margin-right: -6px; border-radius: 7px; color: var(--muted);
   transition: background 0.12s ease, color 0.12s ease;
 }
-.icon-btn:hover { background: var(--surface-2); color: var(--on-surface); }
+.icon-btn:hover { background: var(--fill); color: var(--on-surface); }
 .icon-btn:active { background: var(--line); }
 
 /* toolbar: search + sort */
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 14px 18px 10px; }
 .search {
   flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0;
-  height: 36px; padding: 0 12px; border-radius: 10px;
-  background: var(--surface-2); border: 1px solid transparent; color: var(--muted);
+  height: 36px; padding: 0 12px; border-radius: 11px;
+  background: var(--fill); border: 1px solid transparent; color: var(--muted);
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 .search:focus-within { border-color: var(--accent); background: var(--surface); }
@@ -99,8 +140,8 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 
 .place {
   flex: none; display: flex; align-items: center; gap: 6px; min-width: 0;
-  width: 118px; height: 36px; padding: 0 10px; border-radius: 10px;
-  background: var(--surface-2); border: 1px solid transparent; color: var(--muted);
+  width: 118px; height: 36px; padding: 0 10px; border-radius: 11px;
+  background: var(--fill); border: 1px solid transparent; color: var(--muted);
   transition: border-color 0.12s ease, background 0.12s ease;
 }
 .place:focus-within { border-color: var(--accent); background: var(--surface); }
@@ -117,14 +158,17 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 .chips { display: flex; gap: 7px; padding: 12px 18px 2px; overflow-x: auto; scrollbar-width: none; }
 .chips::-webkit-scrollbar { display: none; }
 .chip {
-  flex: none; padding: 6px 13px; border-radius: 9px;
-  border: 1px solid transparent; background: var(--surface-2);
+  flex: none; padding: 6px 13px; border-radius: 10px;
+  border: 1px solid transparent; background: var(--fill);
   font-size: 12.5px; font-weight: 550;
   color: var(--muted); white-space: nowrap;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 .chip:hover { color: var(--on-surface); }
-.chip.selected { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+.chip.selected {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
 
 /* job rows */
 .list { display: flex; flex-direction: column; }
@@ -134,7 +178,7 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
   text-decoration: none; color: inherit;
   transition: background 0.12s ease;
 }
-.job-row:hover { background: var(--surface-2); }
+.job-row:hover { background: var(--fill); }
 .mark {
   flex: none; width: 36px; height: 36px; margin-top: 1px; border-radius: 11px;
   display: inline-flex; align-items: center; justify-content: center;
@@ -241,7 +285,7 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
   border-bottom: 1px solid var(--line);
   transition: background 0.12s ease;
 }
-.profile-row:hover { background: var(--surface-2); }
+.profile-row:hover { background: var(--fill); }
 .profile-main {
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
   align-items: flex-start; text-align: left; padding: 11px 8px 11px 16px;
@@ -253,9 +297,13 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 /* the profile editor sheet */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 10;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.42);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
   display: flex; align-items: flex-end; justify-content: center;
+  animation: dim 0.22s ease both;
 }
+@keyframes dim { from { opacity: 0; } }
 /* A sheet is a title, a body that scrolls, and an action that stays put. It
    used to be one long column: with twenty role chips it grew taller than the
    phone and pushed its own Save button off the screen. The cap is a percentage
@@ -264,8 +312,12 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
    sheet's title above the top of the screen and its button below the bottom. */
 .sheet {
   width: 100%; max-width: 560px; max-height: 100%;
-  background: var(--surface); border-top: 1px solid var(--line);
-  border-radius: 18px 18px 0 0;
+  background: var(--glass-thick);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  backdrop-filter: blur(32px) saturate(180%);
+  border-top: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--sheen), 0 -20px 60px rgba(0, 0, 0, 0.35);
+  border-radius: 22px 22px 0 0;
   padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; gap: 14px;
   animation: rise 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -287,15 +339,73 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 .sheet input:focus { outline: none; border-color: var(--accent); }
 .sheet small { color: var(--muted); font-weight: 400; font-size: 11.5px; }
 .switch-row { flex-direction: row !important; align-items: center; justify-content: space-between; font-size: 14px !important; }
-.switch-row input { width: 18px; height: 18px; accent-color: var(--accent); }
-@keyframes rise { from { transform: translateY(24px); opacity: 0.6; } }
-@media (prefers-reduced-motion: reduce) { .sheet, .shimmer::after { animation: none; } }
+.switch-row input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex: none; position: relative;
+  width: 46px; height: 28px; border-radius: 999px; cursor: pointer;
+  background: var(--fill-2);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  transition: background 0.24s var(--ease);
+}
+.switch-row input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 24px; height: 24px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.24s var(--ease);
+}
+.switch-row input[type="checkbox"]:checked { background: var(--accent); }
+.switch-row input[type="checkbox"]:checked::after { transform: translateX(18px); }
+.switch-row input[type="checkbox"]:active::after { transform: scale(0.94); }
+.switch-row input[type="checkbox"]:checked:active::after { transform: translateX(18px) scale(0.94); }
+.switch-row input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
+@keyframes rise { from { transform: translateY(28px); opacity: 0; } }
+.sheet { animation: rise 0.34s var(--ease); }
 
-/* bottom navigation */
+/* Touch feedback: everything tappable gives a little under the finger, on the
+   same easing as everything else that moves. */
+.chip, .where-btn, .save-search, .btn-tonal, .btn-filled, .pick, .tab, .icon-btn {
+  transition: background 0.16s var(--ease), color 0.16s var(--ease),
+              border-color 0.16s var(--ease), transform 0.14s var(--ease),
+              filter 0.16s var(--ease), opacity 0.16s var(--ease);
+}
+.chip:active, .where-btn:active, .save-search:active, .btn-tonal:active,
+.pick:active, .icon-btn:active { transform: scale(0.94); }
+.btn-filled:active { transform: scale(0.985); }
+.tab:active .tab-glyph { transform: scale(0.9); }
+.job-row { transition: background 0.16s var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet, .sheet-backdrop, .shimmer::after, .toast, .screen,
+  .list.virtual { animation: none; }
+  .switch-row input[type="checkbox"],
+  .switch-row input[type="checkbox"]::after { transition: none; }
+  .chip, .where-btn, .save-search, .btn-tonal, .btn-filled, .pick, .tab,
+  .icon-btn, .tab-glyph { transition: none; transform: none; }
+}
+/* Some readers ask the system for less of this; a solid pane, then. */
+@media (prefers-reduced-transparency: reduce) {
+  .bar, nav, .sheet, .toast {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: var(--surface);
+  }
+  .sheet-backdrop { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* bottom navigation: glass floating over the list. It has to overlay the
+   scroller rather than sit beside it — a translucent bar with the page
+   background behind it is just a darker bar. */
 nav {
   display: flex; flex: none;
-  border-top: 1px solid var(--line); background: var(--surface);
+  border-top: 1px solid var(--glass-line);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  box-shadow: inset 0 1px 0 var(--sheen);
   padding-bottom: env(safe-area-inset-bottom);
+}
+@media (max-width: 760px) {
+  nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; }
+  /* the last row must clear the bar it now scrolls under */
+  main { padding-bottom: calc(58px + env(safe-area-inset-bottom)); }
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -324,7 +434,7 @@ nav {
   width: 28px; height: 28px; border-radius: 7px; color: var(--muted);
   transition: background 0.12s ease, color 0.12s ease, opacity 0.12s ease;
 }
-.row-actions button:hover { background: var(--surface-2); color: var(--on-surface); }
+.row-actions button:hover { background: var(--fill); color: var(--on-surface); }
 .row-actions button.on { color: var(--accent); }
 @media (hover: hover) {
   .row-actions { opacity: 0; }
@@ -375,7 +485,8 @@ mark.hit {
    which is what keeps a deeply-scrolled infinite list flat. The intrinsic size
    keeps the scrollbar honest while a row is skipped. */
 /* windowed list: TanStack Virtual positions the visible rows absolutely */
-.list.virtual { position: relative; }
+.list.virtual { position: relative; animation: list-in 0.24s ease; }
+@keyframes list-in { from { opacity: 0; } }
 .vrow { position: absolute; top: 0; left: 0; width: 100%; }
 .vrow .job-row { border-bottom: 1px solid var(--line); }
 
@@ -402,7 +513,7 @@ mark.hit {
     flex: none; flex-direction: row; justify-content: flex-start; gap: 10px;
     padding: 7px 10px; border-radius: 7px; font-size: 13px;
   }
-  .tab:hover { background: var(--surface-2); }
+  .tab:hover { background: var(--fill); }
   .tab.active { background: var(--accent-soft); }
   .badge { top: -4px; right: -10px; }
 }
@@ -412,13 +523,18 @@ mark.hit {
   position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom));
   transform: translateX(-50%); z-index: 20;
   display: flex; align-items: center; gap: 14px;
-  background: var(--on-surface); color: var(--surface);
-  border-radius: 10px; padding: 10px 16px;
+  background: var(--glass-thick); color: var(--on-surface);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-line);
+  box-shadow: inset 0 1px 0 var(--sheen), 0 10px 30px rgba(0, 0, 0, 0.4);
+  border-radius: 14px; padding: 11px 16px;
   font-size: 13px; font-weight: 550;
   animation: rise 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
   max-width: min(92vw, 480px);
 }
 .toast button { color: var(--accent); font-weight: 650; font-size: 13px; }
+.toast { animation: rise 0.28s var(--ease); }
 @media (min-width: 761px) { .toast { bottom: 28px; } }
 
 /* the editor's optional half, opened by a word rather than a form */
@@ -496,21 +612,13 @@ mark.hit {
 
 /* the difference between "no more pages" and "pages not loading" */
 .feed-end { text-align: center; color: var(--muted); font-size: 12px; padding: 20px 0 28px; margin: 0; }
-.scope-note { font-size: 12px; color: var(--muted); padding: 2px 18px 8px; margin: 0; }
 .chip-add { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
 .chip-add:hover { border-color: var(--accent); color: var(--accent); }
 
 /* refresh feedback + touch feedback */
 @keyframes icon-rotate { to { transform: rotate(360deg); } }
 .icon-btn.spinning svg { animation: icon-rotate 0.9s linear infinite; }
-.job-row:active { background: var(--surface-2); }
-.remote-toggle {
-  flex: none; height: 36px; padding: 0 13px; border-radius: 10px;
-  background: var(--surface-2); color: var(--muted);
-  font-size: 12.5px; font-weight: 550;
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.remote-toggle.on { background: var(--accent-soft); color: var(--accent); }
+.job-row:active { background: var(--fill); }
 
 /* Mobile toolbar: the search bar owns the first row and everything else sits
    below it. This block lives at the end of the file on purpose — the base
@@ -542,16 +650,16 @@ mark.hit {
   font-size: 13px; font-weight: 600; color: var(--muted);
   transition: color 0.12s ease, background 0.12s ease;
 }
-.disclosure:hover { color: var(--on-surface); background: var(--surface-2); }
+.disclosure:hover { color: var(--on-surface); background: var(--fill); }
 .disclosure-mark { font-size: 15px; font-variant-numeric: tabular-nums; }
 
 /* One button for the whole "where" question */
 .where-btn {
   flex: none; display: inline-flex; align-items: center; gap: 6px;
-  height: 36px; padding: 0 13px; border-radius: 10px;
-  background: var(--surface-2); color: var(--on-surface);
+  height: 36px; padding: 0 13px; border-radius: 11px;
+  background: var(--fill); color: var(--on-surface);
   font-size: 12.5px; font-weight: 550;
-  transition: background 0.12s ease;
+  transition: background 0.16s var(--ease), transform 0.14s var(--ease);
 }
-.where-btn:hover { background: var(--line); }
+.where-btn:hover { background: var(--fill-2); }
 .where-btn svg { color: var(--muted); }

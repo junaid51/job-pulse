@@ -1,6 +1,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { api, describeError, type Job, type JobSort, type Profile } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
@@ -410,7 +411,12 @@ function whereLabel(place: string, remoteOnly: boolean, myMarkets: boolean): str
 const WHERE_PLACES = ['dubai', 'abu dhabi', 'saudi', 'qatar', 'kuwait', 'bahrain',
   'oman', 'egypt', 'india', 'uk', 'usa']
 
-/** Where is one question, so it is one list: a region, or a place. */
+/** Where is one question, so it is one list: a region, or a place.
+ *
+ *  Portalled to the document body, like every overlay here: rendered in place
+ *  it sits inside the screen wrapper, whose fade-in animation makes it a
+ *  stacking context — and a fixed overlay trapped in one paints *under* the
+ *  tab bar, which swallowed this sheet's own Done button. */
 function WhereSheet(props: {
   place: string; setPlace: (v: string) => void
   remoteOnly: boolean; setRemoteOnly: (v: boolean) => void
@@ -424,7 +430,7 @@ function WhereSheet(props: {
     props.setMyMarkets(markets)
     setDraft('')
   }
-  return (
+  return createPortal(
     <div className="sheet-backdrop" onClick={props.onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <h2>Where</h2>
@@ -469,7 +475,8 @@ function WhereSheet(props: {
 
         <button className="btn-filled wide" onClick={props.onClose}>Done</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

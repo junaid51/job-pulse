@@ -7,6 +7,8 @@ import { queryClient } from './query'
 import { showToast } from './toast'
 import './styles.css'
 
+const bootedAt = performance.now()
+
 // The service worker handles push display and app-shell caching. It calls
 // skipWaiting on install, so a deployed update activates while the page is
 // open — controllerchange is the moment to offer the reload, and the end of
@@ -34,6 +36,19 @@ if ('serviceWorker' in navigator) {
 // instantly while the free-tier backend takes its minute to wake.
 const persister = createSyncStoragePersister({ storage: window.localStorage })
 
+/** The splash in index.html goes as soon as React has painted the real UI —
+ *  but not before its own mark has finished drawing, because a splash that
+ *  flashes for 80ms is worse than no splash at all. */
+function dismissSplash() {
+  const splash = document.getElementById('splash')
+  if (!splash) return
+  const wait = Math.max(0, 620 - (performance.now() - bootedAt))
+  setTimeout(() => {
+    splash.classList.add('gone')
+    setTimeout(() => splash.remove(), 320)
+  }, wait)
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <PersistQueryClientProvider
@@ -44,3 +59,6 @@ createRoot(document.getElementById('root')!).render(
     </PersistQueryClientProvider>
   </StrictMode>,
 )
+
+// Two frames: one for React to commit, one for the browser to paint it.
+requestAnimationFrame(() => requestAnimationFrame(dismissSplash))

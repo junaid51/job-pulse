@@ -12,8 +12,48 @@
   <link rel="apple-touch-icon" href="/icons/Icon-192.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <title>JobPulse</title>
+  <style>
+    /* Inline on purpose: this paints on the first frame, before the bundle is
+       even parsed, so a cold open on the Home Screen shows the mark drawing
+       itself instead of a white flash. No fonts, no requests. */
+    html, body { margin: 0; background: #0C0C0F; }
+    #splash {
+      position: fixed; inset: 0; z-index: 100;
+      display: grid; place-content: center; justify-items: center; gap: 16px;
+      background: #0C0C0F;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+    #splash.gone { opacity: 0; transform: scale(1.03); pointer-events: none; }
+    #splash svg { width: 58px; height: 58px; color: #6E6EF7; }
+    #splash path {
+      stroke-dasharray: 46; stroke-dashoffset: 46;
+      animation: splash-draw 0.8s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+    }
+    #splash span {
+      font: 600 15px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      letter-spacing: -0.2px; color: #E7E7EB; opacity: 0;
+      animation: splash-word 0.5s ease 0.3s forwards;
+    }
+    @keyframes splash-draw { to { stroke-dashoffset: 0; } }
+    @keyframes splash-word { to { opacity: 1; } }
+    @media (prefers-color-scheme: light) {
+      html, body, #splash { background: #FFFFFF; }
+      #splash span { color: #18181B; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #splash path { animation: none; stroke-dashoffset: 0; }
+      #splash span { animation: none; opacity: 1; }
+    }
+  </style>
 </head>
 <body>
+  <div id="splash" role="status" aria-label="Loading JobPulse">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M3 12h4l2.5-5 4 10 2.5-5h5" />
+    </svg>
+    <span>JobPulse</span>
+  </div>
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
