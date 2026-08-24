@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { API, api, describeError, deviceId, type Profile, type ProfileInput } from '../api'
 import { Loading } from '../components/States'
 import { TermPicker } from '../components/TermPicker'
@@ -384,7 +385,9 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
     }
   }
 
-  return (
+  // Portalled to the body: see WhereSheet — a fixed overlay inside the screen
+  // wrapper paints under the tab bar.
+  return createPortal(
     <div className="sheet-backdrop" onClick={props.onClose}>
       <form
         className="sheet"
@@ -438,7 +441,8 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
           {saving ? 'Saving…' : existing ? 'Save changes' : `Watch for ${autoName.toLowerCase()}`}
         </button>
       </form>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
