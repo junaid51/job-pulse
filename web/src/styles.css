@@ -36,6 +36,22 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 ::selection { background: var(--accent-soft); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
+/* route transitions: the arriving screen fades in over 180ms. Hiding a screen
+   with display:none re-runs its animation on the way back, so returning to a
+   tab animates too — no library, no transition state to track.
+
+   Opacity only, deliberately: a transform on this wrapper would make it the
+   containing block for everything `position: fixed` inside it, which anchored
+   the sheets and toasts to the screen's box instead of the window. */
+.screen { animation: screen-in 0.18s ease both; }
+@keyframes screen-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screen { animation: none; }
+}
+
 /* layout: centered column on wide screens, full-bleed on phones */
 .frame { height: 100%; display: flex; flex-direction: column; max-width: 760px; margin: 0 auto; }
 
@@ -96,14 +112,6 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 .place input::placeholder { color: var(--muted); }
 .place .clear { color: var(--muted); font-size: 11px; padding: 2px; }
 
-.segment { display: flex; flex: none; padding: 3px; gap: 2px; border-radius: 10px; background: var(--surface-2); }
-.segment button {
-  padding: 5px 11px; border-radius: 8px; border: 1px solid transparent;
-  font-size: 12.5px; font-weight: 550; color: var(--muted);
-  transition: background 0.12s ease, color 0.12s ease;
-}
-.segment button:hover { color: var(--on-surface); }
-.segment button.on { background: var(--surface); border-color: var(--line); color: var(--on-surface); }
 
 /* profile chips */
 .chips { display: flex; gap: 7px; padding: 12px 18px 2px; overflow-x: auto; scrollbar-width: none; }
@@ -139,10 +147,6 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
 .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; margin-top: 8px; }
 .dot.unread { background: var(--accent); }
 .job-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.job-label {
-  font-size: 10px; font-weight: 650; letter-spacing: 0.7px;
-  text-transform: uppercase; color: var(--accent);
-}
 .job-title {
   font-size: 14.5px; font-weight: 600; line-height: 1.35; letter-spacing: -0.15px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
@@ -252,13 +256,25 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
   background: rgba(0, 0, 0, 0.55);
   display: flex; align-items: flex-end; justify-content: center;
 }
+/* A sheet is a title, a body that scrolls, and an action that stays put. It
+   used to be one long column: with twenty role chips it grew taller than the
+   phone and pushed its own Save button off the screen. The cap is a percentage
+   of the backdrop rather than any viewport unit — svh and dvh both measure
+   something taller than the box the app itself lives in, which is what put the
+   sheet's title above the top of the screen and its button below the bottom. */
 .sheet {
-  width: 100%; max-width: 560px;
+  width: 100%; max-width: 560px; max-height: 100%;
   background: var(--surface); border-top: 1px solid var(--line);
   border-radius: 18px 18px 0 0;
   padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; gap: 14px;
   animation: rise 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.sheet-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 14px;
+  /* the last field must not look clipped by the action below it */
+  padding-bottom: 4px;
 }
 .sheet h2 { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; margin: 0; }
 .sheet label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 550; }
@@ -286,6 +302,9 @@ nav {
   padding: 8px 0 7px; font-size: 10.5px; font-weight: 550; color: var(--muted);
   transition: color 0.12s ease;
 }
+/* the tap target is the half, the mark of "here" is the glyph */
+.tab.active .tab-glyph { transform: translateY(-1px); }
+.tab-glyph { transition: transform 0.14s cubic-bezier(0.2, 0.8, 0.3, 1); }
 .tab:hover { color: var(--on-surface); }
 .tab.active { color: var(--accent); }
 .tab-glyph { position: relative; display: inline-flex; line-height: 1; }
@@ -402,6 +421,12 @@ mark.hit {
 .toast button { color: var(--accent); font-weight: 650; font-size: 13px; }
 @media (min-width: 761px) { .toast { bottom: 28px; } }
 
+/* the editor's optional half, opened by a word rather than a form */
+.more-link {
+  align-self: flex-start; color: var(--accent);
+  font-size: 12.5px; font-weight: 600; padding: 2px 0;
+}
+
 /* unread count on a profile chip */
 .chip-count {
   display: inline-block; margin-left: 6px;
@@ -419,7 +444,7 @@ mark.hit {
 }
 .save-search:hover { filter: brightness(1.12); }
 
-/* day headers in the notifications feed */
+/* day headers in the feed */
 .day-h {
   position: sticky; top: 57px; z-index: 2;
   padding: 8px 18px 6px;
@@ -492,14 +517,16 @@ mark.hit {
    .search rule is later in source than the old media query was, and won the
    cascade, which is how the search box ended up sharing a row and shrinking. */
 @media (max-width: 560px) {
-  /* Two rows, not four: the search owns the first, the view and the place
-     share the second. */
-  .toolbar { gap: 8px; }
-  .search { flex: 1 1 100%; order: 1; }
-  .segment { flex: 1 1 auto; order: 2; }
-  .segment button { flex: 1; text-align: center; }
-  .where-btn { flex: none; order: 3; }
-  .save-search { flex: none; order: 4; }
+  /* One row of controls, not four: search, and where. */
+  .toolbar { gap: 8px; flex-wrap: nowrap; }
+  .search { flex: 1 1 auto; min-width: 0; }
+  .where-btn { flex: 0 1 auto; min-width: 0; }
+  .where-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .save-search { flex: none; }
+}
+/* "/" is a keyboard shortcut; a phone has no keyboard to hint at. */
+@media (hover: none) {
+  .search kbd { display: none; }
 }
 .quiet-range { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
 .quiet-range select {

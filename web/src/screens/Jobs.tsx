@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef, useState } from 'react'
-import { api, describeError, type Job, type JobSort } from '../api'
+import { api, describeError, type Job, type JobSort, type Profile } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
@@ -10,14 +10,21 @@ import { showToast } from '../toast'
 async function refreshFeeds() {
   try { await api.poll() } catch { /* the cron's endpoint; refetch regardless */ }
   invalidate('jobs')
-  invalidate('notifications')
   invalidate('profiles') // the chips carry unread counts
 }
 
+/** What the feed is showing: one saved search, every saved search, the jobs
+ *  you applied to, or — before any search exists — nothing. One question with
+ *  one row of answers, which is why these are chips and not chips plus tabs. */
+type Scope = number | 'all' | 'applied' | null
+
 export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
-  const [selected, setSelected] = useState<number | null>(null)
+  const [selected, setSelected] = useState<Scope>('all')
   const [refreshing, setRefreshing] = useState(false)
+  // A typed term searches every board, so no saved search is what you are
+  // looking at — nothing in the row should claim to be selected.
+  const [searching, setSearching] = useState(false)
 
   const refresh = async () => {
     if (refreshing) return
@@ -39,27 +46,41 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
     body = <Loading />
   } else {
     const list = profiles.data
-    const profile = list.find((candidate) => candidate.id === selected) ?? list[0] ?? null
+    // One saved search means the "all searches" chip would be a synonym for it.
+    const showAll = list.length > 1
+    const scope: Scope = list.length === 0 ? null
+      : selected === 'applied' ? 'applied'
+      : typeof selected === 'number' && list.some((p) => p.id === selected) ? selected
+      : showAll ? 'all' : list[0].id
+    const unread = list.reduce((n, profile) => n + profile.unread, 0)
     body = (
       <>
         {list.length > 0 && (
           <div className="chips">
+            {showAll && (
+              <button className={`chip ${!searching && scope === 'all' ? 'selected' : ''}`}
+                onClick={() => setSelected('all')}>
+                All searches
+                {unread > 0 && <span className="chip-count">{unread}</span>}
+              </button>
+            )}
             {list.map((candidate) => (
               <button
                 key={candidate.id}
-                className={`chip ${candidate.id === profile?.id ? 'selected' : ''}`}
+                className={`chip ${!searching && candidate.id === scope ? 'selected' : ''}`}
                 onClick={() => setSelected(candidate.id)}
               >
                 {candidate.name}
                 {candidate.unread > 0 && <span className="chip-count">{candidate.unread}</span>}
               </button>
             ))}
+            <button className={`chip ${!searching && scope === 'applied' ? 'selected' : ''}`}
+              onClick={() => setSelected('applied')}>Applied</button>
             <button className="chip chip-add" onClick={newSearch}>+ New</button>
           </div>
         )}
-        <JobList profileId={profile?.id ?? null} keywords={profile?.keywords ?? []}
-          profileName={profile?.name ?? ''} onCreateProfile={newSearch}
-          onSavedSearch={setSelected} />
+        <JobList scope={scope} profiles={list} onCreateProfile={newSearch}
+          onSavedSearch={setSelected} onSearching={setSearching} />
       </>
     )
   }
@@ -82,9 +103,8 @@ type Item =
   | { kind: 'header'; key: string; label: string }
   | { kind: 'job'; key: string; job: Job }
 
-// The feed is a timeline of arrivals, so the headers say when — and each row
-// is then free to be just the job. Deliberately the same words the
-// notifications screen uses: one vocabulary for one idea.
+// The feed is a timeline of arrivals, so the headers say when — and each row is
+// then free to be just the job.
 function arrivalLabel(iso: string): string {
   const at = new Date(iso)
   if (Date.now() - at.getTime() < 60 * 60 * 1000) return 'Just now'
@@ -96,27 +116,25 @@ function arrivalLabel(iso: string): string {
   return at.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
-// profileId is null when no profile exists yet: the feed has nothing to show,
-// but the search bar still covers the whole corpus — browsing must not wait
-// for a profile to be created.
-function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSearch }: {
-  profileId: number | null; keywords: string[]; profileName: string
+// scope is null when no saved search exists yet: the feed has nothing to show,
+// but the search bar still covers the whole corpus — browsing must not wait for
+// a search to be saved.
+function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching }: {
+  scope: Scope
+  profiles: Profile[]
   onCreateProfile: () => void
   onSavedSearch: (id: number) => void
+  onSearching: (active: boolean) => void
 }) {
-  // Default to arrival order, not publication order. A job discovered ten
-  // minutes ago but posted last week is news to this reader, and sorting by
-  // posted date buried it days down the list while the notification about it
-  // said "9m" — the two screens disagreed about the same job.
-  const [sort, setSort] = useState<JobSort>('matched')
+  // Arrival order, not publication order: a job discovered ten minutes ago but
+  // posted last week is news to this reader. The Applied chip is the one view
+  // that orders by something else — when you applied.
+  const sort: JobSort = scope === 'applied' ? 'applied' : 'matched'
   const [remoteOnly, setRemoteOnly] = useState(false)
   // Seven jobs in ten in the corpus are restricted somewhere this reader
   // cannot work: a company board is chosen whole, and brings its Ohio roles
   // along with its Dubai one. On by default, one tap to see everything.
   const [myMarkets, setMyMarkets] = useState(true)
-  // Location, region and remote were three separate controls saying the same
-  // kind of thing. They are one sheet now, opened by one button that reads
-  // back the current answer.
   const [whereOpen, setWhereOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -148,52 +166,76 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
-  // The location box filters every view; "@place" tokens typed into search do
-  // the same, through the same alias dictionary the matcher uses.
+  // "@place" typed into search filters location the same way the Where sheet
+  // does, through the same alias dictionary the matcher uses.
   const tokens = debounced.split(/\s+/).filter(Boolean)
   const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
   const term = tokens.filter((t) => !t.startsWith('@')).join(' ')
   const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
-  // With no profile there is no feed for the location box to filter, so a
-  // place on its own also counts as a search of everything.
+  // A typed term searches every board, not just what your searches caught —
+  // hiding jobs because they missed your keywords answers the wrong question.
   const searching = term !== '' || atTokens.length > 0
-    || (profileId === null && debouncedPlace !== '')
+  // A named place is the answer to "where", so it replaces the region filter
+  // rather than intersecting with it — otherwise asking for London while the
+  // region said Gulf returned nothing, silently.
+  const market = myMarkets && !debouncedPlace
+  useEffect(() => { onSearching(searching) }, [searching, onSearching])
 
   const feed = useInfiniteQuery({
-    queryKey: ['jobs', searching ? 'search' : 'profile',
-      searching ? term : profileId, sort, locations, remoteOnly, myMarkets],
-    queryFn: ({ pageParam }) => searching
-      ? api.searchJobs(term, locations, remoteOnly, myMarkets, sort, pageParam)
-      : api.jobs(profileId!, sort, locations, remoteOnly, myMarkets, pageParam),
+    queryKey: ['jobs', searching ? 'corpus' : scope, term, sort, locations, remoteOnly, market],
+    queryFn: ({ pageParam }) => api.feed({
+      // Applied spans every saved search; a typed term spans every board.
+      scope: searching ? 'corpus' : scope === 'applied' ? 'all' : scope!,
+      q: term, locations, remote: remoteOnly, market, sort, cursor: pageParam,
+    }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
-    enabled: searching || profileId !== null,
-    // While a refined search loads, keep the previous results on screen
-    // instead of flashing skeletons on every debounced keystroke.
-    placeholderData: (previous) => previous,
+    enabled: searching || scope !== null,
+    // Keep the previous results on screen while a typed term is refined —
+    // otherwise every debounced keystroke flashes skeletons. But only for the
+    // same scope and sort: rows from another chip, grouped by this chip's
+    // clock, stacked a stale "Undated" header on top of the live one.
+    placeholderData: (previous, previousQuery) => {
+      const before = previousQuery?.queryKey as unknown[] | undefined
+      if (!before) return previous
+      const sameScope = before[1] === (searching ? 'corpus' : scope)
+      return sameScope && before[3] === sort ? previous : undefined
+    },
   })
 
-  // What caused each row: the search term while searching, the profile's
-  // positive keywords otherwise. Aliases match server-side without highlight —
-  // the dictionary lives in Go, and duplicating it here would drift.
+  const rows = feed.data?.pages.flatMap((page) => page.jobs) ?? null
+
+  // Looking at the arrivals is what makes them not new any more: the badge
+  // clears, the dots stay for this viewing.
+  const marked = useRef(false)
+  useEffect(() => {
+    if (marked.current || searching || sort !== 'matched') return
+    if (!rows?.some((job) => !job.seen_at)) return
+    marked.current = true
+    api.markSeen().then(() => invalidate('profiles')).catch(() => { marked.current = false })
+  }, [rows, searching, sort])
+
+  const current = typeof scope === 'number' ? profiles.find((p) => p.id === scope) : undefined
+  // What caused each row: the typed term while searching, otherwise the
+  // keywords of the searches in scope. Aliases match server-side without
+  // highlight — the dictionary lives in Go, and duplicating it here would drift.
   const highlight = searching
     ? (term ? [term] : [])
-    : keywords.filter((keyword) => !keyword.startsWith('-'))
-
-  const rows = feed.data?.pages.flatMap((page) => page.jobs) ?? null
+    : (current ? current.keywords : profiles.flatMap((p) => p.keywords))
+      .filter((keyword) => !keyword.startsWith('-'))
 
   // Headers ride in the same virtual list as the rows, so grouping costs no
   // scrolling performance.
   const items: Item[] = []
   if (rows) {
-    let current = ''
+    let group = ''
     for (const job of rows) {
       const when = sort === 'applied' ? job.applied_at
         : sort === 'matched' ? job.matched_at
         : job.posted_at ?? job.matched_at
       const label = when ? arrivalLabel(when) : 'Undated'
-      if (label !== current) {
-        current = label
+      if (label !== group) {
+        group = label
         items.push({ kind: 'header', key: `h:${label}`, label })
       }
       items.push({ kind: 'job', key: `j:${job.id}`, job })
@@ -223,14 +265,21 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
     if (feed.hasNextPage && !feed.isFetchingNextPage) feed.fetchNextPage()
   }, [lastIndex, rows, feed.isPlaceholderData, feed.hasNextPage, feed.isFetchingNextPage, feed])
 
+  // The rows look identical whichever feed they came from, so the frame says
+  // which one is on screen.
+  const scopeName = sort === 'applied' ? 'jobs you applied to'
+    : searching ? 'every job from every board'
+    : current ? `your “${current.name}” matches`
+    : 'jobs your searches caught'
+
   let list
   if (feed.error) {
     list = <ErrorState message={describeError(feed.error)} onRetry={() => feed.refetch()} />
-  } else if (!searching && profileId === null) {
+  } else if (!searching && scope === null) {
     list = (
       <Empty
         title="Start with a search"
-        detail="The bar above covers every job from every board — type a role and look around. Like the results? Tap Save and they become a standing search that notifies you. Or build one directly:"
+        detail="The bar above covers every job from every board. Type a role, look around, and tap Save to be notified when new ones land."
         actionLabel="New search"
         onAction={onCreateProfile}
       />
@@ -239,34 +288,25 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
     list = <SkeletonList />
   } else if (rows.length === 0) {
     list = sort === 'applied'
-      ? <Empty title="Nothing marked applied" detail={searching || debouncedPlace
+      ? <Empty title="Nothing marked applied" detail={searching
           ? 'Nothing you have applied to matches this search.'
           : "The check on a job row records where you've applied."} />
-      : searching || debouncedPlace
-      ? <Empty title="Nothing here" detail={debouncedPlace
-          ? `No ${searching ? 'results' : 'matches'} in “${debouncedPlace}” — shorthands like uae and uk are understood.`
-          : 'Search covers every live job the boards currently list.'} />
-      : sort === 'matched'
-        ? <Empty title="Nothing matched yet" detail="Your searches have not caught anything with this filter." />
+      : searching
+        ? <Empty title="Nothing here" detail={debouncedPlace
+            ? `No results in “${debouncedPlace}” — shorthands like uae and uk are understood.`
+            : 'Search covers every live job the boards currently list.'} />
         : (
           <Empty
             title="Nothing matched yet"
-            detail="Try broader keywords in Settings, or refresh — the boards are polled every few minutes."
+            detail="Try broader keywords in Settings, or widen Where — the boards are polled every few minutes."
             actionLabel="Refresh"
             onAction={refreshFeeds}
           />
         )
   } else {
-    // The two datasets look identical row by row, so the frame has to say
-    // which one is on screen: the profile's matches, or the whole corpus.
-    const scope = sort === 'applied'
-      ? 'jobs you applied to'
-      : searching
-        ? (sort === 'matched' ? 'jobs your searches caught' : 'every job from every board')
-        : `your “${profileName}” matches`
     list = (
       <>
-        <div ref={listRef} className="list virtual"
+        <div ref={listRef} key={`${scope}:${sort}`} className="list virtual"
           style={{ height: virtualizer.getTotalSize() }}>
           {windowed.map((virtual) => {
             const item = items[virtual.index]
@@ -277,6 +317,11 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
                 {item.kind === 'header'
                   ? <div className="day-h">{item.label}</div>
                   : <JobRow job={item.job} actions highlight={highlight}
+                      // Across several searches the row says which one caught
+                      // it; inside one search that is already the answer.
+                      via={scope !== null && scope !== 'applied' && !searching
+                        ? item.job.matched_by : undefined}
+                      showUnread={scope === 'all' && !searching}
                       ageOf={sort === 'applied' ? 'applied' : sort === 'matched' ? 'matched' : 'posted'} />}
               </div>
             )
@@ -287,7 +332,7 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
         )}
         {!feed.hasNextPage && !feed.isPlaceholderData && (
           <p className="feed-end">
-            That's all — {rows.length} {rows.length === 1 ? 'job' : 'jobs'} in {scope}
+            That's all — {rows.length} {rows.length === 1 ? 'job' : 'jobs'} in {scopeName}
           </p>
         )}
       </>
@@ -316,10 +361,10 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
           <span>{whereLabel(place, remoteOnly, myMarkets)}</span>
         </button>
 
-        {(searching || debouncedPlace) && (
+        {searching && (
           <button
             className="save-search"
-            title="Save this search as a profile"
+            title="Save this search"
             onClick={() => {
               api.createProfile({
                 name: term || debouncedPlace || 'Search',
@@ -339,19 +384,6 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
             + Save
           </button>
         )}
-
-        {profileId === null && !searching ? null : (
-          <div className="segment" role="tablist" aria-label="View">
-            <button role="tab" aria-selected={sort === 'matched'}
-              className={sort === 'matched' ? 'on' : ''} onClick={() => setSort('matched')}>
-              New
-            </button>
-            <button role="tab" aria-selected={sort === 'applied'}
-              className={sort === 'applied' ? 'on' : ''} onClick={() => setSort('applied')}>
-              Applied
-            </button>
-          </div>
-        )}
       </div>
 
       {whereOpen && (
@@ -367,69 +399,73 @@ function JobList({ profileId, keywords, profileName, onCreateProfile, onSavedSea
   )
 }
 
-// One sentence for whatever "where" currently means, shown on the button so
-// the filter never hides anything silently.
+// One phrase for whatever "where" currently means, shown on the button so the
+// filter never hides anything silently.
 function whereLabel(place: string, remoteOnly: boolean, myMarkets: boolean): string {
-  const parts: string[] = []
-  if (place.trim()) parts.push(place.trim())
-  else parts.push(myMarkets ? 'Gulf + India' : 'Anywhere')
-  if (remoteOnly) parts.push('remote')
-  return parts.join(' · ')
+  const where = place.trim() || (myMarkets ? 'Gulf + India' : 'Anywhere')
+  return remoteOnly ? `${where} · remote` : where
 }
 
-/** Location, region and remote in one place, because they are one question. */
+// The two regions worth a default, then the places actually searched from here.
+const WHERE_PLACES = ['dubai', 'abu dhabi', 'saudi', 'qatar', 'kuwait', 'bahrain',
+  'oman', 'egypt', 'india', 'uk', 'usa']
+
+/** Where is one question, so it is one list: a region, or a place. */
 function WhereSheet(props: {
   place: string; setPlace: (v: string) => void
   remoteOnly: boolean; setRemoteOnly: (v: boolean) => void
   myMarkets: boolean; setMyMarkets: (v: boolean) => void
   onClose: () => void
 }) {
+  const [draft, setDraft] = useState(
+    WHERE_PLACES.includes(props.place) ? '' : props.place)
+  const region = (markets: boolean) => {
+    props.setPlace('')
+    props.setMyMarkets(markets)
+    setDraft('')
+  }
   return (
     <div className="sheet-backdrop" onClick={props.onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <h2>Where</h2>
 
-        <div className="f-group">
-          <span className="f-label">Region</span>
-          <div className="picker">
-            <button type="button" className={`pick ${props.myMarkets && !props.place ? 'on' : ''}`}
-              onClick={() => { props.setPlace(''); props.setMyMarkets(true) }}>
-              Gulf + India
+        <div className="sheet-body">
+        <div className="picker">
+          <button type="button"
+            className={`pick ${!props.place && props.myMarkets ? 'on' : ''}`}
+            onClick={() => region(true)}>Gulf + India</button>
+          <button type="button"
+            className={`pick ${!props.place && !props.myMarkets ? 'on' : ''}`}
+            onClick={() => region(false)}>Anywhere</button>
+          {WHERE_PLACES.map((name) => (
+            <button type="button" key={name}
+              className={`pick ${props.place === name ? 'on' : ''}`}
+              onClick={() => { setDraft(''); props.setPlace(props.place === name ? '' : name) }}>
+              {name}
             </button>
-            <button type="button" className={`pick ${!props.myMarkets && !props.place ? 'on' : ''}`}
-              onClick={() => { props.setPlace(''); props.setMyMarkets(false) }}>
-              Anywhere
-            </button>
-          </div>
-          <small>
-            Gulf + India also keeps roles open worldwide. Anywhere includes jobs
-            restricted to regions you cannot work from.
-          </small>
+          ))}
+          <input
+            className="pick-input"
+            type="text"
+            value={draft}
+            placeholder="or type a city…"
+            autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            enterKeyHint="done"
+            onChange={(e) => { setDraft(e.target.value); props.setPlace(e.target.value.trim()) }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); props.onClose() } }}
+          />
         </div>
-
-        <div className="f-group">
-          <span className="f-label">Or a specific place</span>
-          <div className="place">
-            <PinIcon />
-            <input
-              value={props.place}
-              autoFocus
-              onChange={(e) => props.setPlace(e.target.value)}
-              placeholder="dubai, india, london…"
-              aria-label="Filter by location"
-            />
-            {props.place && (
-              <button className="clear" onClick={() => props.setPlace('')} aria-label="Clear">✕</button>
-            )}
-          </div>
-          <small>Shorthands are understood: uae, gulf, ksa, uk.</small>
-        </div>
+        <small>
+          Gulf + India keeps roles open worldwide too. A named place answers on
+          its own — shorthands like uae, ksa and uk are understood.
+        </small>
 
         <label className="switch-row">
           <span>Remote roles only</span>
           <input type="checkbox" checked={props.remoteOnly}
             onChange={(e) => props.setRemoteOnly(e.target.checked)} />
         </label>
+        </div>
 
         <button className="btn-filled wide" onClick={props.onClose}>Done</button>
       </div>
@@ -456,7 +492,7 @@ function SearchIcon() {
   )
 }
 
-export function RefreshIcon() {
+function RefreshIcon() {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

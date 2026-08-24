@@ -12,6 +12,8 @@ export interface Job {
   salary: string
   applied: boolean
   applied_at: string | null
+  /** Which saved searches caught this — only the all-searches feed says. */
+  matched_by?: string
   posted_at: string | null
   matched_at: string
   seen_at: string | null
@@ -24,12 +26,6 @@ export interface Profile {
   locations: string[]
   remote_only: boolean
   unread: number
-}
-
-export interface MatchEvent {
-  profile_id: number
-  profile_name: string
-  job: Job
 }
 
 export type JobSort = 'posted' | 'matched' | 'applied'
@@ -110,33 +106,31 @@ export const api = {
   deleteProfile: (id: number) =>
     request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
 
-  jobs: (profileId: number, sort: JobSort = 'posted', locations: string[] = [],
-    remote = false, market = false, cursor?: string) =>
-    request<{ jobs: Job[]; next_cursor?: string }>(
-      `/api/jobs?profile_id=${profileId}&limit=50&sort=${sort}` +
-      locations.map((l) => `&location=${encodeURIComponent(l)}`).join('') +
-      (remote ? '&remote=1' : '') + (market ? '&market=1' : '') +
-      (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
-    ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
-
-  /** Searches every stored job, not just one profile's matches — a search bar
-   *  that hides jobs because they missed your keywords answers the wrong
-   *  question. */
-  searchJobs: (q: string, locations: string[] = [], remote = false, market = false,
-    sort: JobSort = 'posted', cursor?: string) =>
-    request<{ jobs: Job[]; next_cursor?: string }>(
-      `/api/jobs?limit=50&sort=${sort}&q=${encodeURIComponent(q)}` +
-      locations.map((l) => `&location=${encodeURIComponent(l)}`).join('') +
-      (remote ? '&remote=1' : '') + (market ? '&market=1' : '') +
-      (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''),
-    ).then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null })),
+  /** The one feed, at one of three scopes: a saved search, every saved search
+   *  ("all"), or the whole corpus (a typed query, which must never be narrowed
+   *  to what your keywords happened to catch). Same filters either way. */
+  feed: (p: {
+    scope: number | 'all' | 'corpus'
+    q?: string; locations?: string[]; remote?: boolean; market?: boolean
+    sort?: JobSort; cursor?: string
+  }) => {
+    const query = [
+      'limit=50',
+      `sort=${p.sort ?? 'matched'}`,
+      typeof p.scope === 'number' ? `profile_id=${p.scope}` : '',
+      p.scope === 'all' ? 'mine=1' : '',
+      p.q ? `q=${encodeURIComponent(p.q)}` : '',
+      p.remote ? 'remote=1' : '',
+      p.market ? 'market=1' : '',
+      p.cursor ? `cursor=${encodeURIComponent(p.cursor)}` : '',
+      ...(p.locations ?? []).map((l) => `location=${encodeURIComponent(l)}`),
+    ].filter(Boolean).join('&')
+    return request<{ jobs: Job[]; next_cursor?: string }>(`/api/jobs?${query}`)
+      .then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null }))
+  },
 
   boards: () =>
     request<{ boards: Board[] }>('/api/boards').then((r) => r.boards ?? []),
-
-  notifications: () =>
-    request<{ notifications: MatchEvent[]; unread: number }>('/api/notifications?limit=50')
-      .then((r) => ({ events: r.notifications ?? [], unread: r.unread ?? 0 })),
 
   markSeen: () => request<unknown>('/api/notifications/seen', { method: 'POST' }),
 

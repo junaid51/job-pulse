@@ -26,6 +26,9 @@ type job struct {
 	SeenAt    *time.Time `json:"seen_at"`
 	Applied   bool       `json:"applied"`
 	AppliedAt *time.Time `json:"applied_at"`
+	// Which saved search caught this, filled in only by the mine=1 feed —
+	// the one view that spans every profile and so has to say.
+	MatchedBy string `json:"matched_by,omitempty"`
 }
 
 const (
@@ -33,7 +36,8 @@ const (
 	maxLimit     = 200
 )
 
-// listJobs returns the jobs matched by one profile.
+// listJobs returns a feed of jobs: one profile's matches, every profile's
+// matches (mine=1), or the whole corpus (a search term with no profile).
 //
 // profile_id is required: the Jobs screen always has a profile selected, and
 // "every job we ever stored" is not a view anyone wants. sort=posted (the
@@ -77,8 +81,12 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		// With a search term and no profile, the query runs over everything
 		// stored — a search bar that silently hides jobs because they missed
 		// your profile keywords answers a different question than the one asked.
-		if r.URL.Query().Get("profile_id") == "" && (search != "" || locations != nil) {
-			searchAllJobs(w, r, pool, titlePatterns, rawPattern, locations, marketPatterns, sort, limit)
+		// mine=1 runs the same query narrowed to jobs some profile of this
+		// device caught: every saved search at once, which is what the feed
+		// opens on.
+		mine := r.URL.Query().Get("mine") == "1"
+		if r.URL.Query().Get("profile_id") == "" && (mine || search != "" || locations != nil) {
+			searchAllJobs(w, r, pool, titlePatterns, rawPattern, locations, marketPatterns, sort, limit, mine)
 			return
 		}
 
@@ -222,7 +230,7 @@ func keywordPatterns(search string) []string {
 // narrowed by whatever is typed.
 func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 	titlePatterns []string, rawPattern string, locations, marketPatterns []string,
-	sort string, limit int) {
+	sort string, limit int, mine bool) {
 	var at any
 	var atID any
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
@@ -252,27 +260,30 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 		       j.salary, j.posted_at, coalesce(m.matched_at, j.first_seen_at),
 		       m.seen_at, m.applied_at is not null, m.applied_at,
-		       `+cursorExpr+` as cursor_at
+		       coalesce(m.names, ''), `+cursorExpr+` as cursor_at
 		from jobs j
 		left join (
 			select mm.job_id,
 			       max(mm.created_at) as matched_at,
 			       max(mm.seen_at)    as seen_at,
-			       max(mm.applied_at) as applied_at
+			       max(mm.applied_at) as applied_at,
+			       string_agg(distinct p.name, ', ') as names
 			from matches mm
 			join profiles p on p.id = mm.profile_id and p.owner = $7
+			where mm.hidden_at is null
 			group by mm.job_id
 		) m on m.job_id = j.id
 		where ($1::text[] is null or j.title ilike any($1)
 		   or ($6 <> '' and (j.company ilike $6 or j.location ilike $6)))
 		  and ($5::text[] is null or j.location ilike any($5))
 		  and (not $8 or j.remote)
-		  and ($9::text[] is null or j.location = '' or j.location ilike any($9))`+extraWhere+`
+		  and ($9::text[] is null or j.location = '' or j.location ilike any($9))
+		  and (not $10 or m.job_id is not null)`+extraWhere+`
 		  and ($3::timestamptz is null
 		       or (`+cursorExpr+`, j.id) < ($3, $4::bigint))
 		order by `+cursorExpr+` desc, j.id desc
 		limit $2`, titlePatterns, limit, at, atID, locations, rawPattern,
-		deviceID(r), r.URL.Query().Get("remote") == "1", marketPatterns)
+		deviceID(r), r.URL.Query().Get("remote") == "1", marketPatterns, mine)
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return
@@ -285,7 +296,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		var j job
 		if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
 			&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-			&j.Applied, &j.AppliedAt, &lastCursorAt); err != nil {
+			&j.Applied, &j.AppliedAt, &j.MatchedBy, &lastCursorAt); err != nil {
 			serverError(w, "reading jobs", err)
 			return
 		}

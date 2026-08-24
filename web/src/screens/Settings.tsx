@@ -19,22 +19,18 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
     setEditing(null)
     invalidate('profiles')
     invalidate('jobs')
-    invalidate('notifications')
   }
 
   return (
     <section>
       <header className="bar">
         <h1>Settings</h1>
-        <button className="icon-btn" title="New profile" onClick={() => setEditing('new')}>
-          <PlusIcon />
-        </button>
       </header>
 
-      <h2 className="section-h">Search profiles</h2>
+      <h2 className="section-h">Saved searches</h2>
       {profiles.error ? <p className="state-detail pad">{describeError(profiles.error)}</p> : null}
       {!profiles.data && !profiles.error && <Loading />}
-      {profiles.data?.length === 0 && <p className="state-detail pad">Nothing watching the boards yet.</p>}
+      {profiles.data?.length === 0 && <p className="state-detail pad">No saved searches yet — the Jobs screen starts one.</p>}
       {profiles.data?.map((profile) => (
         <ProfileRow key={profile.id} profile={profile} onEdit={() => setEditing(profile)} onChanged={afterSave} />
       ))}
@@ -45,8 +41,7 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
       )}
 
       <h2 className="section-h">Notifications</h2>
-      <div className="kv"><span>Push</span><span className="kv-value">{describePush(push)}</span></div>
-      <PushHealth enabled={push === 'on'} />
+      <PushHealth push={push} />
       {push !== 'on' && (
         <div className="pad stack">
           <button
@@ -73,6 +68,9 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
 
       {advanced && (
         <>
+          <h2 className="section-h">Delivery</h2>
+          <LastDelivery />
+
           <h2 className="section-h">Boards</h2>
           <Boards />
 
@@ -96,6 +94,18 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
         />
       )}
     </section>
+  )
+}
+
+/** Proof that the chain works, for when it seems not to. */
+function LastDelivery() {
+  const status = useQuery({ queryKey: ['push-status'], queryFn: api.pushStatus })
+  const at = status.data?.last_notified_at
+  return (
+    <div className="kv">
+      <span>Last alert delivered</span>
+      <span className="kv-value">{at ? shortAgo(at) + ' ago' : 'never yet'}</span>
+    </div>
   )
 }
 
@@ -185,26 +195,22 @@ function QuietHours({ from, to, timezone }: { from: number; to: number; timezone
 /** What the server actually knows, as opposed to what the browser reports.
  *  A token can expire silently, and until this existed the only symptom was
  *  alerts quietly never arriving. */
-function PushHealth({ enabled }: { enabled: boolean }) {
+function PushHealth({ push }: { push: PushState }) {
   const status = useQuery({ queryKey: ['push-status'], queryFn: api.pushStatus })
   const [testing, setTesting] = useState(false)
   if (!status.data) return null
-  const { registered, last_notified_at, timezone } = status.data
+  const { registered, timezone } = status.data
+  const enabled = push === 'on'
   return (
     <>
       <div className="kv">
-        <span>Server has a token</span>
-        <span className="kv-value">{registered ? 'Yes' : 'No — alerts cannot arrive'}</span>
+        <span>Push</span>
+        <span className="kv-value">{describePush(push, registered)}</span>
       </div>
-      {registered && (
-        <div className="kv">
-          <span>Last alert delivered</span>
-          <span className="kv-value">
-            {last_notified_at ? shortAgo(last_notified_at) + ' ago' : 'never yet'}
-          </span>
-        </div>
+      {registered && enabled && (
+        <QuietHours from={status.data.quiet_from ?? 0} to={status.data.quiet_to ?? 0}
+          timezone={timezone} />
       )}
-      <QuietHours from={status.data.quiet_from ?? 0} to={status.data.quiet_to ?? 0} timezone={timezone} />
       {registered && enabled && (
         <div className="pad">
           <button
@@ -282,9 +288,12 @@ function DeviceIdentity() {
   )
 }
 
-function describePush(state: PushState): string {
+/** The browser's permission and the server's token are two halves of one
+ *  answer, and either half alone was misleading: permission granted with no
+ *  token on the server means alerts silently never arrive. */
+function describePush(state: PushState, registered: boolean): string {
   switch (state) {
-    case 'on': return 'On'
+    case 'on': return registered ? 'On' : 'On here, but the server has no token'
     case 'pending': return 'Setting up…'
     case 'unsupported': return 'Not supported in this browser'
     default: return 'Off'
@@ -320,16 +329,14 @@ function ProfileRow(props: { profile: Profile; onEdit: () => void; onChanged: ()
   )
 }
 
-// The roles here ride the same alias dictionary the matcher uses, so tapping
-// "frontend" also finds React and Angular titles.
+// Suggestions, not the vocabulary: these ride the same alias dictionary the
+// matcher uses (tapping "frontend" also finds React and Angular titles), and
+// anything not offered here can be typed and works identically. Twenty-one
+// chips made the form taller than the phone; these are the ones actually
+// picked, engineering and otherwise.
 const ROLES = [
-  'frontend', 'backend', 'full stack', 'mobile', 'devops', 'data', 'design', 'product', 'qa',
-  // The company is not only its engineers: a business analyst opening this
-  // screen should find her own work in it.
-  'product owner', 'program manager', 'engineering manager', 'dev ex',
-  'business analyst',
-  'project manager', 'finance', 'marketing', 'operations', 'sales',
-  'human resources', 'customer support',
+  'frontend', 'backend', 'full stack', 'mobile', 'devops', 'platform',
+  'data', 'qa', 'design', 'product', 'engineering manager', 'business analyst',
 ]
 const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'gulf', 'india',
   'uk', 'usa', 'worldwide']
@@ -350,6 +357,9 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
   const [remoteOnly, setRemoteOnly] = useState(existing?.remote_only ?? false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // A new search is two questions. Naming it and excluding words are
+  // refinements, and an existing search has already made them.
+  const [more, setMore] = useState(existing !== null)
 
   const autoName =
     [keywords[0], locations[0]].filter(Boolean).map((t) => titleCase(t!)).join(' · ')
@@ -383,6 +393,7 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
       >
         <h2>{existing ? 'Edit search' : 'New search'}</h2>
 
+        <div className="sheet-body">
         <div className="f-group">
           <span className="f-label">What are you looking for?</span>
           <TermPicker value={keywords} onChange={setKeywords}
@@ -401,16 +412,26 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
           </label>
         </div>
 
-        <div className="f-group">
-          <span className="f-label">Skip jobs mentioning</span>
-          <TermPicker value={avoid} onChange={setAvoid}
-            suggestions={NOISE} placeholder="nothing — or add a word…" tone="danger" />
-        </div>
+        {more ? (
+          <>
+            <div className="f-group">
+              <span className="f-label">Skip jobs mentioning</span>
+              <TermPicker value={avoid} onChange={setAvoid}
+                suggestions={NOISE} placeholder="nothing — or add a word…" tone="danger" />
+            </div>
 
-        <label>Name
-          <input value={name} onChange={(e) => setName(e.target.value)}
-            placeholder={autoName} autoCapitalize="words" />
-        </label>
+            <label>Name
+              <input value={name} onChange={(e) => setName(e.target.value)}
+                placeholder={autoName} autoCapitalize="words" />
+            </label>
+          </>
+        ) : (
+          <button type="button" className="more-link" onClick={() => setMore(true)}>
+            Name it, or skip certain words
+          </button>
+        )}
+
+        </div>
 
         {error && <p className="error-text">{error}</p>}
         <button className="btn-filled wide" disabled={saving} type="submit">
@@ -421,15 +442,6 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
   )
 }
 
-
-function PlusIcon() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth="2" strokeLinecap="round" aria-hidden>
-      <path d="M12 5v14M5 12h14" />
-    </svg>
-  )
-}
 
 function CrossIcon() {
   return (

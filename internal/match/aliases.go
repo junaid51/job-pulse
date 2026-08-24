@@ -257,16 +257,42 @@ var locationAliases = map[string][]string{
 	"peru":      {"lima"},
 }
 
-// reachableRegions is where this hunt can actually take work: the Gulf, the
+// reachableKeys names where this hunt can actually take work: the Gulf, the
 // subcontinent, and remote roles open to anybody. Postings restricted to
 // somewhere else are not offers, they are rows to scroll past — the remote
-// feeds are filtered on this at ingest, and the search bar offers it as a
-// switch, because a company board may carry both a Dubai role and forty in
-// Ohio and only the board as a whole was chosen.
-var reachableRegions = []string{
-	"worldwide", "anywhere", "global", "emea", "middle east",
-	"united arab", "uae", "dubai", "abu dhabi", "saudi", "qatar", "kuwait",
-	"bahrain", "oman", "egypt", "india", "pakistan",
+// feeds are filtered on this at ingest, and the feed offers it as a switch,
+// because a company board may carry both a Dubai role and forty in Ohio and
+// only the board as a whole was chosen.
+var reachableKeys = []string{
+	"uae", "united arab", "saudi", "qatar", "kuwait", "bahrain", "oman", "gulf",
+	"egypt", "india", "pakistan",
+	// How remote feeds spell "no restriction".
+	"worldwide", "anywhere", "global", "emea", "middle east", "gcc",
+}
+
+// reachableRegions is reachableKeys expanded through the location atlas. The
+// keys alone were not enough: boards write the city and leave the country out,
+// so "Riyadh", "Doha" and "Bengaluru" all read as unreachable and the default
+// filter hid jobs this reader could actually take.
+var reachableRegions = expandReachable()
+
+func expandReachable() []string {
+	seen := map[string]bool{}
+	var terms []string
+	add := func(term string) {
+		if term == "" || seen[term] {
+			return
+		}
+		seen[term] = true
+		terms = append(terms, term)
+	}
+	for _, key := range reachableKeys {
+		add(key)
+		for _, expansion := range locationAliases[key] {
+			add(expansion)
+		}
+	}
+	return terms
 }
 
 // Reachable reports whether a posting's location is open to this hunt. An

@@ -4,16 +4,23 @@ import { api } from './api'
 import { initPush, type PushState } from './push'
 import { Toasts } from './toast'
 import { Jobs } from './screens/Jobs'
-import { Notifications } from './screens/Notifications'
 import { Settings } from './screens/Settings'
 
-type Tab = 'jobs' | 'notifications' | 'settings'
+// Two destinations: the feed, and the things that configure it. What used to be
+// a third — Notifications — was the same list of matched jobs the feed already
+// shows, and the two disagreed with each other often enough to be a bug. It is
+// now the "New for me" chip on the feed itself.
+type Tab = 'jobs' | 'settings'
+
+/** #/notifications is what a tapped push points at, and older installs may
+ *  still hold that URL — it lands on the feed, which is where the matches are. */
+function tabFromHash(): Tab {
+  return location.hash.startsWith('#/settings') ? 'settings' : 'jobs'
+}
 
 export function App() {
   // The tab lives in the URL hash so reload and back both behave.
-  const [tab, setTab] = useState<Tab>(() =>
-    (['jobs', 'notifications', 'settings'] as const).find(
-      (candidate) => location.hash.startsWith(`#/${candidate}`)) ?? 'jobs')
+  const [tab, setTab] = useState<Tab>(() => tabFromHash())
   useEffect(() => { location.hash = `#/${tab}` }, [tab])
 
   // A tapped notification points at #/notifications. If the app was closed the
@@ -21,9 +28,8 @@ export function App() {
   // just changes the hash on the live window, and only this listener notices.
   useEffect(() => {
     const onHashChange = () => {
-      const next = (['jobs', 'notifications', 'settings'] as const).find(
-        (candidate) => location.hash.startsWith(`#/${candidate}`))
-      if (next && next !== tab) setTab(next)
+      const next = tabFromHash()
+      if (next !== tab) setTab(next)
     }
     window.addEventListener('hashchange', onHashChange)
     return () => window.removeEventListener('hashchange', onHashChange)
@@ -35,7 +41,7 @@ export function App() {
   // Each tab keeps its place in the shared scroller, and re-selecting the
   // current tab is "take me to the top".
   const mainRef = useRef<HTMLElement>(null)
-  const scrollMemory = useRef<Record<Tab, number>>({ jobs: 0, notifications: 0, settings: 0 })
+  const scrollMemory = useRef<Record<Tab, number>>({ jobs: 0, settings: 0 })
   const select = (next: Tab) => {
     const main = mainRef.current
     if (next === tab) {
@@ -60,8 +66,9 @@ export function App() {
     return () => { cancelAnimationFrame(raf); clearTimeout(timer) }
   }, [tab])
 
-  const feed = useQuery({ queryKey: ['notifications'], queryFn: api.notifications })
-  const unread = feed.data?.unread ?? 0
+  // The per-search unread counts the feed's chips already show, summed.
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
+  const unread = (profiles.data ?? []).reduce((n, profile) => n + profile.unread, 0)
 
   // The count on the app icon itself — iOS 16.4+ Home-Screen apps and desktop
   // PWAs support the Badging API; everywhere else this is a silent no-op.
@@ -79,20 +86,20 @@ export function App() {
       <Toasts />
       <main ref={mainRef}>
         {/* Jobs stays mounted: mid-scroll research and a typed search must
-            survive a hop to Notifications and back. */}
-        <div style={{ display: tab === 'jobs' ? undefined : 'none' }}>
+            survive a hop to Settings and back. */}
+        <div className="screen" style={{ display: tab === 'jobs' ? undefined : 'none' }}>
           <Jobs goToSettings={() => select('settings')} />
         </div>
-        {tab === 'notifications' && <Notifications />}
-        {tab === 'settings' && <Settings push={push} setPush={setPush} />}
+        {tab === 'settings' && (
+          <div className="screen"><Settings push={push} setPush={setPush} /></div>
+        )}
       </main>
       <nav>
         <div className="brand" aria-hidden>
           <PulseMark />
           <span>JobPulse</span>
         </div>
-        <TabButton current={tab} tab="jobs" label="Jobs" glyph={<BriefcaseIcon />} onSelect={select} />
-        <TabButton current={tab} tab="notifications" label="Notifications" glyph={<BellIcon />}
+        <TabButton current={tab} tab="jobs" label="Jobs" glyph={<BriefcaseIcon />}
           badge={unread} onSelect={select} />
         <TabButton current={tab} tab="settings" label="Settings" glyph={<GearIcon />} onSelect={select} />
       </nav>
@@ -129,15 +136,6 @@ function BriefcaseIcon() {
     <svg {...icon}>
       <rect x="3" y="7.5" width="18" height="12.5" rx="2.5" />
       <path d="M8.5 7.5V6a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5M3 12.5h18" />
-    </svg>
-  )
-}
-
-function BellIcon() {
-  return (
-    <svg {...icon}>
-      <path d="M18 9.5a6 6 0 1 0-12 0c0 5-2 6-2 6h16s-2-1-2-6" />
-      <path d="M10.3 19.5a2 2 0 0 0 3.4 0" />
     </svg>
   )
 }

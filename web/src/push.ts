@@ -47,7 +47,7 @@ async function connect(): Promise<PushState> {
   // A push while the app is open refreshes the feeds instead of showing a
   // banner: the new match appearing is the notification.
   onMessage(messaging, () => {
-    invalidate('notifications')
+    invalidate('profiles')
     invalidate('profiles') // the chips carry unread counts
   })
   return 'on'
