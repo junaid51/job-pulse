@@ -83,13 +83,13 @@ PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
 GET    /api/jobs?profile_id=1&limit=50&cursor=…    sort=posted|matched|applied; q= and location= search/filter
+GET    /api/jobs?mine=1                            every saved search's matches, newest arrival first
 GET    /api/boards                                 every board's health
 POST   /api/jobs/{id}/hide                         hide from this device's feeds
 POST   /api/jobs/{id}/unhide                       the undo
 POST   /api/jobs/{id}/applied                      toggle applied; answers the new state
 
-GET    /api/notifications?limit=50&cursor=…        match feed, all profiles
-POST   /api/notifications/seen                     mark the feed read
+POST   /api/notifications/seen                     mark the arrivals seen
 
 POST   /api/devices                                {token, platform, timezone} — FCM registration
 GET    /api/devices/status                         does the server hold a token, and when did a push last land
@@ -172,7 +172,7 @@ internal/poll/      the poll cycle and companies.txt
 internal/providers/ one file per job board
 migrations/         numbered .sql files, embedded into the binary
 web/src/            api.ts, query.ts, push.ts, toast.tsx, App.tsx, styles.css
-web/src/screens/    jobs, notifications, settings
+web/src/screens/    jobs, settings
 ```
 
 Adding a migration means dropping `0002_thing.up.sql` and `0002_thing.down.sql`

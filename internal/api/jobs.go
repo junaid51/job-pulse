@@ -167,17 +167,17 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		body := map[string]any{"jobs": jobs}
 		// Only offer a cursor when there is plausibly another page.
 		if len(jobs) == limit {
-			body["next_cursor"] = fmt.Sprintf("%s,%d",
-				lastCursorAt.Format(time.RFC3339Nano), jobs[len(jobs)-1].ID)
+			body["next_cursor"] = formatCursor(lastCursorAt, jobs[len(jobs)-1].ID)
 		}
 		writeJSON(w, http.StatusOK, body)
 	}
 }
 
 // A cursor is "<RFC3339 timestamp>,<job id>": the position of the last row
-// returned. Clients should treat it as opaque and pass back what they were given.
-func formatCursor(last job) string {
-	return fmt.Sprintf("%s,%d", last.MatchedAt.Format(time.RFC3339Nano), last.ID)
+// returned, timestamped by whichever column the sort ordered on. Clients should
+// treat it as opaque and pass back what they were given.
+func formatCursor(at time.Time, id int64) string {
+	return fmt.Sprintf("%s,%d", at.Format(time.RFC3339Nano), id)
 }
 
 func parseCursor(raw string) (time.Time, int64, error) {
@@ -308,8 +308,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 	}
 	body := map[string]any{"jobs": jobs}
 	if len(jobs) == limit {
-		body["next_cursor"] = fmt.Sprintf("%s,%d",
-			lastCursorAt.Format(time.RFC3339Nano), jobs[len(jobs)-1].ID)
+		body["next_cursor"] = formatCursor(lastCursorAt, jobs[len(jobs)-1].ID)
 	}
 	writeJSON(w, http.StatusOK, body)
 }

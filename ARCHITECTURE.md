@@ -153,10 +153,12 @@ Notes:
 - `keywords`/`locations` as `text[]` instead of child tables. They are lists of
   short strings that are always read and written together with the profile.
   Two extra tables would buy nothing.
-- `matches` is both the Jobs feed and the Notifications feed. Jobs screen =
-  matches joined to jobs, ordered by job recency. Notifications screen = same
-  rows ordered by `created_at` with `seen_at` for the unread dot. One table,
-  two queries.
+- `matches` is the whole feed, at every scope: one saved search, every saved
+  search (`mine=1`, which also reports which searches caught a job), or the jobs
+  you applied to. `created_at` orders arrivals, `seen_at` is the unread dot,
+  `applied_at` is the applied view. One table, one query shape. This started as
+  two screens with two queries and they drifted apart — the feed said a job was
+  21 hours old while the notifications screen called it new.
 - No `descriptions`. The Apply button goes to the real posting; storing
   megabytes of HTML to render a worse version of it is not worth it. (Greenhouse
   drops from 4.4 MB to 360 KB per board once you stop asking for `content=true`.)
@@ -345,8 +347,9 @@ PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
 GET    /api/jobs?profile_id=&before=&limit=50     matched jobs, newest first
-GET    /api/notifications?limit=50                match events, unread flag
-POST   /api/notifications/seen                    {job_ids: [...]} → mark read
+GET    /api/jobs?mine=1                           every saved search's matches
+GET    /api/jobs?q=                               the whole corpus
+POST   /api/notifications/seen                    mark the arrivals seen
 
 POST   /api/devices               {token, platform}
 POST   /api/poll                  trigger a cycle now (dev + pull-to-refresh)
@@ -383,18 +386,24 @@ web/src/
   hooks.ts               the fetch cache: useQuery + invalidate
   push.ts                FCM init, gesture-driven enable, token registration
   format.ts              shortAgo, provider labels
-  screens/               Jobs, Notifications, Settings
+  screens/               Jobs, Settings
   components/            JobRow, the loading/empty/error states
   styles.css             the whole design: tokens, dark-first, light variant
 ```
 
-**Jobs** — profile chips, dense rows (title, company · location · provider,
-age, Apply), a refresh button, empty states that lead somewhere.
+**Jobs** — the whole app. One row of chips names what you are looking at (all
+searches, one search, applied), a search field covers every board, and one
+Where button holds region, place and remote-only. Rows are two lines (title,
+company · location · source) grouped under when they arrived. Looking at the
+arrivals marks them seen; unread dots stay for that viewing.
 
-**Notifications** — the match feed across profiles, unread dots, marked read on
-open. **Settings** — profile CRUD in a bottom sheet, push status with a
-gesture-driven Enable button (iOS requires the permission request to come from
-a tap), backend URL.
+**Settings** — searches CRUD in a bottom sheet, push status and quiet hours,
+with a gesture-driven Enable button (iOS requires the permission request to
+come from a tap). Board health, the device id and the backend URL sit behind
+Advanced.
+
+There is no Notifications screen. It showed the same matched jobs the feed
+shows, and a reader had to guess which of the two lists to trust.
 
 The one service worker does both jobs: shows pushes that arrive while no window
 is focused, and keeps the app shell cached so it opens instantly and offline.
