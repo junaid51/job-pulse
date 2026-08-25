@@ -62,10 +62,15 @@ The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
 `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, `himalayas`, `jobicy`,
-`teamtailor`, `manatal`, `phenom`, `oracle`, plus the metered aggregators
+`teamtailor`, `manatal`, `phenom`, `oracle`, `workday`, plus the metered aggregators
 `jobven` and `jobspipe`, whose "slug" is a saved search rather than a company.
 `careerjet` is implemented but parked: its API is IP-allowlisted and free
 hosting has no fixed egress address.
+
+A `workday` slug is the careers host and site plus the location facet that
+narrows a global board to this market — `kbr.wd5.myworkdayjobs.com/KBR_Careers?locationHierarchy1=…`.
+Both the facet's name and its ids are per-tenant; read them off the board's own
+response (`jq .facets`) rather than copying another board's.
 
 Remote feeds (`himalayas`, `jobicy`) are filtered by reachability — a posting
 restricted to a country this hunt cannot work in is dropped at ingest. The list

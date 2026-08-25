@@ -547,12 +547,22 @@ tells me what happened. Prometheus and OpenTelemetry are for systems with users.
 one retry, records `last_error`, and is tried again in 15 minutes. Polling is
 naturally self-healing — that is the main reason to prefer it over webhooks here.
 
-**Scrapers for bot-walled boards.** Workday's public JSON API was investigated:
-its reachable tenants are global-corporate boards with no Gulf inventory, while
-the Gulf-specific tenants (talabat, regional arms of the big firms) sit behind
-edge bot-shields that only a headless browser defeats. Driving a browser to
-defeat an anti-automation shield is the browser automation this project refuses
-on principle, and the reachable-but-irrelevant tenants were left out as noise.
+**Scrapers for bot-walled boards.** Still refused: the Gulf-specific tenants
+(regional arms of the big firms, and careers pages like qiddiya.com behind an
+edge bot-shield) are only reachable by driving a headless browser, which is the
+browser automation this project refuses on principle.
+
+What was refused *wrongly*, and is now built, is Workday itself. This section
+used to say its reachable tenants were "global-corporate boards with no Gulf
+inventory". That was measured badly and it was false: Parsons lists 808 open
+postings in Saudi, the UAE and Qatar, AtkinsRealis 442 across the Gulf and
+India, KBR 322, Four Seasons 190. The error was reading those boards unfiltered
+— a global employer's first pages are wherever its headquarters is, and the Gulf
+inventory sits thousands of rows down. Applying the board's own location facet
+turns each one into a small local board, and eleven of them now supply 1,709
+in-market postings on a corpus that was 5,600. The lesson is not about Workday:
+"no inventory here" is a claim about a measurement, and this one had never been
+made properly.
 
 **Docker image for the backend, CI/CD, Kubernetes manifests.** `go run` locally,
 `go build` on the box. Compose exists only to hand me a Postgres.
