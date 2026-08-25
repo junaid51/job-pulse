@@ -36,6 +36,27 @@ const (
 	maxLimit     = 200
 )
 
+// jobColumns is the select list both feeds share, in the order scanJob reads
+// them. The two queries are built separately and they drifted exactly once — a
+// column added to one, its scan destination added to the other — and every
+// feed scoped to a single saved search answered "reading jobs failed". They
+// are one string now so that cannot happen again. The verbs differ: a profile
+// feed knows when it matched and which search caught it, the corpus feed has to
+// coalesce both.
+func jobColumns(matchedAt, matchedBy string) string {
+	return `j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
+	        j.salary, j.posted_at, ` + matchedAt + `, m.seen_at,
+	        m.applied_at is not null, m.applied_at, ` + matchedBy
+
+}
+
+// scanJob reads one row of jobColumns.
+func scanJob(rows interface{ Scan(...any) error }, j *job, cursorAt *time.Time) error {
+	return rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
+		&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
+		&j.Applied, &j.AppliedAt, &j.MatchedBy, cursorAt)
+}
+
 // listJobs returns a feed of jobs: one profile's matches, every profile's
 // matches (mine=1), or the whole corpus (a search term with no profile).
 //
@@ -119,10 +140,11 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		var b binder
 		owner, pid := b.add(deviceID(r)), b.add(profileID)
 		cursorAt, cursorID := b.add(at), b.add(atID)
+		// A single search's feed already knows which search caught these, so
+		// matched_by is empty — cast, because a bare '' comes back as an
+		// untyped unknown that will not scan into a string.
 		query := `
-			select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
-			       j.salary, j.posted_at, m.created_at, m.seen_at,
-			       m.applied_at is not null, m.applied_at, '', ` + cursorExpr + ` as cursor_at
+			select ` + jobColumns("m.created_at", "''::text") + `, ` + cursorExpr + ` as cursor_at
 			from matches m
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = ` + owner + `
@@ -148,9 +170,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		var lastCursorAt time.Time
 		for rows.Next() {
 			var j job
-			if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
-				&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-				&j.Applied, &j.AppliedAt, &lastCursorAt); err != nil {
+			if err := scanJob(rows, &j, &lastCursorAt); err != nil {
 				serverError(w, "reading jobs", err)
 				return
 			}
@@ -246,10 +266,8 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 	owner := b.add(deviceID(r))
 	cursorAt, cursorID := b.add(at), b.add(atID)
 	query := `
-		select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
-		       j.salary, j.posted_at, coalesce(m.matched_at, j.first_seen_at),
-		       m.seen_at, m.applied_at is not null, m.applied_at,
-		       coalesce(m.names, ''), ` + cursorExpr + ` as cursor_at
+		select ` + jobColumns("coalesce(m.matched_at, j.first_seen_at)",
+		"coalesce(m.names, '')") + `, ` + cursorExpr + ` as cursor_at
 		from jobs j
 		left join (
 			select mm.job_id,
@@ -284,9 +302,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 	var lastCursorAt time.Time
 	for rows.Next() {
 		var j job
-		if err := rows.Scan(&j.ID, &j.Provider, &j.Company, &j.Title, &j.Location,
-			&j.Remote, &j.URL, &j.Salary, &j.PostedAt, &j.MatchedAt, &j.SeenAt,
-			&j.Applied, &j.AppliedAt, &j.MatchedBy, &lastCursorAt); err != nil {
+		if err := scanJob(rows, &j, &lastCursorAt); err != nil {
 			serverError(w, "reading jobs", err)
 			return
 		}
