@@ -320,3 +320,16 @@ workable           limitless-naturals           Limitless Naturals
 workable           bestex-research              Bestex Research
 workable           sedona-digital               Sedona Digital
 workable           blue-altair                  Blue Altair
+
+# Qiddiya, checked 2026-08-25 from the user's own find. Both of its Workable
+# accounts are real (a nonsense slug answers "Not Found"; these answer with the
+# company name and a careers page) and both are empty today — 0 postings. Kept
+# anyway, which is the opposite of the call on OpenAI and Airwallex: those had
+# jobs and none of them here, while this is a PIF giga-project staffing up in
+# Riyadh, so every posting it ever makes is in-market. Two small requests a
+# cycle buys a five-minute head start on the day it starts hiring. Seventeen
+# other watched boards sit at 0 without complaint.
+# The careers page itself (qiddiya.com/careers) is behind Cloudflare and
+# answers 403 to anything that is not a browser; not worth arguing with.
+workable           qiddiya                      Qiddiya
+workable           qiddiya-investment-company   Qiddiya Investment Company
