@@ -68,7 +68,10 @@ starts both. There is no queue, no worker, no scheduler daemon — a
 
 ### Request/poll flow
 
-**Poll cycle** (every 15 min, or `POST /api/poll`):
+**Poll cycle** (the internal ticker, `POST /api/poll`, or any request arriving
+more than five minutes after the last cycle — always detached from the request
+that triggered it, and capped at eight minutes so a dead board cannot hold the
+lock forever):
 
 1. Load all companies from DB.
 2. For each (max 4 concurrent): fetch board JSON → normalize to `Job`.
@@ -352,7 +355,8 @@ GET    /api/jobs?q=                               the whole corpus
 POST   /api/notifications/seen                    mark the arrivals seen
 
 POST   /api/devices               {token, platform}
-POST   /api/poll                  trigger a cycle now (dev + pull-to-refresh)
+POST   /api/poll                  start a cycle; 202 at once, runs in the background
+GET    /healthz                   database, plus poller state and the age of the last cycle
 GET    /healthz
 ```
 

@@ -95,7 +95,7 @@ POST   /api/devices                                {token, platform, timezone} �
 GET    /api/devices/status                         does the server hold a token, and when did a push last land
 POST   /api/devices/test                           prove the push chain in one request
 PUT    /api/devices/quiet-hours                    {from, to} in the device's timezone; equal hours = off
-POST   /api/poll                                   run a cycle now; returns its stats
+POST   /api/poll                                   start a cycle; answers 202 at once, polls in the background
 ```
 
 Profile keywords match case-insensitive substrings, expanded through a small
@@ -191,11 +191,22 @@ poller ticks every `POLL_INTERVAL`.
 
 **Scale-to-zero container** (the usual free tier): these give no persistent disk
 and no always-on process, so point `DATABASE_URL` at a free hosted Postgres, set
-`POLL_INTERVAL=0`, and have an external scheduler call `POST /api/poll` every
-five minutes. Use a real scheduler, not GitHub Actions: a `*/5` cron there is
-best effort and measured out at a 25-minute median, which defeats the point.
-Calling it every five minutes also keeps a scale-to-zero host awake, so the
-cold start disappears — watch the host's free-hours allowance if it has one.
+`POLL_INTERVAL=0`, and have an external scheduler hit the service every five
+minutes. Any URL will do — `GET /healthz` is enough — because **any inbound
+request revives a poller that has not run in five minutes**, and the cycle runs
+detached from the request that started it. Use a real scheduler, not GitHub
+Actions: a `*/5` cron there is best effort and measured out at a 25-minute
+median, which defeats the point. The ping also keeps the host awake, so the cold
+start disappears — watch its free-hours allowance if it has one.
+
+That decoupling is not decoration. Polling used to run *inside* the request, on
+the request's context, and it cost nineteen hours of silence: a cycle over two
+hundred boards takes longer than a scheduler's 30-second timeout, so every run
+was killed halfway through — the boards it had reached looked fresh, the rest
+went stale, and the scheduler counted each aborted call as a success until the
+host started answering 503 and it disabled itself. `GET /healthz` now reports
+`poller` and `poll_age_seconds`, and the app says so on the feed, because a
+poller that has stopped otherwise looks exactly like a quiet job market.
 
 Two things that bite when picking the database, both learned the hard way:
 
