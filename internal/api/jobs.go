@@ -58,25 +58,18 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
-		// The search term expands through the same role dictionary profile
-		// matching uses, so "frontend" finds React roles in both places.
-		titlePatterns := keywordPatterns(search)
-		// Company and location are searched too, but only for terms long
-		// enough to mean something there: "qa" would otherwise match every
-		// job in Qatar and at DigitalQatalyst.
-		rawPattern := ""
-		if len(search) >= 3 {
-			rawPattern = "%" + search + "%"
-		}
-		locations := locationPatterns(r)
+		// Every word of the query has to match something, in any order. See
+		// searchSQL: as one substring, "engineer dubai" could never match.
+		words, atPlaces := searchWords(search)
+		locations := locationPatterns(append(r.URL.Query()["location"], atPlaces...))
 		// market=1 hides postings nobody here could take. A company board is
 		// chosen as a whole, so it brings its Ohio roles along with its Dubai
 		// one; this is how a reader asks to see only the second kind.
-		inMarket := r.URL.Query().Get("market") == "1"
 		var marketPatterns []string
-		if inMarket {
+		if r.URL.Query().Get("market") == "1" {
 			marketPatterns = match.ReachablePatterns()
 		}
+		remote := r.URL.Query().Get("remote") == "1"
 
 		// With a search term and no profile, the query runs over everything
 		// stored — a search bar that silently hides jobs because they missed
@@ -85,8 +78,8 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		// device caught: every saved search at once, which is what the feed
 		// opens on.
 		mine := r.URL.Query().Get("mine") == "1"
-		if r.URL.Query().Get("profile_id") == "" && (mine || search != "" || locations != nil) {
-			searchAllJobs(w, r, pool, titlePatterns, rawPattern, locations, marketPatterns, sort, limit, mine)
+		if r.URL.Query().Get("profile_id") == "" && (mine || len(words) > 0 || locations != nil) {
+			searchAllJobs(w, r, pool, words, locations, marketPatterns, sort, limit, remote, mine)
 			return
 		}
 
@@ -123,24 +116,28 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			cursorExpr = `m.applied_at`
 			extraWhere = ` and m.applied_at is not null`
 		}
-		rows, err := pool.Query(r.Context(), `
+		var b binder
+		owner, pid := b.add(deviceID(r)), b.add(profileID)
+		cursorAt, cursorID := b.add(at), b.add(atID)
+		query := `
 			select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 			       j.salary, j.posted_at, m.created_at, m.seen_at,
-			       m.applied_at is not null, m.applied_at, `+cursorExpr+` as cursor_at
+			       m.applied_at is not null, m.applied_at, '', ` + cursorExpr + ` as cursor_at
 			from matches m
 			join jobs j on j.id = m.job_id
-			join profiles p on p.id = m.profile_id and p.owner = $6
-			where m.profile_id = $1
-			  and m.hidden_at is null`+extraWhere+`
-			  and ($2::timestamptz is null or (`+cursorExpr+`, j.id) < ($2, $3::bigint))
-			  and ($5::text[] is null or j.title ilike any($5)
-			       or ($9 <> '' and (j.company ilike $9 or j.location ilike $9)))
-			  and ($7::text[] is null or j.location ilike any($7))
-			  and (not $8 or j.remote)
-			  and ($10::text[] is null or j.location = '' or j.location ilike any($10))
-			order by `+cursorExpr+` desc, j.id desc
-			limit $4`, profileID, at, atID, limit, titlePatterns, deviceID(r), locations,
-			r.URL.Query().Get("remote") == "1", rawPattern, marketPatterns)
+			join profiles p on p.id = m.profile_id and p.owner = ` + owner + `
+			where m.profile_id = ` + pid + `
+			  and m.hidden_at is null` + extraWhere + `
+			  and (` + cursorAt + `::timestamptz is null
+			       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))
+			  and (` + b.add(locations) + `::text[] is null or j.location ilike any(` + b.add(locations) + `))
+			  and (not ` + b.add(remote) + ` or j.remote)
+			  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
+			       or j.location ilike any(` + b.add(marketPatterns) + `))` +
+			searchSQL(words, &b) + `
+			order by ` + cursorExpr + ` desc, j.id desc
+			limit ` + b.add(limit)
+		rows, err := pool.Query(r.Context(), query, b.args()...)
 		if err != nil {
 			serverError(w, "listing jobs", err)
 			return
@@ -199,23 +196,12 @@ func parseCursor(raw string) (time.Time, int64, error) {
 // locationPatterns turns location= params into ilike patterns, expanded through
 // the same alias dictionary profile matching uses — "@uae" finds "Dubai" here
 // for exactly the reason a profile's "uae" does.
-func locationPatterns(r *http.Request) []string {
+func locationPatterns(raw []string) []string {
 	var patterns []string
-	for _, raw := range r.URL.Query()["location"] {
+	for _, raw := range raw {
 		for _, term := range match.LocationTerms(raw) {
 			patterns = append(patterns, "%"+term+"%")
 		}
-	}
-	return patterns
-}
-
-// keywordPatterns turns a search term into ilike patterns, expanded through the
-// role dictionary so the search bar and a profile keyed on the same word find
-// the same jobs.
-func keywordPatterns(search string) []string {
-	var patterns []string
-	for _, term := range match.KeywordTerms(search) {
-		patterns = append(patterns, "%"+term+"%")
 	}
 	return patterns
 }
@@ -229,8 +215,8 @@ func keywordPatterns(search string) []string {
 // meaningful here: "the ones my searches caught" and "the ones I applied to",
 // narrowed by whatever is typed.
 func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
-	titlePatterns []string, rawPattern string, locations, marketPatterns []string,
-	sort string, limit int, mine bool) {
+	words []string, locations, marketPatterns []string,
+	sort string, limit int, remote, mine bool) {
 	var at any
 	var atID any
 	if raw := r.URL.Query().Get("cursor"); raw != "" {
@@ -256,11 +242,14 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		extraWhere = ` and m.applied_at is not null`
 	}
 
-	rows, err := pool.Query(r.Context(), `
+	var b binder
+	owner := b.add(deviceID(r))
+	cursorAt, cursorID := b.add(at), b.add(atID)
+	query := `
 		select j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 		       j.salary, j.posted_at, coalesce(m.matched_at, j.first_seen_at),
 		       m.seen_at, m.applied_at is not null, m.applied_at,
-		       coalesce(m.names, ''), `+cursorExpr+` as cursor_at
+		       coalesce(m.names, ''), ` + cursorExpr + ` as cursor_at
 		from jobs j
 		left join (
 			select mm.job_id,
@@ -269,21 +258,22 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 			       max(mm.applied_at) as applied_at,
 			       string_agg(distinct p.name, ', ') as names
 			from matches mm
-			join profiles p on p.id = mm.profile_id and p.owner = $7
+			join profiles p on p.id = mm.profile_id and p.owner = ` + owner + `
 			where mm.hidden_at is null
 			group by mm.job_id
 		) m on m.job_id = j.id
-		where ($1::text[] is null or j.title ilike any($1)
-		   or ($6 <> '' and (j.company ilike $6 or j.location ilike $6)))
-		  and ($5::text[] is null or j.location ilike any($5))
-		  and (not $8 or j.remote)
-		  and ($9::text[] is null or j.location = '' or j.location ilike any($9))
-		  and (not $10 or m.job_id is not null)`+extraWhere+`
-		  and ($3::timestamptz is null
-		       or (`+cursorExpr+`, j.id) < ($3, $4::bigint))
-		order by `+cursorExpr+` desc, j.id desc
-		limit $2`, titlePatterns, limit, at, atID, locations, rawPattern,
-		deviceID(r), r.URL.Query().Get("remote") == "1", marketPatterns, mine)
+		where (` + b.add(locations) + `::text[] is null or j.location ilike any(` + b.add(locations) + `))
+		  and (not ` + b.add(remote) + ` or j.remote)
+		  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
+		       or j.location ilike any(` + b.add(marketPatterns) + `))
+		  and (not ` + b.add(mine) + ` or m.job_id is not null)` + extraWhere + `
+		  and (` + cursorAt + `::timestamptz is null
+		       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))` +
+		searchSQL(words, &b) + `
+		order by ` + cursorExpr + ` desc, j.id desc
+		limit ` + b.add(limit)
+
+	rows, err := pool.Query(r.Context(), query, b.args()...)
 	if err != nil {
 		serverError(w, "searching jobs", err)
 		return

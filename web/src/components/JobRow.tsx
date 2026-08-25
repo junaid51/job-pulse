@@ -110,24 +110,23 @@ export const JobRow = memo(function JobRow(props: {
  *  title — the "why is this here" at a glance. Alias-driven matches (the
  *  dictionary lives server-side) simply go unmarked. */
 function Highlighted({ text, terms }: { text: string; terms?: string[] }) {
-  const needles = (terms ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean)
+  const needles = (terms ?? [])
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   if (needles.length === 0) return <>{text}</>
-  const lower = text.toLowerCase()
-  let earliest = -1
-  let length = 0
-  for (const needle of needles) {
-    const at = lower.indexOf(needle)
-    if (at !== -1 && (earliest === -1 || at < earliest)) {
-      earliest = at
-      length = needle.length
-    }
-  }
-  if (earliest === -1) return <>{text}</>
+  // Every word that earned the row, not just the first one: the search matches
+  // words independently now, so a single underline would explain half of it.
+  const pattern = new RegExp(`(${needles.join('|')})`, 'gi')
+  const pieces = text.split(pattern)
+  if (pieces.length === 1) return <>{text}</>
   return (
     <>
-      {text.slice(0, earliest)}
-      <mark className="hit">{text.slice(earliest, earliest + length)}</mark>
-      {text.slice(earliest + length)}
+      {pieces.map((piece, i) =>
+        i % 2 === 1
+          ? <mark className="hit" key={i}>{piece}</mark>
+          : piece,
+      )}
     </>
   )
 }

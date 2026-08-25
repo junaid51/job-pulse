@@ -101,6 +101,20 @@ func KeywordTerms(raw string) []string {
 	return append([]string{needle}, aliases...)
 }
 
+// SearchTerms expands one typed word for the search bar: the word plus its role
+// aliases, and the word plus its place aliases. Unlike KeywordTerms it always
+// keeps the literal, even for a two-letter one — the search bar matches on word
+// boundaries, so "qa" can no longer hide inside "Qatar", and dropping short
+// literals there would only lose real hits.
+func SearchTerms(raw string) (roles, places []string) {
+	needle := strings.ToLower(strings.TrimSpace(raw))
+	if needle == "" {
+		return nil, nil
+	}
+	return append([]string{needle}, keywordAliases[needle]...),
+		append([]string{needle}, locationAliases[needle]...)
+}
+
 // shortKey reports whether an abbreviation should be matched by its expansions
 // alone. Two or three letters hide inside ordinary words — "pm" spells the
 // middle of "development", "qa" the first half of "Qatar" — so for an
