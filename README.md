@@ -83,6 +83,7 @@ PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
 GET    /api/jobs?profile_id=1&limit=50&cursor=…    sort=posted|matched|applied; q= and location= search/filter
+                                                   q= matches every word independently, on word boundaries
 GET    /api/jobs?mine=1                            every saved search's matches, newest arrival first
 GET    /api/boards                                 every board's health
 POST   /api/jobs/{id}/hide                         hide from this device's feeds

@@ -198,7 +198,8 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // does, through the same alias dictionary the matcher uses.
   const tokens = debounced.split(/\s+/).filter(Boolean)
   const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
-  const term = tokens.filter((t) => !t.startsWith('@')).join(' ')
+  const words = tokens.filter((t) => !t.startsWith('@'))
+  const term = words.join(' ')
   const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
   // A typed term searches every board, not just what your searches caught —
   // hiding jobs because they missed your keywords answers the wrong question.
@@ -248,7 +249,7 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // keywords of the searches in scope. Aliases match server-side without
   // highlight — the dictionary lives in Go, and duplicating it here would drift.
   const highlight = searching
-    ? (term ? [term] : [])
+    ? words
     : (current ? current.keywords : profiles.flatMap((p) => p.keywords))
       .filter((keyword) => !keyword.startsWith('-'))
 
@@ -257,7 +258,14 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   const items: Item[] = []
   if (rows) {
     let group = ''
+    // Two boards can carry the same posting — an employer on Greenhouse whose
+    // roles are re-listed by an aggregator — and it is one job to whoever is
+    // reading. Keep the first, which is the earliest arrival under this sort.
+    const seen = new Set<string>()
     for (const job of rows) {
+      const identity = `${job.title}|${job.company}|${job.location}`.toLowerCase()
+      if (seen.has(identity)) continue
+      seen.add(identity)
       const when = sort === 'applied' ? job.applied_at
         : sort === 'matched' ? job.matched_at
         : job.posted_at ?? job.matched_at
@@ -320,9 +328,23 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
           ? 'Nothing you have applied to matches this search.'
           : "The check on a job row records where you've applied."} />
       : searching
-        ? <Empty title="Nothing here" detail={debouncedPlace
-            ? `No results in “${debouncedPlace}” — shorthands like uae and uk are understood.`
-            : 'Search covers every live job the boards currently list.'} />
+        ? words.length > 1
+          ? (
+            <Empty
+              title="No job matches all of those words"
+              detail={`No job has all of “${term}” across its title, company and location${debouncedPlace ? `, in ${debouncedPlace}` : ''}. Every word has to match, so the more you type the narrower it gets.`}
+              actionLabel={`Search “${words.slice(0, -1).join(' ')}” instead`}
+              onAction={() => setQuery(words.slice(0, -1).join(' '))}
+            />
+          )
+          : (
+            <Empty
+              title={`Nothing matches “${term || debouncedPlace}” yet`}
+              detail={debouncedPlace && !term
+                ? 'Shorthands like uae, ksa and uk are understood.'
+                : 'Titles, companies and locations are searched — not job descriptions, which this app deliberately does not store.'}
+            />
+          )
         : (
           <Empty
             title="Nothing matched yet"
@@ -489,8 +511,9 @@ function WhereSheet(props: {
           />
         </div>
         <small>
-          Gulf + India keeps roles open worldwide too. A named place answers on
-          its own — shorthands like uae, ksa and uk are understood.
+          Gulf + India also keeps what you could take from here: roles listed
+          worldwide, remote-anywhere, EMEA or Middle East. A named place answers
+          on its own — shorthands like uae, ksa and uk are understood.
         </small>
 
         <label className="switch-row">

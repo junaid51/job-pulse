@@ -162,8 +162,19 @@ Notes:
   `applied_at` is the applied view. One table, one query shape. This started as
   two screens with two queries and they drifted apart — the feed said a job was
   21 hours old while the notifications screen called it new.
+- `q=` is one condition per word, ANDed, matched on word boundaries against the
+  title (through the role dictionary), the location (through the place atlas)
+  and the company name. It began as a single `ilike '%query%'`, which meant word
+  order decided the result — "frontend engineer" found eleven jobs and "engineer
+  frontend" none — "ontend engine" matched the middle of words, and any query
+  spanning two fields ("dubai react") could never match anything. The boundaries
+  are also what make short words safe: "qa" matches "QA Engineer" and not
+  "Qatar", so no length rule is needed and "D4 Insight" still works.
 - No `descriptions`. The Apply button goes to the real posting; storing
-  megabytes of HTML to render a worse version of it is not worth it. (Greenhouse
+  megabytes of HTML to render a worse version of it is not worth it. The price is
+  paid at the search bar: a skill named only in the body text — "typescript" in a
+  posting titled "Frontend Engineer" — is not findable here, and the empty state
+  says so rather than implying the market is empty. (Greenhouse
   drops from 4.4 MB to 360 KB per board once you stop asking for `content=true`.)
 - `companies` has a composite natural key. No surrogate id needed since jobs
   denormalize the company display name.
