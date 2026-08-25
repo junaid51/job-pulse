@@ -50,6 +50,7 @@ var All = map[string]Provider{
 	"careerjet":       fetchCareerjet,
 	"manatal":         fetchManatal,
 	"phenom":          fetchPhenom,
+	"workday":         fetchWorkday,
 	"oracle":          fetchOracle,
 	"remotive":        fetchRemotive,
 	"himalayas":       fetchHimalayas,
