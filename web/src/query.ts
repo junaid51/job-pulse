@@ -13,6 +13,6 @@ export const queryClient = new QueryClient({
   },
 })
 
-export function invalidate(prefix: 'jobs' | 'profiles' | 'boards' | 'push-status') {
+export function invalidate(prefix: 'jobs' | 'profiles' | 'boards' | 'push-status' | 'health') {
   queryClient.invalidateQueries({ queryKey: [prefix] })
 }

@@ -129,6 +129,14 @@ export const api = {
       .then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null }))
   },
 
+  /** Whether the boards are actually being polled. The feed is only as fresh
+   *  as the last cycle, and a poller that has stopped used to be invisible. */
+  health: () => request<{
+    status: string; poller: string
+    last_poll_at?: string; poll_age_seconds?: number | null
+    poll_error?: string
+  }>('/healthz'),
+
   boards: () =>
     request<{ boards: Board[] }>('/api/boards').then((r) => r.boards ?? []),
 

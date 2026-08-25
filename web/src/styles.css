@@ -537,6 +537,16 @@ mark.hit {
 .toast { animation: rise 0.28s var(--ease); }
 @media (min-width: 761px) { .toast { bottom: 28px; } }
 
+/* something is wrong with the machinery behind the list — said once, quietly,
+   where the list is */
+.notice {
+  margin: 0 18px 4px; padding: 9px 12px; border-radius: 10px;
+  background: color-mix(in srgb, #E0A33E 16%, transparent);
+  border: 1px solid color-mix(in srgb, #E0A33E 30%, transparent);
+  color: color-mix(in srgb, #E0A33E 88%, var(--on-surface));
+  font-size: 12.5px; line-height: 1.45;
+}
+
 /* the editor's optional half, opened by a word rather than a form */
 .more-link {
   align-self: flex-start; color: var(--accent);

@@ -21,6 +21,11 @@ type Scope = number | 'all' | 'applied' | null
 
 export function Jobs({ goToSettings }: { goToSettings: () => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
+  // A poller that has stopped is the one failure that makes this whole app a
+  // lie: the list still looks like a list. Ask the backend, and say so.
+  const health = useQuery({
+    queryKey: ['health'], queryFn: api.health, refetchInterval: 60_000,
+  })
   const [selected, setSelected] = useState<Scope>('all')
   const [refreshing, setRefreshing] = useState(false)
   // A typed term searches every board, so no saved search is what you are
@@ -95,8 +100,30 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
           <RefreshIcon />
         </button>
       </header>
+      <StaleNotice health={health.data} />
       {body}
     </section>
+  )
+}
+
+/** Any request to the backend revives a stalled poller, so by the time this
+ *  renders a catch-up run is already going. It still has to be said: the rows
+ *  above it are as old as the last cycle. */
+function StaleNotice({ health }: { health?: { poller: string; poll_age_seconds?: number | null; poll_error?: string } }) {
+  if (!health || health.poller === 'ok') return null
+  const age = health.poll_age_seconds
+  const since = age == null ? null
+    : age < 3600 ? `${Math.round(age / 60)}m`
+    : age < 86400 ? `${Math.round(age / 3600)}h`
+    : `${Math.round(age / 86400)}d`
+  return (
+    <p className="notice">
+      {health.poller === 'failing'
+        ? `The last poll failed${health.poll_error ? `: ${health.poll_error}` : ''}. Retrying.`
+        : since
+          ? `Boards last checked ${since} ago — catching up now.`
+          : 'The boards have not been checked yet — starting now.'}
+    </p>
   )
 }
 

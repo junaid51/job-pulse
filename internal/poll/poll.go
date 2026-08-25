@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -190,6 +191,47 @@ var ErrBusy = errors.New("poll already in progress")
 // scheduled cycle does not double-fetch every board.
 var running sync.Mutex
 
+// cycleDeadline caps a run so the mutex above can never be held forever by a
+// board that stops answering mid-fetch. Two hundred boards at eight at a time
+// is a couple of minutes; anything past this is broken, not slow.
+const cycleDeadline = 8 * time.Minute
+
+// The outcome of the last completed cycle. A poller that has stopped needs to
+// be visible: this one went nineteen hours without a run while the cron driving
+// it reported success, because each 30-second timeout aborted the cycle and
+// nothing anywhere recorded that it had never finished.
+var last struct {
+	sync.Mutex
+	at       time.Time
+	duration time.Duration
+	stats    Stats
+	failure  string
+}
+
+// LastCycle is what the last completed run did. A zero At means no cycle has
+// finished in this process yet.
+type LastCycle struct {
+	At       time.Time
+	Duration time.Duration
+	Stats    Stats
+	Failure  string
+}
+
+func Last() LastCycle {
+	last.Lock()
+	defer last.Unlock()
+	return LastCycle{At: last.at, Duration: last.duration, Stats: last.stats, Failure: last.failure}
+}
+
+// Since is how long ago a cycle last finished — a very long time if none has.
+func Since() time.Duration {
+	at := Last().At
+	if at.IsZero() {
+		return math.MaxInt64
+	}
+	return time.Since(at)
+}
+
 // Stats is what one cycle did, for the log line and the /api/poll response.
 type Stats struct {
 	Companies  int   `json:"companies"`
@@ -240,11 +282,25 @@ func logCycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier
 // Cycle polls every company once. One board failing never stops the others: the
 // error is recorded on the row and the next cycle tries again fifteen minutes
 // later, which is why polling needs no retry queue.
-func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (Stats, error) {
+func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (stats Stats, err error) {
 	if !running.TryLock() {
 		return Stats{}, ErrBusy
 	}
 	defer running.Unlock()
+
+	ctx, cancel := context.WithTimeout(ctx, cycleDeadline)
+	defer cancel()
+
+	start := time.Now()
+	defer func() {
+		last.Lock()
+		defer last.Unlock()
+		last.at, last.duration, last.stats = time.Now(), time.Since(start), stats
+		last.failure = ""
+		if err != nil {
+			last.failure = err.Error()
+		}
+	}()
 
 	companies, err := loadCompanies(ctx, pool)
 	if err != nil {
@@ -256,7 +312,7 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 		return Stats{}, err
 	}
 
-	stats := Stats{Companies: len(companies)}
+	stats = Stats{Companies: len(companies)}
 
 	var (
 		mu   sync.Mutex
