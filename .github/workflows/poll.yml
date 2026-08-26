@@ -1,26 +1,54 @@
-# A manual poll, kept as the fallback for when the real scheduler is broken.
+# The patient waker.
 #
-# The schedule that used to live here is gone. GitHub honours a */5 cron as
-# best effort, and measured over a day it fired every 25 minutes on average and
-# once went 52 — which for an app whose whole promise is seeing a posting
-# before other applicants is the difference between the promise and a rounding
-# error. An external scheduler (cron-job.org) now calls the same endpoint every
-# five minutes, which also keeps the free host awake and therefore cold-start
-# free. Run this workflow by hand if that scheduler ever stops.
+# This host spins a free instance down after fifteen idle minutes, and its own
+# dashboard warns that waking one "can delay requests by 50 seconds or more".
+# cron-job.org gives up after 30. That mismatch is the whole bug: once the
+# instance slept, every five-minute attempt was answered 503 by the edge, the
+# app never booted (nine hours of logs with no lines in them at all), and the
+# scheduler eventually disabled itself for failing. Nothing recovered it but a
+# human opening the app.
 #
-# Secrets: JOBPULSE_URL (the deployment), JOBPULSE_POLL_TOKEN (same value as
-# the POLL_TOKEN env on the server).
+# So this workflow does the one thing that scheduler cannot: it waits. Ninety
+# seconds, retrying, which is longer than any cold start. GitHub honours a cron
+# as best effort — measured at a 25-minute median, once 52 — which is useless as
+# the primary poller and exactly good enough as the thing that gets the lights
+# back on. cron-job.org keeps an awake instance awake; this wakes a sleeping one.
 name: poll
 on:
+  schedule:
+    # Ask often, because most of these firings will be skipped or late.
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
+# A late run is worthless once a newer one is going.
+concurrency:
+  group: poll
+  cancel-in-progress: true
+
 jobs:
-  poll:
+  wake:
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
-      - name: wake the backend and run a cycle
+      - name: wake the backend, however long that takes
         run: |
-          # The free host takes up to a minute to spin up, hence the retries.
-          curl -fsS -X POST "${{ secrets.JOBPULSE_URL }}/api/poll" \
-            -H "Authorization: Bearer ${{ secrets.JOBPULSE_POLL_TOKEN }}" \
-            --retry 8 --retry-delay 10 --retry-all-errors --max-time 90
+          # No token: any request revives a poller that has not run in five
+          # minutes, so the cheapest endpoint is the right one. It also means
+          # this keeps working if POLL_TOKEN is ever rotated.
+          curl -fsS "${{ secrets.JOBPULSE_URL }}/healthz" \
+            --retry 10 --retry-delay 10 --retry-all-errors --max-time 120 \
+            -o /tmp/health.json
+          cat /tmp/health.json
+
+      - name: report what the poller is doing
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          h = json.load(open('/tmp/health.json'))
+          age = h.get('poll_age_seconds')
+          print(f"poller={h.get('poller')} age={age}s db={h.get('database')}")
+          # Waking is the job; a cycle it triggered may still be running, so a
+          # stale age here is information, not a failure.
+          if h.get('database') != 'ok':
+              sys.exit("the database is unreachable")
+          PY
