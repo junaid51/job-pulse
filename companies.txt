@@ -175,10 +175,15 @@ smartrecruiters    Promptcloud                  PromptCloud
 # 5,898, and none of them are hotel jobs in Alberta. Domino's stays out on
 # evidence — filtered to our markets it has exactly zero.
 smartrecruiters    AccorHotel|ae,sa             Accor
-smartrecruiters    AECOM2|ae,sa,in              AECOM
-smartrecruiters    SGS|ae,sa,in                 SGS
 smartrecruiters    SyngentaGroup|in             Syngenta
 smartrecruiters    AveryDennison|in             Avery Dennison
+# AECOM and SGS were removed 2026-08-26, having been added here two lines under
+# a comment that had already refused them for noise — a country filter makes a
+# board small, not relevant, and that is a different question. Measured on the
+# stored corpus: AECOM 152 postings of which 4 mention software, analyst or
+# product; SGS 22 of which none do. The rest is MEP, structures, quantity
+# surveying and environmental work. They were also, with Parsons and KBR, why
+# searching "engineer" in the Gulf returned almost nothing else.
 # OpenAI and Airwallex were added here and removed a day later. Predicted from
 # their full boards: 12 and 9 in-market postings. Measured after the 14-day
 # retention took hold: 2 and 0, for 12.4 MB and 10.4 MB per fetch. The estimate
@@ -334,50 +339,57 @@ workable           blue-altair                  Blue Altair
 workable           qiddiya                      Qiddiya
 workable           qiddiya-investment-company   Qiddiya Investment Company
 
-# ---- Workday, added 2026-08-25 ----------------------------------------------
-# Workday runs the careers site of most large enterprises, which is the tier
-# this tool could not read at all: of 5,656 apply URLs mined from our own
-# corpus only nine pointed at a Workday board, and all nine were global firms
-# reaching us second-hand through an aggregator.
+# ---- Workday ----------------------------------------------------------------
+# Added 2026-08-25, pruned 2026-08-26 after a reader looked at what the jobs
+# actually were. The lesson is worth more than the boards: I chose these by
+# in-market count — postings in places this hunt can reach — and never read the
+# titles. In-market is not the same as relevant, and four of the eleven were
+# noise at scale:
 #
-# The slug is host/site as they appear in the careers URL, plus the location
-# facet that turns a global board into a local one. Counts are in-market
-# postings when added, taken from each board's own facet counts and then
-# verified by applying the filter and watching the total drop to match.
+#   Parsons        808 postings; its "DIG-Digital Solutions" family is BIM/CAD
+#                  technicians and highway design. Removed.
+#   AtkinsRealis   439; its "Information Technology" family is rolling stock,
+#                  track systems and Maximo administration. Removed.
+#   KBR            322; its "Engineering, Technology & Science" family is
+#                  piping stress, HVAC and process engineers. Removed.
+#   Four Seasons   190; baristas, housekeeping, bartenders. Removed.
 #
-# Read the facet off the board — do not assume it:
+# Between them they buried the word "engineer" in civil and hospitality work,
+# which was the single biggest complaint about this app's usefulness. What is
+# left is read the same way but chosen on titles as well as location.
+#
+# The slug is host/site from the careers URL plus the facets that narrow the
+# board. Read them off the board itself — both the parameter name and the ids
+# are per-tenant:
 #   curl -s -X POST https://{host}/wday/cxs/{tenant}/{site}/jobs \
 #     -H 'Content-Type: application/json' \
 #     -d '{"appliedFacets":{},"limit":1,"offset":0,"searchText":""}' | jq .facets
-# Both the parameter name and the ids are per-tenant. Most use locationCountry
-# with Workday's standard country ids (India c4f78be1…, Saudi 50423b51…, UAE
-# 7b4fa1f3…, Egypt d865e830…, Qatar f5ff182c…); KBR and NVIDIA use
-# locationHierarchy1 with their own ids, and Salesforce a custom field whose
-# name is a sentence. Assuming one parameter for all of them is what made three
-# of these boards answer 400.
-#
-# Filtering is not a nicety: Parsons lists 1,970 postings and 808 of them are
-# in the Gulf, so reading it whole to find them is 99 requests a cycle instead
-# of 41 — and it would store 1,162 jobs nobody here can take.
-workday  parsons.wd5.myworkdayjobs.com/Search?locationCountry=50423b5190ad49bb89e94cd58dfaad69,7b4fa1f369bd4604ba3692682fcbe345,f5ff182c7fab406bbb110cc1f7e99064  Parsons
-workday  jll.wd1.myworkdayjobs.com/jllcareers?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e,d865e83093ad42319653b08e61f7db49,50423b5190ad49bb89e94cd58dfaad69,7b4fa1f369bd4604ba3692682fcbe345  JLL
-workday  kbr.wd5.myworkdayjobs.com/KBR_Careers?locationHierarchy1=7d7dca02efe3019cb75ad7e7f401cc00,7d7dca02efe3013179cdc7e9f4016410,7d7dca02efe301dba23f99e8f4015607,7d7dca02efe3016878d527e8f401dd01,7d7dca02efe3018e5edd00eaf4015d11  KBR
-workday  ag.wd3.myworkdayjobs.com/Airbus?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e,50423b5190ad49bb89e94cd58dfaad69  Airbus
 workday  nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite?locationHierarchy1=2fcb99c455831013ea52b82135ba3266  NVIDIA
+workday  ag.wd3.myworkdayjobs.com/Airbus?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e,50423b5190ad49bb89e94cd58dfaad69  Airbus
 workday  salesforce.wd12.myworkdayjobs.com/External_Career_Site?CF_-_REC_-_LRV_-_Job_Posting_Anchor_-_Country_from_Job_Posting_Location_Extended=c4f78be1a8f14da0ab49ce1162348a5e,50423b5190ad49bb89e94cd58dfaad69,7b4fa1f369bd4604ba3692682fcbe345  Salesforce
 workday  ingrammicro.wd5.myworkdayjobs.com/IngramMicro?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e,d865e83093ad42319653b08e61f7db49,50423b5190ad49bb89e94cd58dfaad69,7b4fa1f369bd4604ba3692682fcbe345  Ingram Micro
-workday  slihrms.wd3.myworkdayjobs.com/Careers?Location_Country=c4f78be1a8f14da0ab49ce1162348a5e,50423b5190ad49bb89e94cd58dfaad69,7b4fa1f369bd4604ba3692682fcbe345,d865e83093ad42319653b08e61f7db49,f5ff182c7fab406bbb110cc1f7e99064  AtkinsRealis
-workday  fourseasons.wd3.myworkdayjobs.com/search?Location_Country=7b4fa1f369bd4604ba3692682fcbe345,50423b5190ad49bb89e94cd58dfaad69,d865e83093ad42319653b08e61f7db49,f5ff182c7fab406bbb110cc1f7e99064,c4f78be1a8f14da0ab49ce1162348a5e,01d8b98083af4f919601e5dba982afc4,eb2e6ec0f73c4b0e94c68396631332d6  Four Seasons
 workday  mmc.wd1.myworkdayjobs.com/MMC?Location_Country=c4f78be1a8f14da0ab49ce1162348a5e,7b4fa1f369bd4604ba3692682fcbe345,50423b5190ad49bb89e94cd58dfaad69  Marsh McLennan
 workday  workday.wd5.myworkdayjobs.com/Workday?Location_Country=c4f78be1a8f14da0ab49ce1162348a5e  Workday
-# In-market counts when added: Parsons 808, JLL 498, AtkinsRealis 442, KBR 322,
-# Airbus 258, NVIDIA 228, Four Seasons 190, Salesforce 154, Ingram Micro 144,
-# Marsh McLennan 85, Workday 21 — about 3,150 postings, all of them reachable
-# from here, on a corpus that was 5,600. 164 requests a cycle, unthrottled: the
-# database meters storage rather than compute, and the freshness is the point.
-#
-# Measured and refused: HPE (1,216 postings), Mastercard (1,102) and Marriott
-# Vacations (533) publish no country facet this discovery could find, and
-# reading them whole exceeds the page cap — they need their facet located, not
-# a guess. Dell's External site answers 0. Edelman 6 in-market, Red Hat 6,
-# Temenos 0.
+# JLL is 490 in-market and 213 of them are building services, so it is kept by
+# family rather than whole: Data (13) and Technology Engineering (10).
+workday  jll.wd1.myworkdayjobs.com/jllcareers?locationCountry=c4f78be1a8f14da0ab49ce1162348a5e,d865e83093ad42319653b08e61f7db49,50423b5190ad49bb89e94cd58dfaad69,7b4fa1f369bd4604ba3692682fcbe345&jobFamilyGroup=191bf29d19f71001fe706d09015e0000,f134f8e1c0811001fe9e2695d0c80000  JLL
+# Also refused: HPE (1,216 postings), Mastercard (1,102) and Marriott Vacations
+# (533) publish no country facet this discovery could find, and reading them
+# whole exceeds the page cap. Dell's External site answers 0. Edelman 6
+# in-market, Red Hat 6, Temenos 0.
+
+# ---- probed 2026-08-26 ------------------------------------------------------
+# A sweep of ~130 candidate Gulf and India employers against every provider
+# whose slug is just a company name. The useful result was mostly negative:
+# nearly every obvious name — swiggy, meesho, phonepe, freshworks, cred, zeta,
+# postman, atlan, tabby, tamara, hala, salla, ziina, thndr — was already here,
+# so guessing names has reached saturation. These four were not, and carry
+# in-market work when probed:
+ashby       supabase     Supabase        # 50 of 57 listed "Remote, Anywhere"
+lever       fampay       FamPay          # 14 of 14 in Bengaluru
+greenhouse  cockroachlabs CockroachLabs  # 10 of 26 listed Global
+greenhouse  groww        Groww           # 5 of 5 in Bengaluru
+# Refused from the same sweep: vercel (12 in-market but every one "Remote -
+# United States"), confluent (23, all country-restricted remote), netlify (2),
+# namshi (6 retail stylists), turtlemint and whatfix and unacademy (boards
+# containing only test rows).

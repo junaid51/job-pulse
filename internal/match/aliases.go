@@ -295,11 +295,21 @@ func expandReachable() []string {
 	return terms
 }
 
+// unrestrictedRemote are the ways a board says "anywhere" with the word remote
+// and nothing else. Matched whole, never as a substring: "Remote - United
+// States" and "UK, Remote" are restrictions, and the difference between them
+// and a bare "Remote" is the entire question.
+var unrestrictedRemote = map[string]bool{
+	"remote": true, "fully remote": true, "remote (anywhere)": true,
+	"remote - anywhere": true, "remote, anywhere": true, "100% remote": true,
+	"remote worldwide": true, "remote - worldwide": true, "work from anywhere": true,
+}
+
 // Reachable reports whether a posting's location is open to this hunt. An
 // unstated location counts as unrestricted.
 func Reachable(location string) bool {
 	location = strings.ToLower(strings.TrimSpace(location))
-	if location == "" {
+	if location == "" || unrestrictedRemote[location] {
 		return true
 	}
 	for _, region := range reachableRegions {

@@ -372,3 +372,19 @@ func TestReachableAcceptsCitiesWithoutTheirCountry(t *testing.T) {
 		}
 	}
 }
+
+// A posting whose location is the single word "Remote" is the most open there
+// is, and it was being filtered out as unreachable. The distinction is whole
+// string against substring: "Remote - United States" is a restriction.
+func TestReachableBareRemote(t *testing.T) {
+	for _, in := range []string{"Remote", "remote", "  Fully Remote  ", "Remote, Anywhere", "100% remote"} {
+		if !Reachable(in) {
+			t.Errorf("Reachable(%q) = false, want true", in)
+		}
+	}
+	for _, in := range []string{"Remote - United States", "UK, Remote", "Remote (Germany)", "US Remote"} {
+		if Reachable(in) {
+			t.Errorf("Reachable(%q) = true, want false", in)
+		}
+	}
+}
