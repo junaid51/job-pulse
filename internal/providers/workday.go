@@ -91,7 +91,7 @@ func fetchWorkday(ctx context.Context, slug string) ([]Job, error) {
 			jobs = append(jobs, Job{
 				ExternalID: workdayID(p.BulletFields, p.ExternalPath),
 				Title:      strings.TrimSpace(p.Title),
-				Location:   workdayLocation(p.LocationsText),
+				Location:   workdayLocation(p.LocationsText, p.ExternalPath),
 				Remote:     looksRemote(p.LocationsText),
 				URL:        "https://" + host + "/en-US/" + site + p.ExternalPath,
 				PostedAt:   workdayPostedAt(p.PostedOn, time.Now()),
@@ -177,15 +177,52 @@ func workdayPost(ctx context.Context, endpoint string, offset int, facets map[st
 // open in more than one: "3 Locations".
 var severalLocations = regexp.MustCompile(`^\d+ Locations?$`)
 
-// workdayLocation drops that summary rather than storing it. An empty location
-// reads as unrestricted here, which is the safe way to be wrong: the job stays
-// visible instead of being filtered out of a region it may well be in.
-func workdayLocation(text string) string {
+// workdayLocation is the listed text, except when Workday replaces it with a
+// count — and it does that often enough to matter: half of one board's postings
+// said "2 Locations" and nothing else. Storing that, or storing nothing, left
+// those jobs unplaceable. No location word could match them, and a
+// location-scoped search hid them without saying so.
+//
+// The posting's own URL spells the primary location out, so it comes from
+// there: /job/India-Bengaluru/Senior-AI-ML-Software-Engineer_JR2024127. The
+// other locations of a multi-location posting are genuinely not in the listing
+// response, and asking per job would be one request each; the primary is where
+// the work is based and it is what the filters need.
+func workdayLocation(text, externalPath string) string {
 	text = strings.TrimSpace(text)
-	if severalLocations.MatchString(text) {
+	if text != "" && !severalLocations.MatchString(text) {
+		return text
+	}
+	return locationFromPath(externalPath)
+}
+
+var (
+	// "DhabiTrade" -> "Dhabi Trade"
+	wordBoundary = regexp.MustCompile(`([a-z0-9])([A-Z])`)
+	// "AEAbu" -> "AE Abu"
+	acronymBoundary = regexp.MustCompile(`([A-Z]+)([A-Z][a-z])`)
+	runOfSpaces     = regexp.MustCompile(`\s+`)
+)
+
+// locationFromPath reads the location out of /job/{location}/{title}_{req}.
+//
+// The slug is a lossy URL-ification and cannot be turned back into the exact
+// string: spaces became dashes, and so did the separators between components
+// ("US, CA, Santa Clara" and "SA - Riyadh" both). Worse, some tenants drop the
+// separator entirely and run the parts together — "AEAbu-DhabiTrade-Center".
+// Exactness is not the point: what matters is that the words are present and
+// separated, so "abu dhabi" and "riyadh" can be found in it.
+func locationFromPath(externalPath string) string {
+	parts := strings.Split(strings.Trim(externalPath, "/"), "/")
+	// Only the three-segment form carries a location. A posting whose path is
+	// just /job/{title} has none to recover.
+	if len(parts) < 3 || parts[0] != "job" {
 		return ""
 	}
-	return text
+	place := acronymBoundary.ReplaceAllString(parts[1], "$1 $2")
+	place = wordBoundary.ReplaceAllString(place, "$1 $2")
+	place = strings.ReplaceAll(place, "-", " ")
+	return strings.TrimSpace(runOfSpaces.ReplaceAllString(place, " "))
 }
 
 var daysAgo = regexp.MustCompile(`(\d+)\+? Days? Ago`)

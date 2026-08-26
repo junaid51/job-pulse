@@ -29,6 +29,7 @@ const PROVIDERS: Record<string, string> = {
   jobicy: 'Jobicy',
   jobven: 'Jobven',
   jobspipe: 'JobsPipe',
+  workday: 'Workday',
 }
 
 export const providerLabel = (provider: string) => PROVIDERS[provider] ?? provider

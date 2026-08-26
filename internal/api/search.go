@@ -23,9 +23,15 @@ func (b *binder) add(v any) string {
 
 func (b *binder) args() []any { return b.vals }
 
-// searchWords splits a typed query into the words to match and the "@place"
-// tokens, which filter location instead.
-func searchWords(query string) (words, places []string) {
+// searchWords splits a typed query into the words to match, the "@place" tokens
+// that filter location instead, and the "-word" tokens that rule a posting out.
+//
+// Exclusions exist because a board can be worth reading and still bury what you
+// came for: adding the Gulf's big engineering firms means "engineer" now returns
+// resident engineers, HVAC and geotechnical work. A saved search has always been
+// able to say -civil; the search bar could not, which left the reader nothing to
+// do about it.
+func searchWords(query string) (words, places, excluded []string) {
 	for _, token := range strings.Fields(query) {
 		if place := strings.TrimPrefix(token, "@"); place != token {
 			if place != "" {
@@ -33,9 +39,15 @@ func searchWords(query string) (words, places []string) {
 			}
 			continue
 		}
+		if word := strings.TrimPrefix(token, "-"); word != token {
+			if word != "" {
+				excluded = append(excluded, word)
+			}
+			continue
+		}
 		words = append(words, token)
 	}
-	return words, places
+	return words, places, excluded
 }
 
 // searchSQL is one condition per word, and every word has to match something.
@@ -51,8 +63,18 @@ func searchWords(query string) (words, places []string) {
 // location (through the place atlas, so "uae" still finds Dubai), or the
 // company name. Short words are safe here precisely because of the boundaries:
 // "qa" matches "QA Engineer" and not "Qatar".
-func searchSQL(words []string, b *binder) string {
+func searchSQL(words, excluded []string, b *binder) string {
 	var conditions []string
+	for _, word := range excluded {
+		// Ruled out wherever it appears, and through the same dictionaries: a
+		// reader who excludes "civil" should not have to also exclude every
+		// wording of it.
+		roles, places := match.SearchTerms(word)
+		conditions = append(conditions,
+			"(j.title !~* all("+b.add(boundaries(roles))+")"+
+				" and j.location !~* all("+b.add(boundaries(places))+")"+
+				" and j.company !~* "+b.add(boundary(word))+")")
+	}
 	for _, word := range words {
 		roles, places := match.SearchTerms(word)
 		// Short words need no special handling here, and must not get any:

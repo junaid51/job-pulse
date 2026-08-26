@@ -81,7 +81,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		search := strings.TrimSpace(r.URL.Query().Get("q"))
 		// Every word of the query has to match something, in any order. See
 		// searchSQL: as one substring, "engineer dubai" could never match.
-		words, atPlaces := searchWords(search)
+		words, atPlaces, excluded := searchWords(search)
 		locations := locationPatterns(append(r.URL.Query()["location"], atPlaces...))
 		// market=1 hides postings nobody here could take. A company board is
 		// chosen as a whole, so it brings its Ohio roles along with its Dubai
@@ -99,8 +99,11 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		// device caught: every saved search at once, which is what the feed
 		// opens on.
 		mine := r.URL.Query().Get("mine") == "1"
-		if r.URL.Query().Get("profile_id") == "" && (mine || len(words) > 0 || locations != nil) {
-			searchAllJobs(w, r, pool, words, locations, marketPatterns, sort, limit, remote, mine)
+		// An exclusions-only query ("-civil") is a real question — everything
+		// except that — so it routes like any other search.
+		if r.URL.Query().Get("profile_id") == "" &&
+			(mine || len(words) > 0 || len(excluded) > 0 || locations != nil) {
+			searchAllJobs(w, r, pool, words, excluded, locations, marketPatterns, sort, limit, remote, mine)
 			return
 		}
 
@@ -156,7 +159,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			  and (not ` + b.add(remote) + ` or j.remote)
 			  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
 			       or j.location ilike any(` + b.add(marketPatterns) + `))` +
-			searchSQL(words, &b) + `
+			searchSQL(words, excluded, &b) + `
 			order by ` + cursorExpr + ` desc, j.id desc
 			limit ` + b.add(limit)
 		rows, err := pool.Query(r.Context(), query, b.args()...)
@@ -235,7 +238,7 @@ func locationPatterns(raw []string) []string {
 // meaningful here: "the ones my searches caught" and "the ones I applied to",
 // narrowed by whatever is typed.
 func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
-	words []string, locations, marketPatterns []string,
+	words, excluded, locations, marketPatterns []string,
 	sort string, limit int, remote, mine bool) {
 	var at any
 	var atID any
@@ -287,7 +290,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		  and (not ` + b.add(mine) + ` or m.job_id is not null)` + extraWhere + `
 		  and (` + cursorAt + `::timestamptz is null
 		       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))` +
-		searchSQL(words, &b) + `
+		searchSQL(words, excluded, &b) + `
 		order by ` + cursorExpr + ` desc, j.id desc
 		limit ` + b.add(limit)
 

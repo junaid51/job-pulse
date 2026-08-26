@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { invalidate } from '../query'
 import { enablePush, type PushState } from '../push'
 import { showToast } from '../toast'
+import { useEscape } from '../useEscape'
 
 export function Settings({ push, setPush }: { push: PushState; setPush: (s: PushState) => void }) {
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles })
@@ -361,6 +362,7 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
   // A new search is two questions. Naming it and excluding words are
   // refinements, and an existing search has already made them.
   const [more, setMore] = useState(existing !== null)
+  useEscape(props.onClose)
 
   const autoName =
     [keywords[0], locations[0]].filter(Boolean).map((t) => titleCase(t!)).join(' · ')

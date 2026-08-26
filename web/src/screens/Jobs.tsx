@@ -7,6 +7,7 @@ import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
 import { showToast } from '../toast'
+import { useEscape } from '../useEscape'
 
 async function refreshFeeds() {
   try { await api.poll() } catch { /* the cron's endpoint; refetch regardless */ }
@@ -198,12 +199,17 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // does, through the same alias dictionary the matcher uses.
   const tokens = debounced.split(/\s+/).filter(Boolean)
   const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
-  const words = tokens.filter((t) => !t.startsWith('@'))
-  const term = words.join(' ')
+  // "-word" rules a posting out, the same way a saved search's exclusions do.
+  // The whole query goes to the backend; only the positive words are worth
+  // underlining in a title.
+  const query_ = tokens.filter((t) => !t.startsWith('@'))
+  const words = query_.filter((t) => !t.startsWith('-'))
+  const excluded = query_.filter((t) => t.startsWith('-') && t.length > 1)
+  const term = query_.join(' ')
   const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
   // A typed term searches every board, not just what your searches caught —
   // hiding jobs because they missed your keywords answers the wrong question.
-  const searching = term !== '' || atTokens.length > 0
+  const searching = words.length > 0 || atTokens.length > 0 || excluded.length > 0
   // A named place is the answer to "where", so it replaces the region filter
   // rather than intersecting with it — otherwise asking for London while the
   // region said Gulf returned nothing, silently.
@@ -400,6 +406,7 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search all jobs"
             aria-label="Search all jobs"
+            title="Every word must match. -word rules a job out, @place filters by location."
           />
           {query
             ? <button className="clear" onClick={() => setQuery('')} aria-label="Clear search">✕</button>
@@ -417,8 +424,8 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
             title="Save this search"
             onClick={() => {
               api.createProfile({
-                name: term || debouncedPlace || 'Search',
-                keywords: term ? [term] : [],
+                name: words.join(' ') || debouncedPlace || 'Search',
+                keywords: [...words, ...excluded],
                 locations,
                 remote_only: remoteOnly,
               }).then((r) => {
@@ -474,6 +481,7 @@ function WhereSheet(props: {
 }) {
   const [draft, setDraft] = useState(
     WHERE_PLACES.includes(props.place) ? '' : props.place)
+  useEscape(props.onClose)
   const region = (markets: boolean) => {
     props.setPlace('')
     props.setMyMarkets(markets)
