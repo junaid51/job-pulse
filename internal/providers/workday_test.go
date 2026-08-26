@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,19 +28,43 @@ func TestWorkdayPostedAt(t *testing.T) {
 	}
 }
 
-// "3 Locations" is not a place. Storing it would hide the job from every region
-// filter, including the one it is actually in.
-func TestWorkdayLocationDropsTheSummary(t *testing.T) {
-	for in, want := range map[string]string{
-		"UAE, Dubai":      "UAE, Dubai",
-		"3 Locations":     "",
-		"1 Location":      "",
-		"12 Locations":    "",
-		"Location, Egypt": "Location, Egypt",
-		"UK, Remote":      "UK, Remote",
+// A listed place is used as listed; "3 Locations" is not a place, and the
+// posting's URL is where the real one comes from. Half of the NVIDIA board
+// arrived unplaceable before this.
+func TestWorkdayLocation(t *testing.T) {
+	cases := []struct{ text, path, want string }{
+		{"UAE, Dubai", "/job/UAE-Dubai/Engineer_JR1", "UAE, Dubai"},
+		{"UK, Remote", "/job/UK-Remote/Engineer_JR1", "UK, Remote"},
+		{"Location, Egypt", "/job/x/y_JR1", "Location, Egypt"},
+		// summarised: recover the primary location from the path
+		{"2 Locations", "/job/India-Bengaluru/Senior-AI-ML-Software-Engineer_JR2024127", "India Bengaluru"},
+		{"3 Locations", "/job/US-CA-Santa-Clara/Engineer_JR2", "US CA Santa Clara"},
+		{"1 Location", "/job/SA---Riyadh/Senior-HSE-Manager_R180560", "SA Riyadh"},
+		// the components run together on some tenants
+		{"2 Locations", "/job/AEAbu-DhabiTrade-Center-and-West-Tower/Chef_R1", "AE Abu Dhabi Trade Center and West Tower"},
+		// nothing to recover
+		{"4 Locations", "/job/Engineer_JR3", ""},
+		{"", "/job/India-Pune/Engineer_JR4", "India Pune"},
+	}
+	for _, c := range cases {
+		if got := workdayLocation(c.text, c.path); got != c.want {
+			t.Errorf("workdayLocation(%q, %q) = %q, want %q", c.text, c.path, got, c.want)
+		}
+	}
+}
+
+// The recovered string has to contain the words the matcher and the Where
+// filter look for; it does not have to equal Workday's own formatting.
+func TestRecoveredLocationIsSearchable(t *testing.T) {
+	for path, needle := range map[string]string{
+		"/job/AEAbu-DhabiTrade-Center-and-West-Tower/Chef_R1": "abu dhabi",
+		"/job/India-Bengaluru/Engineer_JR1":                   "bengaluru",
+		"/job/SA---Riyadh/Manager_R1":                         "riyadh",
+		"/job/United-Arab-Emirates/Engineer_R1":               "united arab emirates",
 	} {
-		if got := workdayLocation(in); got != want {
-			t.Errorf("workdayLocation(%q) = %q, want %q", in, got, want)
+		got := strings.ToLower(locationFromPath(path))
+		if !strings.Contains(got, needle) {
+			t.Errorf("locationFromPath(%q) = %q, want it to contain %q", path, got, needle)
 		}
 	}
 }
