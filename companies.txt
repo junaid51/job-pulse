@@ -52,12 +52,8 @@ lever              cred         CRED
 lever              meesho       Meesho
 smartrecruiters    freshworks   Freshworks
 
-# Gulf second wave: verified live
-greenhouse         careem       Careem
-greenhouse         tamara       Tamara
-ashby              ziina        Ziina
-workable           foodics      Foodics
-workable           salla        Salla
+# ("Gulf second wave" lived here: careem, tamara, ziina, foodics and salla,
+# every one of them already listed forty lines above. Removed 2026-08-27.)
 
 # Remote feeds: keyless aggregator APIs, newest-window only (hourly, no
 # absence-deletion). Their postings are filtered by reachability — see
@@ -117,16 +113,13 @@ greenhouse         litify                       Litify
 smartrecruiters    TheracareINC                 Theracareinc
 greenhouse         6sense                       6Sense
 greenhouse         blinkhealth                  Blinkhealth
-smartrecruiters    Grab                         Grab
 greenhouse         cresta                       Cresta
 greenhouse         veristainc                   Veristainc
 smartrecruiters    SoftwareMind                 Softwaremind
-smartrecruiters    Xplor                        Xplor
 smartrecruiters    Canva                        Canva
 ashby              oneapp                       Oneapp
 greenhouse         globalizationpartners        Globalizationpartners
 greenhouse         behavox                      Behavox
-smartrecruiters    Dungarvin                    Dungarvin
 greenhouse         taketwo                      Taketwo
 ashby              cohere                       Cohere
 ashby              deepgram                     Deepgram
@@ -151,9 +144,9 @@ greenhouse         encora10                     Encora10
 # Airwallex 10.4 MB — nine gigabytes a month apiece even hourly, for twelve and
 # nine in-market jobs. Skipped again on noise: Domino's, Accor, AECOM, SGS,
 # Anduril, Syngenta, Avery Dennison, Alliance Animal Health.
-smartrecruiters    ServiceNow                   ServiceNow
-smartrecruiters    Experian                     Experian
-smartrecruiters    Intuitive                    Intuitive Surgical
+smartrecruiters    ServiceNow|ae,sa,in          ServiceNow
+smartrecruiters    Experian|ae,sa,in            Experian
+smartrecruiters    Intuitive|ae,sa,in           Intuitive Surgical
 greenhouse         launchdarkly                 LaunchDarkly
 greenhouse         stackadapt                   StackAdapt
 greenhouse         apolloio                     Apollo.io
@@ -175,6 +168,14 @@ smartrecruiters    Promptcloud                  PromptCloud
 # 5,898, and none of them are hotel jobs in Alberta. Domino's stays out on
 # evidence — filtered to our markets it has exactly zero.
 smartrecruiters    AccorHotel|ae,sa             Accor
+# Audited 2026-08-27 by asking what share of each board was even reachable.
+# Xplor stored 235 postings for 4 in-market — 213 of them one "Account
+# Executive" title repeated across US cities — Grab 122 for 6, Wise 147 for 9.
+# Filtered they are 4, 8 and 36, every one in-market. Dungarvin is gone: 212
+# stored, 6 in-market, and filtered to our countries it returns nothing at all.
+smartrecruiters    Xplor|ae,sa,in               Xplor
+smartrecruiters    Grab|ae,sa,in                Grab
+smartrecruiters    wise|ae,sa,in                Wise
 smartrecruiters    SyngentaGroup|in             Syngenta
 smartrecruiters    AveryDennison|in             Avery Dennison
 # AECOM and SGS were removed 2026-08-26, having been added here two lines under
@@ -206,7 +207,6 @@ ashby              clickhouse                   ClickHouse
 greenhouse         stripe                       Stripe
 lever              hevodata                     Hevo Data
 greenhouse         inmobi                       InMobi
-smartrecruiters    wise                         Wise
 lever              zeta                         Zeta
 lever              mindtickle                   Mindtickle
 greenhouse         elastic                      Elastic
@@ -383,12 +383,14 @@ workday  jll.wd1.myworkdayjobs.com/jllcareers?locationCountry=c4f78be1a8f14da0ab
 # whose slug is just a company name. The useful result was mostly negative:
 # nearly every obvious name — swiggy, meesho, phonepe, freshworks, cred, zeta,
 # postman, atlan, tabby, tamara, hala, salla, ziina, thndr — was already here,
-# so guessing names has reached saturation. These four were not, and carry
-# in-market work when probed:
-ashby       supabase     Supabase        # 50 of 57 listed "Remote, Anywhere"
+# so guessing names has reached saturation — and two of the four I first added
+# here, Supabase and CockroachDB, were already listed as well: I ran the
+# duplicate check on the earlier batches and skipped it on this one. Only these
+# two were genuinely new:
 lever       fampay       FamPay          # 14 of 14 in Bengaluru
-greenhouse  cockroachlabs CockroachLabs  # 10 of 26 listed Global
 greenhouse  groww        Groww           # 5 of 5 in Bengaluru
+# (Supabase measured 50 of 57 postings "Remote, Anywhere" and CockroachDB 10 of
+# 26 "Global" — worth knowing, and both were already being polled.)
 # Refused from the same sweep: vercel (12 in-market but every one "Remote -
 # United States"), confluent (23, all country-restricted remote), netlify (2),
 # namshi (6 retail stylists), turtlemint and whatfix and unacademy (boards

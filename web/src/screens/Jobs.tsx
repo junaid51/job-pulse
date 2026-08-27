@@ -6,6 +6,7 @@ import { api, describeError, type Job, type JobSort, type Profile } from '../api
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
+import { arrivalLabel, jobIdentity, parseQuery, whereLabel } from '../feed'
 import { showToast } from '../toast'
 import { useEscape } from '../useEscape'
 
@@ -132,19 +133,6 @@ type Item =
   | { kind: 'header'; key: string; label: string }
   | { kind: 'job'; key: string; job: Job }
 
-// The feed is a timeline of arrivals, so the headers say when — and each row is
-// then free to be just the job.
-function arrivalLabel(iso: string): string {
-  const at = new Date(iso)
-  if (Date.now() - at.getTime() < 60 * 60 * 1000) return 'Just now'
-  const today = new Date()
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000)
-  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
-  if (sameDay(at, today)) return 'Earlier today'
-  if (sameDay(at, yesterday)) return 'Yesterday'
-  return at.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-}
-
 // scope is null when no saved search exists yet: the feed has nothing to show,
 // but the search bar still covers the whole corpus — browsing must not wait for
 // a search to be saved.
@@ -197,15 +185,12 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
 
   // "@place" typed into search filters location the same way the Where sheet
   // does, through the same alias dictionary the matcher uses.
-  const tokens = debounced.split(/\s+/).filter(Boolean)
-  const atTokens = tokens.filter((t) => t.startsWith('@')).map((t) => t.slice(1)).filter(Boolean)
-  // "-word" rules a posting out, the same way a saved search's exclusions do.
-  // The whole query goes to the backend; only the positive words are worth
-  // underlining in a title.
-  const query_ = tokens.filter((t) => !t.startsWith('@'))
-  const words = query_.filter((t) => !t.startsWith('-'))
-  const excluded = query_.filter((t) => t.startsWith('-') && t.length > 1)
-  const term = query_.join(' ')
+  // "-word" rules a posting out, the same way a saved search's exclusions do,
+  // and "@place" filters location. The whole query goes to the backend; only
+  // the positive words are worth underlining in a title. Split by the same
+  // rules the backend uses — see feed.ts.
+  const { words, places: atTokens, excluded } = parseQuery(debounced)
+  const term = [...words, ...excluded].join(' ')
   const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
   // A typed term searches every board, not just what your searches caught —
   // hiding jobs because they missed your keywords answers the wrong question.
@@ -269,7 +254,7 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
     // reading. Keep the first, which is the earliest arrival under this sort.
     const seen = new Set<string>()
     for (const job of rows) {
-      const identity = `${job.title}|${job.company}|${job.location}`.toLowerCase()
+      const identity = jobIdentity(job)
       if (seen.has(identity)) continue
       seen.add(identity)
       const when = sort === 'applied' ? job.applied_at
@@ -454,13 +439,6 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
       {list}
     </>
   )
-}
-
-// One phrase for whatever "where" currently means, shown on the button so the
-// filter never hides anything silently.
-function whereLabel(place: string, remoteOnly: boolean, myMarkets: boolean): string {
-  const where = place.trim() || (myMarkets ? 'Gulf + India' : 'Anywhere')
-  return remoteOnly ? `${where} · remote` : where
 }
 
 // The two regions worth a default, then the places actually searched from here.
