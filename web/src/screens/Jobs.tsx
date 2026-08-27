@@ -2,11 +2,11 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { api, describeError, type Job, type JobSort, type Profile } from '../api'
+import { api, describeError, type JobSort, type Profile } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
-import { arrivalLabel, jobIdentity, parseQuery, whereLabel } from '../feed'
+import { buildItems, parseQuery, whereLabel } from '../feed'
 import { showToast } from '../toast'
 import { useEscape } from '../useEscape'
 
@@ -129,10 +129,6 @@ function StaleNotice({ health }: { health?: { poller: string; poll_age_seconds?:
   )
 }
 
-type Item =
-  | { kind: 'header'; key: string; label: string }
-  | { kind: 'job'; key: string; job: Job }
-
 // scope is null when no saved search exists yet: the feed has nothing to show,
 // but the search bar still covers the whole corpus — browsing must not wait for
 // a search to be saved.
@@ -245,29 +241,9 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
       .filter((keyword) => !keyword.startsWith('-'))
 
   // Headers ride in the same virtual list as the rows, so grouping costs no
-  // scrolling performance.
-  const items: Item[] = []
-  if (rows) {
-    let group = ''
-    // Two boards can carry the same posting — an employer on Greenhouse whose
-    // roles are re-listed by an aggregator — and it is one job to whoever is
-    // reading. Keep the first, which is the earliest arrival under this sort.
-    const seen = new Set<string>()
-    for (const job of rows) {
-      const identity = jobIdentity(job)
-      if (seen.has(identity)) continue
-      seen.add(identity)
-      const when = sort === 'applied' ? job.applied_at
-        : sort === 'matched' ? job.matched_at
-        : job.posted_at ?? job.matched_at
-      const label = when ? arrivalLabel(when) : 'Undated'
-      if (label !== group) {
-        group = label
-        items.push({ kind: 'header', key: `h:${label}`, label })
-      }
-      items.push({ kind: 'job', key: `j:${job.id}`, job })
-    }
-  }
+  // scrolling performance. The building of it lives in feed.ts, where it is
+  // tested: this is where a stale header once stacked on a live one.
+  const items = buildItems(rows, sort === 'applied' ? 'applied' : sort === 'matched' ? 'matched' : 'posted')
 
   // Real windowing: only the rows near the viewport exist in the DOM. The
   // scroller is <main>, so the list's own offset inside it is the margin.

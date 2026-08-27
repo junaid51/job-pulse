@@ -139,6 +139,19 @@ var minPollInterval = map[string]time.Duration{
 	"jobspipe": 12 * time.Hour,
 }
 
+// Not done, deliberately: filtering company boards down to reachable postings
+// at ingest. Two thirds of the corpus is work nobody here can take — Anthropic
+// 170 postings for 4, Stripe 103 for 8 — and dropping it would cost more than
+// it saves. Those boards are fetched whole either way, because their APIs take
+// no country filter, so it saves no requests; the storage is three megabytes;
+// the UI hides them behind the Gulf + India default already; and the search bar
+// promises "every job from every board", which a filter would quietly break.
+// A saved search here asks for the UK, which is out-of-market by this
+// definition and would have gone silent.
+//
+// What was worth doing is removing the boards with no reachable postings at
+// all — see companies.txt.
+
 // heavyBoards are polled hourly rather than every cycle. Ashby inlines every
 // description and offers no way to ask it not to, so these boards answer with
 // megabytes: Snowflake is 4.7 MB, ElevenLabs 3.4, Cohere 2.4. At a five-minute
@@ -730,10 +743,13 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 		if !j.PostedAt.IsZero() {
 			posted = j.PostedAt
 		}
-		// The not-exists guard is cross-provider dedup: an aggregator (jobven)
-		// crawls the same ATS postings some boards serve directly, and both
-		// sides end at the same canonical URL. First provider to see a URL
-		// owns it; the age sweep or its board's absence-deletion retires it.
+		// Two not-exists guards, both dedup. The first is by URL: an
+		// aggregator (jobven) crawls the same ATS postings some boards serve
+		// directly, and both sides end at the same canonical link. The second
+		// is by identity — same title, company and place — which catches the
+		// same posting under two different URLs, 138 stored rows worth. First
+		// board to see a job owns it; the age sweep or its board's
+		// absence-deletion retires it.
 		// A stored posting is refreshed when the board's version differs — a
 		// retitle, a move, a salary appearing, or a parser of ours getting
 		// better. It used to be "do nothing", so a job kept whatever text it
@@ -749,6 +765,12 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 			insert into jobs (provider, external_id, slug, company, title, location, remote, url, salary, posted_at)
 			select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 			where not exists (select 1 from jobs d where d.url = $8 and d.provider <> $1)
+			  and not exists (
+				select 1 from jobs d2
+				where lower(d2.title) = lower($5)
+				  and lower(d2.company) = lower($4)
+				  and lower(d2.location) = lower($6)
+				  and (d2.provider, d2.external_id) <> ($1, $2))
 			on conflict (provider, external_id) do update
 			   set slug = excluded.slug, company = excluded.company,
 			       title = excluded.title, location = excluded.location,

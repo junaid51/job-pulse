@@ -50,3 +50,47 @@ export function whereLabel(place: string, remoteOnly: boolean, myMarkets: boolea
 export function jobIdentity(job: { title: string; company: string; location: string }): string {
   return `${job.title}|${job.company}|${job.location}`.toLowerCase()
 }
+
+export type FeedRow = {
+  id: number
+  title: string
+  company: string
+  location: string
+  matched_at: string
+  posted_at: string | null
+  applied_at: string | null
+}
+
+export type Item<T> =
+  | { kind: 'header'; key: string; label: string }
+  | { kind: 'job'; key: string; job: T }
+
+/** The rows of the feed as the virtualized list consumes them: arrival headers
+ *  interleaved with jobs, and the same posting from two boards collapsed to one.
+ *  Kept out of the component because this is where its bugs have been — a stale
+ *  header stacked on a live one, a duplicate a page apart. */
+export function buildItems<T extends FeedRow>(
+  rows: T[] | null,
+  sort: 'matched' | 'applied' | 'posted',
+  now = Date.now(),
+): Item<T>[] {
+  if (!rows) return []
+  const items: Item<T>[] = []
+  const seen = new Set<string>()
+  let group = ''
+  for (const job of rows) {
+    const identity = jobIdentity(job)
+    if (seen.has(identity)) continue
+    seen.add(identity)
+    const when = sort === 'applied' ? job.applied_at
+      : sort === 'matched' ? job.matched_at
+      : job.posted_at ?? job.matched_at
+    const label = when ? arrivalLabel(when, now) : 'Undated'
+    if (label !== group) {
+      group = label
+      items.push({ kind: 'header', key: `h:${label}`, label })
+    }
+    items.push({ kind: 'job', key: `j:${job.id}`, job })
+  }
+  return items
+}

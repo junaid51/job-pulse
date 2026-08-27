@@ -135,7 +135,6 @@ greenhouse         beyondtrust                  Beyondtrust
 greenhouse         goguardian                   Goguardian
 smartrecruiters    KanadeviaInova               Kanadeviainova
 ashby              ambient.ai                   Ambient Ai
-greenhouse         encora10                     Encora10
 
 # Second discovery sweep. The big three here are throttled to hourly (see
 # heavyBoards): they page 100 at a time, so ServiceNow costs six requests and
@@ -216,11 +215,9 @@ greenhouse         druva                        Druva
 greenhouse         hala                         Hala
 greenhouse         datadog                      Datadog
 greenhouse         observeai                    Observe.AI
-greenhouse         adyen                        Adyen
 ashby              atlan                        Atlan
 greenhouse         cockroachlabs                Cockroach Labs
 greenhouse         anthropic                    Anthropic
-greenhouse         cloudflare                   Cloudflare
 ashby              confluent                    Confluent
 smartrecruiters    unacademy                    Unacademy
 greenhouse         planetscale                  PlanetScale
@@ -395,3 +392,10 @@ greenhouse  groww        Groww           # 5 of 5 in Bengaluru
 # United States"), confluent (23, all country-restricted remote), netlify (2),
 # namshi (6 retail stylists), turtlemint and whatfix and unacademy (boards
 # containing only test rows).
+
+# Removed 2026-08-27 on measurement: Encora (58 stored postings, 0 reachable
+# from here), Cloudflare (48, 0) and Adyen (31, 0). Boards with no reachable
+# postings at all are the only ones worth removing on this basis — the rest of
+# the out-of-market corpus stays, because those boards are fetched whole
+# regardless, the UI hides them by default, and the search bar is supposed to
+# cover every job from every board.

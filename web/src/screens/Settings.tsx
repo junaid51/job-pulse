@@ -340,8 +340,13 @@ const ROLES = [
   'frontend', 'backend', 'full stack', 'mobile', 'devops', 'platform',
   'data', 'qa', 'design', 'product', 'engineering manager', 'business analyst',
 ]
+// "worldwide" is deliberately not offered here. It reads as "anywhere" and
+// means the opposite: only postings whose location literally says worldwide,
+// anywhere or global. One saved search picked it expecting no restriction and
+// gets 5 matches where the same keywords without it get 32. Typing it still
+// works, for the reader who means it.
 const PLACES = ['dubai', 'abu dhabi', 'uae', 'saudi', 'qatar', 'gulf', 'india',
-  'uk', 'usa', 'worldwide']
+  'uk', 'usa']
 const NOISE = ['senior', 'lead', 'principal', 'manager', 'intern']
 
 const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase())
@@ -410,6 +415,8 @@ function Editor(props: { existing: Profile | null; onClose: () => void; onSaved:
           <span className="f-label">Where?</span>
           <TermPicker value={locations} onChange={setLocations}
             suggestions={PLACES} placeholder="anywhere — or add a place…" />
+          <small>Leave this empty for anywhere. A place here is a filter, so the
+            more you add the more it lets through, not less.</small>
           <label className="switch-row">
             <span>Remote roles only</span>
             <input type="checkbox" checked={remoteOnly}
