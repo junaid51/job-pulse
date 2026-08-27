@@ -1,54 +1,59 @@
-# The patient waker.
+# The loud check, and the backup waker.
 #
-# This host spins a free instance down after fifteen idle minutes, and its own
-# dashboard warns that waking one "can delay requests by 50 seconds or more".
-# cron-job.org gives up after 30. That mismatch is the whole bug: once the
-# instance slept, every five-minute attempt was answered 503 by the edge, the
-# app never booted (nine hours of logs with no lines in them at all), and the
-# scheduler eventually disabled itself for failing. Nothing recovered it but a
-# human opening the app.
+# The primary waker is a pg_cron job in the Supabase database: every five
+# minutes it asks the backend for /healthz through pg_net with a 60-second
+# timeout. That combination is what nothing else here could manage — a database
+# that never sleeps, and a client patient enough for a 50-second cold start.
+# cron-job.org gives up at 30 seconds (and an abandoned request does not even
+# start the instance, so it answered 503 and disabled itself twice), and this
+# very workflow, when it was the primary, fired a */10 schedule six times in
+# nineteen hours.
 #
-# So this workflow does the one thing that scheduler cannot: it waits. Ninety
-# seconds, retrying, which is longer than any cold start. GitHub honours a cron
-# as best effort — measured at a 25-minute median, once 52 — which is useless as
-# the primary poller and exactly good enough as the thing that gets the lights
-# back on. cron-job.org keeps an awake instance awake; this wakes a sleeping one.
+# So this is no longer the mechanism. It is the alarm: GitHub emails a failed
+# scheduled run, which turns a silently dead poller into a message. It wakes the
+# instance on the way past, which is a useful side effect rather than the plan.
 name: poll
 on:
   schedule:
-    # Ask often, because most of these firings will be skipped or late.
-    - cron: "*/10 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch: {}
 
-# A late run is worthless once a newer one is going.
 concurrency:
   group: poll
   cancel-in-progress: true
 
 jobs:
-  wake:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 8
     steps:
-      - name: wake the backend, however long that takes
+      - name: wake it, however long that takes
         run: |
-          # No token: any request revives a poller that has not run in five
-          # minutes, so the cheapest endpoint is the right one. It also means
-          # this keeps working if POLL_TOKEN is ever rotated.
           curl -fsS "${{ secrets.JOBPULSE_URL }}/healthz" \
             --retry 10 --retry-delay 10 --retry-all-errors --max-time 120 \
-            -o /tmp/health.json
-          cat /tmp/health.json
+            -o /tmp/first.json
+          cat /tmp/first.json
 
-      - name: report what the poller is doing
+      - name: give any cycle it started time to finish
+        run: sleep 90
+
+      - name: fail if the boards are not being read
         run: |
+          curl -fsS "${{ secrets.JOBPULSE_URL }}/healthz" --max-time 60 -o /tmp/health.json
+          cat /tmp/health.json
           python3 - <<'PY'
           import json, sys
           h = json.load(open('/tmp/health.json'))
-          age = h.get('poll_age_seconds')
-          print(f"poller={h.get('poller')} age={age}s db={h.get('database')}")
-          # Waking is the job; a cycle it triggered may still be running, so a
-          # stale age here is information, not a failure.
+          age, state = h.get('poll_age_seconds'), h.get('poller')
+          print(f"poller={state} age={age}s db={h.get('database')}")
           if h.get('database') != 'ok':
               sys.exit("the database is unreachable")
+          if state == 'never ran' or age is None:
+              sys.exit("the instance is up but has never polled — the reviver is not firing")
+          # Half an hour is six missed cycles: past that something is wrong with
+          # the pg_cron waker or the keepalive, and a silent feed is the failure
+          # this whole app is supposed to prevent.
+          if age > 1800:
+              sys.exit(f"the boards have not been read for {age // 60} minutes")
+          print("fresh enough")
           PY
