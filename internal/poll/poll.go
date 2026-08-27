@@ -148,18 +148,16 @@ var heavyBoards = map[string]time.Duration{
 	"ashby:snowflake":  time.Hour,
 	"ashby:elevenlabs": time.Hour,
 	"ashby:cohere":     time.Hour,
-	// SmartRecruiters pages a hundred at a time, so a large board is expensive
-	// in requests as much as bytes: ServiceNow is six round trips and 1.4 MB.
-	"smartrecruiters:ServiceNow": time.Hour,
-	"smartrecruiters:Experian":   time.Hour,
-	"smartrecruiters:Intuitive":  time.Hour,
+	// ServiceNow, Experian and Intuitive were throttled here for costing six
+	// round trips and 1.4 MB each. Country-filtered on 2026-08-27 they are one
+	// page per country, so they poll every cycle again — which is the point:
+	// their Riyadh and Bengaluru postings are found in five minutes, not sixty.
 	// Workable inlines descriptions too: Rentokil is 4.1 MB a fetch and
 	// Apt Resources 1.5, for boards whose postings change slowly.
 	"workable:rentokil-initial": time.Hour,
 	"workable:apt-resources":    time.Hour,
 	// Country-filtered but still several pages per country.
 	"smartrecruiters:AccorHotel|ae,sa": time.Hour,
-	"smartrecruiters:AECOM2|ae,sa,in":  time.Hour,
 }
 
 // boardInterval is the minimum gap between polls of one board: the provider's
@@ -277,6 +275,30 @@ func logCycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier
 	)
 }
 
+// warnUnmatchedOverrides reports throttles that no longer apply to anything.
+//
+// heavyBoards and minPollInterval are keyed by provider:slug, so renaming a
+// board — adding "|ae,sa,in" to a SmartRecruiters slug, say — silently detaches
+// its override. That happened to three of them and nothing said so.
+func warnUnmatchedOverrides(companies []Company) {
+	boards := make(map[string]bool, len(companies))
+	providers := make(map[string]bool, len(companies))
+	for _, c := range companies {
+		boards[c.Provider+":"+c.Slug] = true
+		providers[c.Provider] = true
+	}
+	for key := range heavyBoards {
+		if !boards[key] {
+			slog.Warn("heavyBoards entry matches no board", "key", key)
+		}
+	}
+	for name := range minPollInterval {
+		if !providers[name] {
+			slog.Warn("minPollInterval entry matches no board", "provider", name)
+		}
+	}
+}
+
 // Cycle polls every company once. One board failing never stops the others: the
 // error is recorded on the row and the next cycle tries again fifteen minutes
 // later, which is why polling needs no retry queue.
@@ -304,6 +326,7 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	if err != nil {
 		return Stats{}, err
 	}
+	warnUnmatchedOverrides(companies)
 	companies = dueNow(companies, time.Now())
 	profiles, err := loadProfiles(ctx, pool)
 	if err != nil {
@@ -711,12 +734,34 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 		// crawls the same ATS postings some boards serve directly, and both
 		// sides end at the same canonical URL. First provider to see a URL
 		// owns it; the age sweep or its board's absence-deletion retires it.
+		// A stored posting is refreshed when the board's version differs — a
+		// retitle, a move, a salary appearing, or a parser of ours getting
+		// better. It used to be "do nothing", so a job kept whatever text it
+		// had when first seen: fifty-six Workday rows sat with no location at
+		// all after the extraction that caused it was fixed, because nothing
+		// ever revisited them.
+		//
+		// The where clause means an unchanged posting is not written at all, and
+		// xmax distinguishes the two outcomes that do return a row: zero for an
+		// insert, the transaction id for an update. Only inserts are new jobs.
+		// Without that, every corrected row would be announced again.
 		batch.Queue(`
 			insert into jobs (provider, external_id, slug, company, title, location, remote, url, salary, posted_at)
 			select $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 			where not exists (select 1 from jobs d where d.url = $8 and d.provider <> $1)
-			on conflict (provider, external_id) do nothing
-			returning id`,
+			on conflict (provider, external_id) do update
+			   set slug = excluded.slug, company = excluded.company,
+			       title = excluded.title, location = excluded.location,
+			       remote = excluded.remote, url = excluded.url,
+			       salary = excluded.salary,
+			       -- never trade a known date for a board that stopped saying
+			       posted_at = coalesce(excluded.posted_at, jobs.posted_at)
+			 where (jobs.title, jobs.location, jobs.remote, jobs.url,
+			        jobs.salary, jobs.company, jobs.slug)
+			    is distinct from
+			       (excluded.title, excluded.location, excluded.remote,
+			        excluded.url, excluded.salary, excluded.company, excluded.slug)
+			returning id, xmax::text::bigint = 0 as inserted`,
 			c.Provider, j.ExternalID, c.Slug, j.Company, j.Title, j.Location, j.Remote, j.URL, j.Salary, posted)
 	}
 
@@ -726,16 +771,25 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 	defer results.Close()
 
 	var stored []storedJob
+	var refreshed int
 	for i := range jobs {
 		var id int64
-		err := results.QueryRow().Scan(&id)
+		var inserted bool
+		err := results.QueryRow().Scan(&id, &inserted)
 		if errors.Is(err, pgx.ErrNoRows) {
-			continue // already knew about this one
+			continue // knew it already, and nothing about it changed
 		}
 		if err != nil {
 			return nil, err
 		}
+		if !inserted {
+			refreshed++
+			continue // knew it already; its text is now the board's
+		}
 		stored = append(stored, storedJob{id: id, job: jobs[i]})
+	}
+	if refreshed > 0 {
+		slog.Info("postings refreshed", "provider", c.Provider, "slug", c.Slug, "count", refreshed)
 	}
 	return stored, nil
 }

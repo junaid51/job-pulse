@@ -88,6 +88,11 @@ func fetchWorkday(ctx context.Context, slug string) ([]Job, error) {
 			total = result.Total
 		}
 		for _, p := range result.JobPostings {
+			// One board returned a posting with no path at all, which stored a
+			// row whose URL was the board's front page and whose id was empty.
+			if strings.TrimSpace(p.ExternalPath) == "" {
+				continue
+			}
 			jobs = append(jobs, Job{
 				ExternalID: workdayID(p.BulletFields, p.ExternalPath),
 				Title:      strings.TrimSpace(p.Title),
