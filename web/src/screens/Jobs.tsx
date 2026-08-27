@@ -275,6 +275,13 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
     : current ? `your “${current.name}” matches`
     : 'jobs your searches caught'
 
+  // Everywhere this feed says "nothing matched", it has to name every filter it
+  // applied. An "@dubai" token used to vanish from the message, so a search for
+  // "react @dubai" reported "nothing matches react" — true of the words, and
+  // silent about the place that did most of the excluding.
+  const placesInPlay = [...new Set([...atTokens, debouncedPlace].filter(Boolean))]
+  const inPlaces = placesInPlay.length ? ` in ${placesInPlay.join(' or ')}` : ''
+
   let list
   if (feed.error) {
     list = <ErrorState message={describeError(feed.error)} onRetry={() => feed.refetch()} />
@@ -299,17 +306,23 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
           ? (
             <Empty
               title="No job matches all of those words"
-              detail={`No job has all of “${term}” across its title, company and location${debouncedPlace ? `, in ${debouncedPlace}` : ''}. Every word has to match, so the more you type the narrower it gets.`}
+              detail={`No job has all of “${words.join(' ')}”${inPlaces} across its title, company and location. Every word has to match, so the more you type the narrower it gets.`}
               actionLabel={`Search “${words.slice(0, -1).join(' ')}” instead`}
               onAction={() => setQuery(words.slice(0, -1).join(' '))}
             />
           )
           : (
             <Empty
-              title={`Nothing matches “${term || debouncedPlace}” yet`}
-              detail={debouncedPlace && !term
+              title={words.length
+                ? `Nothing matches “${words.join(' ')}”${inPlaces} yet`
+                : `Nothing in ${placesInPlay.join(' or ') || 'that place'} yet`}
+              detail={placesInPlay.length && !words.length
                 ? 'Shorthands like uae, ksa and uk are understood.'
-                : 'Titles, companies and locations are searched — not job descriptions, which this app deliberately does not store.'}
+                : `Titles, companies and locations are searched — not job descriptions, which this app deliberately does not store.${placesInPlay.length ? ' Try without the place.' : ''}`}
+              actionLabel={placesInPlay.length && words.length ? `Search “${words.join(' ')}” anywhere` : undefined}
+              onAction={placesInPlay.length && words.length
+                ? () => { setQuery(words.join(' ')); setPlace('') }
+                : undefined}
             />
           )
         : (
