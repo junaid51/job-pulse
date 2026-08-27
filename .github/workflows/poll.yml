@@ -53,7 +53,16 @@ jobs:
           # Half an hour is six missed cycles: past that something is wrong with
           # the pg_cron waker or the keepalive, and a silent feed is the failure
           # this whole app is supposed to prevent.
-          if age > 1800:
+          # The waker deliberately stops between 01:00 and 05:00 UTC — those four
+          # hours carry 2% of a week's postings, and letting the host sleep
+          # through them keeps always-on inside the 750-hour free allowance.
+          # Complaining about a planned sleep would train us to ignore this.
+          from datetime import datetime, timezone
+          hour = datetime.now(timezone.utc).hour
+          if 1 <= hour < 6:
+              print(f"quiet window (UTC hour {hour}); a stale poller is expected here")
+          elif age > 1800:
               sys.exit(f"the boards have not been read for {age // 60} minutes")
-          print("fresh enough")
+          else:
+              print("fresh enough")
           PY
