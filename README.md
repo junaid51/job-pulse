@@ -205,6 +205,25 @@ Actions: a `*/5` cron there is best effort and measured out at a 25-minute
 median, which defeats the point. The ping also keeps the host awake, so the cold
 start disappears — watch its free-hours allowance if it has one.
 
+**Three things keep the boards being read, because two of them failed.** The
+waker is a `pg_cron` job in the database — it never sleeps, and `pg_net` gives
+it a 60-second timeout, which is the one combination that can start a
+spun-down instance:
+
+```sql
+create extension if not exists pg_net with schema extensions;
+create extension if not exists pg_cron;
+select cron.schedule('jobpulse-wake', '*/5 * * * *', $$
+  select net.http_get(url := 'https://<backend>/healthz', timeout_milliseconds := 60000)
+$$);
+-- select * from cron.job_run_details order by start_time desc limit 5;
+```
+
+The process also keeps itself awake (below), and the GitHub workflow is the
+alarm rather than the mechanism: it runs hourly and *fails* if the boards have
+not been read for half an hour, which makes GitHub send mail. A poller that
+stops silently is the failure this app exists to prevent.
+
 **The instance must not be allowed to sleep.** Waking a spun-down free instance
 takes 50 seconds or more, and nothing free can reliably do it: cron-job.org's
 free plan abandons a request after 30 seconds — and an abandoned request does
