@@ -55,12 +55,14 @@ func TestParseCompaniesRejectsBadLines(t *testing.T) {
 // else is always due, including boards never polled before.
 func TestDueNow(t *testing.T) {
 	now := time.Now()
-	recent, stale := now.Add(-time.Hour), now.Add(-7*time.Hour)
+	// Ten minutes is inside jobicy's hourly window and seven hours is well past
+	// it, so "fresh" is skipped and "stale" is the first of that provider due.
+	recent, stale := now.Add(-10*time.Minute), now.Add(-7*time.Hour)
 	companies := []Company{
 		{Provider: "greenhouse", Slug: "always", LastPolledAt: &recent},
-		{Provider: "careerjet", Slug: "fresh", LastPolledAt: &recent},
-		{Provider: "careerjet", Slug: "stale", LastPolledAt: &stale},
-		{Provider: "careerjet", Slug: "never"},
+		{Provider: "jobicy", Slug: "fresh", LastPolledAt: &recent},
+		{Provider: "jobicy", Slug: "stale", LastPolledAt: &stale},
+		{Provider: "jobicy", Slug: "never"},
 	}
 
 	var slugs []string

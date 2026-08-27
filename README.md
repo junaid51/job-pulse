@@ -62,10 +62,14 @@ The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
 `greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, `himalayas`, `jobicy`,
-`teamtailor`, `manatal`, `phenom`, `oracle`, `workday`, plus the metered aggregators
+`teamtailor`, `phenom`, `oracle`, `workday`, plus the metered aggregators
 `jobven` and `jobspipe`, whose "slug" is a saved search rather than a company.
-`careerjet` is implemented but parked: its API is IP-allowlisted and free
-hosting has no fixed egress address.
+
+Three adapters were deleted on 2026-08-27 rather than left in the registry:
+`manatal` and `remotive` had already been dropped from `companies.txt` for
+posting dead and irrelevant jobs, and `careerjet` had been parked for eight days
+waiting for an IP allowlist that free hosting cannot satisfy anyway. They are in
+the git history if any of them ever earns its way back.
 
 A `workday` slug is the careers host and site plus the location facet that
 narrows a global board to this market — `kbr.wd5.myworkdayjobs.com/KBR_Careers?locationHierarchy1=…`.
@@ -157,7 +161,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | ---------------- | ---------------------------------------------------------------------- | ------------------------------ |
 | `DATABASE_URL`   | `postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable` |                                |
 | `PORT`           | `8080`                                                                 |                                |
-| `POLL_INTERVAL`  | `5m`                                                                   | Go duration; `0` disables the internal ticker |
+| `POLL_INTERVAL`  | `5m`                                                                   | Go duration; cannot be disabled, and is raised to 1m if shorter |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
 | `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site; unset = careerjet lines error quietly |
@@ -205,10 +209,10 @@ Actions: a `*/5` cron there is best effort and measured out at a 25-minute
 median, which defeats the point. The ping also keeps the host awake, so the cold
 start disappears — watch its free-hours allowance if it has one.
 
-**Three things keep the boards being read, because two of them failed.** The
-waker is a `pg_cron` job in the database — it never sleeps, and `pg_net` gives
-it a 60-second timeout, which is the one combination that can start a
-spun-down instance:
+**Two things keep the boards being read.** The process polls on its own timer,
+and a `pg_cron` job in the database keeps the process alive — it never sleeps,
+and `pg_net` gives it a 60-second timeout, which is the one combination that can
+start a spun-down instance:
 
 ```sql
 create extension if not exists pg_net with schema extensions;
@@ -219,23 +223,19 @@ $$);
 -- select * from cron.job_run_details order by start_time desc limit 5;
 ```
 
-The process also keeps itself awake (below), and the GitHub workflow is the
-alarm rather than the mechanism: it runs hourly and *fails* if the boards have
-not been read for half an hour, which makes GitHub send mail. A poller that
-stops silently is the failure this app exists to prevent.
+The GitHub workflow is the alarm, not a mechanism: it runs hourly and *fails* if
+the boards have not been read for half an hour, which makes GitHub send mail. A
+poller that stops silently is the failure this app exists to prevent.
 
-**The instance must not be allowed to sleep.** Waking a spun-down free instance
-takes 50 seconds or more, and nothing free can reliably do it: cron-job.org's
-free plan abandons a request after 30 seconds — and an abandoned request does
-not even start the instance, so it answers 503 and the scheduler disables itself
-— while GitHub's cron fired a `*/10` schedule every one to five hours. So the
-process keeps itself awake: it asks its own `/healthz` every five minutes
-(`RENDER_EXTERNAL_URL`, which the host sets, or `KEEPALIVE_URL`; `off`
-disables). That round trip counts as inbound traffic, and each one also revives
-the poller. It cannot wake a sleeping instance — only keep an awake one awake —
-so the first wake still comes from a scheduler, the GitHub workflow, or someone
-opening the app. Watch the host's free-hours allowance: always-on is about 730
-hours a month against a 750-hour free tier.
+That is the whole arrangement, and it is smaller than what it replaced. Polling
+used to be a side effect of inbound traffic, with a self-ping to generate that
+traffic and two external schedulers to wake the host; between them they produced
+three outages. Free schedulers cannot reliably wake a spun-down instance —
+cron-job.org abandons a request after 30 seconds and the instance then never
+boots at all, and GitHub's cron fired a `*/10` schedule every one to five hours
+— but a database cron can, and while the process lives it needs no help to poll.
+Watch the host's free-hours allowance: always-on is about 730 hours a month
+against a 750-hour free tier.
 
 That decoupling is not decoration. Polling used to run *inside* the request, on
 the request's context, and it cost nineteen hours of silence: a cycle over two

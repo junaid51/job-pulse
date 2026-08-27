@@ -116,11 +116,9 @@ func reachablePatterns() []string {
 // Aggregator APIs meter requests, and a search index refreshes far slower than
 // a company's own board; a cycle skips their boards until the interval passes.
 var minPollInterval = map[string]time.Duration{
-	"careerjet": 6 * time.Hour,
 	// The remote-feed aggregators show only their newest window, so absence
 	// proves nothing (this map also gates deleteAbsent) — and a window that
 	// deep does not need five-minute polling.
-	"remotive":  time.Hour,
 	"himalayas": time.Hour,
 	"jobicy":    time.Hour,
 	// Metered at ~700 calls/month free, and worth spending down: measured

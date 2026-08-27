@@ -16,26 +16,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// reviveAfter is how stale the poller has to be before any inbound request
-// starts a cycle. This service only runs while something is talking to it, so
-// "someone touched the API" is the most reliable clock available, and it does
-// not matter which URL, method or token the ping used — only that one arrived.
-//
-// Four minutes rather than five, deliberately: the pings arrive five minutes
-// apart and a cycle takes half a minute, so each ping lands about four and a
-// half minutes after the last cycle finished. Measured against five, every
-// other ping would decline to poll and the real cadence would be ten minutes.
-const reviveAfter = 4 * time.Minute
-
 // startPoll runs a cycle detached from whatever request asked for it.
 //
-// This is the whole lesson of one nineteen-hour outage: the cycle used to run
-// inside the request, on the request's context. The cron driving it gives up
+// This is the lesson of a nineteen-hour outage: the cycle used to run inside
+// the request, on the request's context. The scheduler driving it gives up
 // after thirty seconds and a pass over two hundred boards takes minutes, so
-// every single run was cancelled halfway through — the boards it had reached
-// looked fresh, the rest silently rotted, and the cron's own dashboard called
-// each aborted call a success until the host started answering 503 and it
-// disabled itself.
+// every run was cancelled halfway — the boards it had reached looked fresh, the
+// rest silently rotted, and each aborted call was logged as a success.
 func startPoll(pool *pgxpool.Pool, notifier *notify.Notifier, trigger string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -61,20 +48,6 @@ func startPoll(pool *pgxpool.Pool, notifier *notify.Notifier, trigger string) {
 			)
 		}
 	}()
-}
-
-// revivePoller starts a cycle after serving any request, if none has finished
-// recently. The response is already on its way out by then, so a caller never
-// waits for the boards.
-func revivePoller(pool *pgxpool.Pool, notifier *notify.Notifier) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			next.ServeHTTP(w, r)
-			if poll.Since() >= reviveAfter {
-				startPoll(pool, notifier, "traffic")
-			}
-		})
-	}
 }
 
 // triggerPoll answers immediately and polls in the background.
