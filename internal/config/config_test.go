@@ -58,3 +58,22 @@ func TestLoadTrimsWhitespace(t *testing.T) {
 		t.Errorf("FirebaseCredentials = %q", cfg.FirebaseCredentials)
 	}
 }
+
+// The poller cannot be switched off any more: "nothing polls unless something
+// external says so" is the arrangement three outages came from.
+func TestPollIntervalRefusesToBeDisabled(t *testing.T) {
+	for _, value := range []string{"0", "0s", "-5m", "nonsense", ""} {
+		t.Setenv("POLL_INTERVAL", value)
+		if got := Load().PollInterval; got < time.Minute {
+			t.Errorf("POLL_INTERVAL=%q gave %v, want at least a minute", value, got)
+		}
+	}
+	t.Setenv("POLL_INTERVAL", "30s")
+	if got := Load().PollInterval; got != time.Minute {
+		t.Errorf("a sub-minute interval should be raised to a minute, got %v", got)
+	}
+	t.Setenv("POLL_INTERVAL", "15m")
+	if got := Load().PollInterval; got != 15*time.Minute {
+		t.Errorf("an explicit interval should be honoured, got %v", got)
+	}
+}

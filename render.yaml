@@ -9,10 +9,10 @@ services:
     startCommand: ./jobpulse
     envVars:
       - key: POLL_INTERVAL
-        value: "0" # the GitHub Actions cron drives polling
+        value: "5m" # the process polls itself; the database cron only keeps it awake
       - key: GOOGLE_APPLICATION_CREDENTIALS
         value: /etc/secrets/firebase-service-account.json
       - key: DATABASE_URL
-        sync: false # paste the Neon connection string in the dashboard
+        sync: false # paste the Supabase pooler connection string in the dashboard
       - key: POLL_TOKEN
-        sync: false # same value as the JOBPULSE_POLL_TOKEN repo secret
+        sync: false # only needed for a manual POST /api/poll

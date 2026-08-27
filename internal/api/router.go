@@ -15,7 +15,7 @@ import (
 // from a global, which is the whole of the dependency injection in this project.
 func NewRouter(pool *pgxpool.Pool, notifier *notify.Notifier) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.Recoverer, cors, requestLogger, revivePoller(pool, notifier))
+	r.Use(middleware.Recoverer, cors, requestLogger)
 
 	r.Get("/healthz", healthz(pool))
 

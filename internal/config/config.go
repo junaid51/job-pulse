@@ -15,9 +15,11 @@ type Config struct {
 	DatabaseURL string
 	// Addr is the TCP address the HTTP server listens on.
 	Addr string
-	// PollInterval is how often every board is fetched. Zero disables the
-	// internal ticker for scale-to-zero hosts, where an external cron calling
-	// POST /api/poll does the waking instead.
+	// PollInterval is how often every board is fetched. There is no way to set
+	// it to zero: "the poller is off and something external drives it" was the
+	// arrangement behind three outages, the last of which read no boards for
+	// nine hours because nothing external could wake the host. A value at or
+	// below zero is ignored in favour of the default.
 	PollInterval time.Duration
 	// CompaniesFile lists the boards to poll.
 	CompaniesFile string
@@ -32,7 +34,7 @@ func Load() Config {
 	return Config{
 		DatabaseURL:   env("DATABASE_URL", "postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable"),
 		Addr:          ":" + env("PORT", "8080"),
-		PollInterval:  duration("POLL_INTERVAL", 5*time.Minute),
+		PollInterval:  pollInterval(),
 		CompaniesFile: env("COMPANIES_FILE", "companies.txt"),
 		// The same variable the Google libraries read, so there is one name for it.
 		FirebaseCredentials: strings.TrimSpace(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")),
@@ -68,4 +70,22 @@ func duration(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+// pollInterval refuses to be turned off, and refuses to be so short that
+// cycles overlap — one pass over two hundred boards takes about thirty seconds.
+func pollInterval() time.Duration {
+	const fallback = 5 * time.Minute
+	interval := duration("POLL_INTERVAL", fallback)
+	switch {
+	case interval <= 0:
+		slog.Warn("POLL_INTERVAL is not a usable interval; polling anyway",
+			"ignored", os.Getenv("POLL_INTERVAL"), "using", fallback.String())
+		return fallback
+	case interval < time.Minute:
+		slog.Warn("POLL_INTERVAL is shorter than a cycle takes; raising it",
+			"asked", interval.String(), "using", time.Minute.String())
+		return time.Minute
+	}
+	return interval
 }
