@@ -205,6 +205,19 @@ Actions: a `*/5` cron there is best effort and measured out at a 25-minute
 median, which defeats the point. The ping also keeps the host awake, so the cold
 start disappears — watch its free-hours allowance if it has one.
 
+**The instance must not be allowed to sleep.** Waking a spun-down free instance
+takes 50 seconds or more, and nothing free can reliably do it: cron-job.org's
+free plan abandons a request after 30 seconds — and an abandoned request does
+not even start the instance, so it answers 503 and the scheduler disables itself
+— while GitHub's cron fired a `*/10` schedule every one to five hours. So the
+process keeps itself awake: it asks its own `/healthz` every five minutes
+(`RENDER_EXTERNAL_URL`, which the host sets, or `KEEPALIVE_URL`; `off`
+disables). That round trip counts as inbound traffic, and each one also revives
+the poller. It cannot wake a sleeping instance — only keep an awake one awake —
+so the first wake still comes from a scheduler, the GitHub workflow, or someone
+opening the app. Watch the host's free-hours allowance: always-on is about 730
+hours a month against a 750-hour free tier.
+
 That decoupling is not decoration. Polling used to run *inside* the request, on
 the request's context, and it cost nineteen hours of silence: a cycle over two
 hundred boards takes longer than a scheduler's 30-second timeout, so every run

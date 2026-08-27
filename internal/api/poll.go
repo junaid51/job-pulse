@@ -17,11 +17,15 @@ import (
 )
 
 // reviveAfter is how stale the poller has to be before any inbound request
-// starts a cycle. It matches the intended cadence: this service only runs while
-// something is talking to it, so "someone touched the API" is the most reliable
-// clock available — and now it does not matter which URL, method or token the
-// ping used, only that one arrived.
-const reviveAfter = 5 * time.Minute
+// starts a cycle. This service only runs while something is talking to it, so
+// "someone touched the API" is the most reliable clock available, and it does
+// not matter which URL, method or token the ping used — only that one arrived.
+//
+// Four minutes rather than five, deliberately: the pings arrive five minutes
+// apart and a cycle takes half a minute, so each ping lands about four and a
+// half minutes after the last cycle finished. Measured against five, every
+// other ping would decline to poll and the real cadence would be ten minutes.
+const reviveAfter = 4 * time.Minute
 
 // startPoll runs a cycle detached from whatever request asked for it.
 //
