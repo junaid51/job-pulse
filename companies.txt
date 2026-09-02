@@ -26,7 +26,6 @@ workable           tamatem      Tamatem
 greenhouse         gitlab       GitLab
 greenhouse         remotecom    Remote.com
 greenhouse         grafanalabs  Grafana Labs
-greenhouse         clickhouse   ClickHouse
 greenhouse         vercel       Vercel
 ashby              supabase     Supabase
 ashby              posthog      PostHog
@@ -46,7 +45,6 @@ oracle             fa-ewnx-saasfaprod1.fa.ocs.oraclecloud.com|CX_1001  du
 
 # India: verified live boards, city-name locations (the "india" alias maps them)
 greenhouse         postman      Postman
-greenhouse         phonepe      PhonePe
 lever              paytm        Paytm
 lever              cred         CRED
 lever              meesho       Meesho
@@ -399,3 +397,13 @@ greenhouse  groww        Groww           # 5 of 5 in Bengaluru
 # the out-of-market corpus stays, because those boards are fetched whole
 # regardless, the UI hides them by default, and the search bar is supposed to
 # cover every job from every board.
+
+# 2026-09-02, both from a 404 in the poll log. ClickHouse had been listed twice,
+# under Greenhouse and under Ashby, and it was the Greenhouse copy that died —
+# so removing it is the whole fix, and the Ashby line above was already serving
+# 178 postings, 52 of them reachable. (I nearly added Ashby a second time. The
+# duplicate check that caught it is one line: awk on the file, sort, uniq -d.)
+# PhonePe left Greenhouse too, and is not readable anywhere we can see: its
+# Workable account exists but is empty, SmartRecruiters reports zero, Lever and
+# Ashby 404. It was 64 postings with 52 in-market a week ago. Removed rather
+# than left to 404 every five minutes.
