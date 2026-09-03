@@ -72,6 +72,35 @@ export async function initPush(): Promise<PushState> {
   })
 }
 
+/** Start over: throw away the token this browser is holding and subscribe
+ *  again. Plain re-registration cannot fix a dead token, which is the state
+ *  that strands a device — Firebase caches the token in IndexedDB and hands
+ *  back the same one, the server stores it, the next send comes back
+ *  UNREGISTERED, the server drops it, and round it goes. Only deleting the
+ *  token and the browser's own subscription breaks that loop. */
+export async function refreshPush(): Promise<PushState> {
+  if (!nativeSupport()) return 'unsupported'
+  if (Notification.permission !== 'granted') return enablePush()
+  try {
+    const [{ initializeApp, getApps }, { getMessaging, deleteToken }] = await Promise.all([
+      import('firebase/app'),
+      import('firebase/messaging'),
+    ])
+    const app = getApps()[0] ?? initializeApp(firebaseConfig)
+    await deleteToken(getMessaging(app)).catch(() => { /* nothing to delete */ })
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    await subscription?.unsubscribe().catch(() => { /* already gone */ })
+  } catch (error) {
+    console.warn('push: could not clear the old token:', error)
+  }
+  return connect().catch((error) => {
+    lastError = String(error?.message ?? error)
+    console.warn('push: token unavailable:', error)
+    return 'off'
+  })
+}
+
 /** The tap: ask for permission, then connect. */
 export async function enablePush(): Promise<PushState> {
   if (!nativeSupport()) return 'unsupported'

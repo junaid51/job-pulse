@@ -6,7 +6,7 @@ import { TermPicker } from '../components/TermPicker'
 import { providerLabel, shortAgo } from '../format'
 import { useQuery } from '@tanstack/react-query'
 import { invalidate } from '../query'
-import { enablePush, pushError, type PushState } from '../push'
+import { enablePush, pushError, refreshPush, type PushState } from '../push'
 import { showToast } from '../toast'
 import { useEscape } from '../useEscape'
 
@@ -211,7 +211,7 @@ function PushHealth({ push, setPush }: { push: PushState; setPush: (s: PushState
   const reregister = async () => {
     setFixing(true)
     try {
-      setPush(await enablePush())
+      setPush(await refreshPush())
       invalidate('push-status')
     } finally {
       setFixing(false)
@@ -231,7 +231,9 @@ function PushHealth({ push, setPush }: { push: PushState; setPush: (s: PushState
           </button>
           <p className="state-detail">
             This browser has permission, but the server has no token for it —
-            alerts cannot arrive until it does. One tap re-registers.
+            alerts cannot arrive until it does. This throws away the token this
+            browser is holding and subscribes again, which is what a dead token
+            needs.
             {pushError() ? ` Last attempt: ${pushError()}` : ''}
           </p>
         </div>
