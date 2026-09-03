@@ -116,6 +116,11 @@ func reachablePatterns() []string {
 // Aggregator APIs meter requests, and a search index refreshes far slower than
 // a company's own board; a cycle skips their boards until the interval passes.
 var minPollInterval = map[string]time.Duration{
+	// Careerjet is a market-wide search, not a board: absence proves nothing
+	// (this map also gates deleteAbsent) and its quota is per publisher key.
+	// Hourly, three pages of twenty per search — the newest sixty, which is far
+	// more than arrives in an hour.
+	"careerjet": time.Hour,
 	// The remote-feed aggregators show only their newest window, so absence
 	// proves nothing (this map also gates deleteAbsent) — and a window that
 	// deep does not need five-minute polling.

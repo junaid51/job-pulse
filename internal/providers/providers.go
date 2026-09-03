@@ -48,6 +48,7 @@ var All = map[string]Provider{
 	"recruitee":       fetchRecruitee,
 	"teamtailor":      fetchTeamtailor,
 	"phenom":          fetchPhenom,
+	"careerjet":       fetchCareerjet,
 	"workday":         fetchWorkday,
 	"oracle":          fetchOracle,
 	"himalayas":       fetchHimalayas,
