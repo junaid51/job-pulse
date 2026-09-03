@@ -31,12 +31,28 @@ ashby              supabase     Supabase
 ashby              posthog      PostHog
 ashby              1password    1Password
 ashby              buffer       Buffer
-# Careerjet — market-wide searches, not company boards. Needs CAREERJET_API_KEY
-# and CAREERJET_SITE; polled every six hours, twenty newest per page, three pages.
-# careerjet          software+engineer|dubai|en_AE  Careerjet
-# careerjet          designer|dubai|en_AE           Careerjet
-# careerjet          developer|dubai|en_AE          Careerjet
-# careerjet          frontend||en_AE                Careerjet
+# Careerjet — market-wide searches, not company boards. The slug is
+# "keywords|location|locale" with '+' for spaces. Needs CAREERJET_API_KEY and
+# CAREERJET_SITE, and the calling IP must be declared in the publisher
+# dashboard (Access API -> Server IP addresses, which accepts ranges — Render's
+# outbound CIDRs from Connect -> Outbound go there). That declaration, not the
+# code, is why this sat dark for a fortnight.
+#
+# Live-measured 2026-09-03, 230 postings across eight searches: every one
+# in-market (the search is location-scoped), all dated, and only 7 of 119
+# sampled were already in our corpus — 94% of it is inventory the 218 boards do
+# not carry. Keywords are ORed unless quoted, which is how "data engineer"
+# returned 391 hits including resident engineers and an audio engineer; quoted
+# phrases are exact. Counts below are postings inside the 14-day window.
+careerjet          devops|dubai|en_AE               Careerjet   # 21 of 60
+careerjet          devops|riyadh|en_SA              Careerjet   # 15 of 60
+careerjet          kubernetes|dubai|en_AE           Careerjet   # 10 of 36
+careerjet          "full+stack"|dubai|en_AE         Careerjet   # 8 of 31
+careerjet          "business+analyst"|dubai|en_AE   Careerjet   # 6 of 16
+careerjet          "business+analyst"|riyadh|en_SA  Careerjet   # 3 of 17
+# Refused from the same measurement: "platform+engineer"|dubai (4 hits, none
+# inside the window) and "data+engineer"|dubai (6 hits, one) — the quoted phrase
+# is too tight to be worth a request an hour.
 # careerjet          react||en_AE                   Careerjet
 # careerjet          ui+ux+designer||en_AE          Careerjet
 phenom             careers.majidalfuttaim.com  Majid Al Futtaim
