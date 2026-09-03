@@ -194,3 +194,26 @@ func TestBoardInterval(t *testing.T) {
 		t.Errorf("dueNow kept %v, want [snowflake cohere dubai]", slugs)
 	}
 }
+
+// A metered board that fails must not keep its provider's one slot per cycle.
+// Six searches once went live behind a bad credential and only the first was
+// ever attempted, because a failure left its timestamp untouched and dueNow
+// takes the first due board per provider.
+func TestDueNowRotatesPastAFailingBoard(t *testing.T) {
+	now := time.Now()
+	justTried, longAgo := now.Add(-time.Minute), now.Add(-4*time.Hour)
+	companies := []Company{
+		// jobicy is metered, hourly. The first has just been attempted —
+		// whether it succeeded or not — so the next one is the one due.
+		{Provider: "jobicy", Slug: "first", LastPolledAt: &justTried},
+		{Provider: "jobicy", Slug: "second", LastPolledAt: &longAgo},
+		{Provider: "jobicy", Slug: "third", LastPolledAt: &longAgo},
+	}
+	var kept []string
+	for _, c := range dueNow(companies, now) {
+		kept = append(kept, c.Slug)
+	}
+	if len(kept) != 1 || kept[0] != "second" {
+		t.Errorf("dueNow kept %v, want just [second]", kept)
+	}
+}

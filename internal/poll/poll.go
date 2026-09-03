@@ -867,15 +867,17 @@ func insertMatches(ctx context.Context, pool *pgxpool.Pool, jobs []storedJob, pr
 // recordResult stores the outcome so a board that quietly stops working is
 // visible in the database rather than only in the logs.
 func recordResult(ctx context.Context, pool *pgxpool.Pool, c Company, cause error) {
-	// A failed metered board keeps its last_polled_at: stamping it would turn
-	// one transient 502 into a full interval of silence (hours, not minutes).
-	// dueNow's one-per-provider rotation keeps the retries from bursting.
+	// Every attempt is stamped, successful or not.
+	//
+	// This used to spare a failed metered board its timestamp, so a transient
+	// 502 would not cost it a whole interval of silence. That traded one board's
+	// retry latency for every sibling's turn: dueNow gives a metered provider
+	// one board per cycle and takes the first that is due, so a board whose
+	// timestamp never advances is first for ever. Six Careerjet searches went
+	// live behind an unauthorised IP and exactly one of them was ever tried —
+	// the other five were starved by the failure of the first.
 	query := `update companies set last_polled_at = now(), last_error = $3
 		where provider = $1 and slug = $2`
-	if _, metered := minPollInterval[c.Provider]; metered && cause != nil {
-		query = `update companies set last_error = $3
-		where provider = $1 and slug = $2`
-	}
 	var lastError any
 	if cause != nil {
 		lastError = cause.Error()
