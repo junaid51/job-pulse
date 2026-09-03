@@ -11,3 +11,6 @@ web/dist/
 # `flutterfire configure`.
 *.serviceaccount.json
 *firebase-adminsdk*.json
+
+# Playwright MCP scratch output
+.playwright-mcp/

@@ -19,10 +19,20 @@ type Criteria struct {
 // Keywords are matched case-insensitively against the title and locations
 // against the location, each list OR-ed, an empty list meaning "anything".
 //
-// Substring matching is the entire strategy: no stemming, no fuzzy matching, no
-// relevance score. If it turns out too loose or too strict in practice, this
-// function is where that gets fixed.
+// Whole words are the entire strategy: no stemming beyond a plural, no fuzzy
+// matching, no relevance score. Substring matching came first and was too
+// loose in a way that read as bad results rather than as a bug — "oci" caught
+// eleven "Associate …" postings, "product" caught "Production Editor", and a
+// Gulf search caught Romania through "oman". Measured over the live corpus,
+// word edges dropped fourteen rows and every one of them was noise.
 func Matches(c Criteria, j providers.Job) bool {
+	return matches(c, j, containsWord)
+}
+
+// matches is Matches with the title comparison passed in, so the same rules can
+// be measured on word edges without a second copy of them. Places are always
+// compared on word edges — see containsWord.
+func matches(c Criteria, j providers.Job, cmp func(haystack, needle string) bool) bool {
 	if c.RemoteOnly && !j.Remote {
 		return false
 	}
@@ -32,11 +42,11 @@ func Matches(c Criteria, j providers.Job) bool {
 	positives, negatives := splitKeywords(c.Keywords)
 	// Negatives stay literal: expanding "-frontend" through the alias
 	// dictionary would silently exclude every "software engineer".
-	if containsAnyFold(j.Title, negatives) {
+	if containsAnyFold(j.Title, negatives, cmp) {
 		return false
 	}
 	if len(positives) > 0 {
-		return keywordMatches(j.Title, positives)
+		return keywordMatches(j.Title, positives, cmp)
 	}
 	// No positives left: an empty keyword list means "any title", and so does a
 	// purely negative one — but a list of blanks keeps its old meaning of
@@ -65,7 +75,7 @@ func splitKeywords(keywords []string) (positives, negatives []string) {
 // keywordMatches is containsAnyFold plus the role-alias expansion: a keyword is
 // tried literally first, then through its dictionary entry, so "frontend" also
 // finds "React Engineer". See aliases.go.
-func keywordMatches(title string, wanted []string) bool {
+func keywordMatches(title string, wanted []string, cmp func(haystack, needle string) bool) bool {
 	title = strings.ToLower(title)
 	for _, w := range wanted {
 		w = strings.ToLower(strings.TrimSpace(w))
@@ -73,11 +83,11 @@ func keywordMatches(title string, wanted []string) bool {
 			continue
 		}
 		aliases := keywordAliases[w]
-		if !shortKey(w, aliases) && strings.Contains(title, w) {
+		if cmp(title, w) {
 			return true
 		}
 		for _, alias := range aliases {
-			if strings.Contains(title, alias) {
+			if cmp(title, alias) {
 				return true
 			}
 		}
@@ -94,11 +104,9 @@ func KeywordTerms(raw string) []string {
 	if needle == "" {
 		return nil
 	}
-	aliases := keywordAliases[needle]
-	if shortKey(needle, aliases) {
-		return aliases
-	}
-	return append([]string{needle}, aliases...)
+	// The word itself always counts now that it is compared on word edges: "qa"
+	// finds "QA Engineer" instead of being dropped in favour of its aliases.
+	return append([]string{needle}, keywordAliases[needle]...)
 }
 
 // SearchTerms expands one typed word for the search bar: the word plus its role
@@ -121,10 +129,6 @@ func SearchTerms(raw string) (roles, places []string) {
 // abbreviation the dictionary already explains, the expansions are what the
 // searcher meant and the literal is only noise. Each such entry therefore
 // carries an anchored form of itself ("qa ", "tpm ") to keep the plain title
-// reachable.
-func shortKey(needle string, aliases []string) bool {
-	return len(needle) <= 3 && len(aliases) > 0
-}
 
 // LocationTerms expands one location shorthand into every string worth
 // substring-matching — the needle itself plus its dictionary entry. The API
@@ -146,11 +150,13 @@ func locationMatches(location string, wanted []string) bool {
 		if w == "" {
 			continue
 		}
-		if strings.Contains(location, w) {
+		// Word edges, not substrings: see containsWord. A place is the one thing
+		// where a partial hit is never a near miss, it is a different country.
+		if containsWord(location, w) {
 			return true
 		}
 		for _, alias := range locationAliases[w] {
-			if strings.Contains(location, alias) {
+			if containsWord(location, alias) {
 				return true
 			}
 		}
@@ -158,11 +164,11 @@ func locationMatches(location string, wanted []string) bool {
 	return false
 }
 
-func containsAnyFold(haystack string, needles []string) bool {
+func containsAnyFold(haystack string, needles []string, cmp func(haystack, needle string) bool) bool {
 	haystack = strings.ToLower(haystack)
 	for _, n := range needles {
 		n = strings.ToLower(strings.TrimSpace(n))
-		if n != "" && strings.Contains(haystack, n) {
+		if n != "" && cmp(haystack, n) {
 			return true
 		}
 	}

@@ -1,6 +1,7 @@
 package match
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/junaid51/job-pulse/internal/providers"
@@ -82,10 +83,51 @@ func TestMatches(t *testing.T) {
 			want:     false,
 		},
 		{
-			name:     "a keyword is a substring, so short ones match broadly",
+			// The old substring rule made this match, which is how "oci" caught
+			// eleven "Associate …" postings.
+			name:     "a keyword is a whole word, not a substring",
 			criteria: Criteria{Keywords: []string{"go"}},
-			job:      providers.Job{Title: "Head of Diversity, Golang not required"},
+			job:      providers.Job{Title: "Chicago Operations Lead"},
+			want:     false,
+		},
+		{
+			// "go" is short enough that it used to be dropped in favour of its
+			// aliases; word edges let it stand for itself, and the alias still
+			// covers the spelling job titles prefer.
+			name:     "a keyword still reaches its aliases",
+			criteria: Criteria{Keywords: []string{"go"}},
+			job:      providers.Job{Title: "Golang Developer"},
 			want:     true,
+		},
+		{
+			name:     "and its own word",
+			criteria: Criteria{Keywords: []string{"go"}},
+			job:      providers.Job{Title: "Go Engineer, Payments"},
+			want:     true,
+		},
+		{
+			name:     "a two-letter keyword matches its own word",
+			criteria: Criteria{Keywords: []string{"qa"}},
+			job:      providers.Job{Title: "QA Engineer"},
+			want:     true,
+		},
+		{
+			name:     "and not inside a longer one",
+			criteria: Criteria{Keywords: []string{"oci"}},
+			job:      providers.Job{Title: "Associate Director, Social Media"},
+			want:     false,
+		},
+		{
+			name:     "a plural is the same word",
+			criteria: Criteria{Keywords: []string{"platform"}},
+			job:      providers.Job{Title: "Engineer - Cloud Security Platforms"},
+			want:     true,
+		},
+		{
+			name:     "but a different word built on it is not",
+			criteria: Criteria{Keywords: []string{"product"}},
+			job:      providers.Job{Title: "Production Editor (maternity cover)"},
+			want:     false,
 		},
 	}
 
@@ -385,6 +427,82 @@ func TestReachableBareRemote(t *testing.T) {
 	for _, in := range []string{"Remote - United States", "UK, Remote", "Remote (Germany)", "US Remote"} {
 		if Reachable(in) {
 			t.Errorf("Reachable(%q) = true, want false", in)
+		}
+	}
+}
+
+// The places that were matched by accident before locations were compared on
+// word edges. Every one of these is a real row from the corpus: 250-odd Indiana
+// postings sat behind the "Gulf + India" filter, and a saved search reading
+// "Devops · Gulf" notified its owner about jobs in Romania, because "gulf"
+// expands to "oman" and R-oman-ia contains it.
+func TestPlacesAreNotMatchedBySubstringAccident(t *testing.T) {
+	unreachable := []string{
+		"Indianapolis, Indiana", "Evansville, Indiana", "Indianapolis, IN",
+		"Romania", "Remote, Romania", "Gulfport, Mississippi", "Ukraine",
+	}
+	for _, location := range unreachable {
+		if Reachable(location) {
+			t.Errorf("Reachable(%q) = true, want false", location)
+		}
+	}
+
+	// And the real thing still matches, including cities written without their
+	// country and shorthands glued to punctuation.
+	for _, location := range []string{
+		"Dubai, United Arab Emirates", "Riyadh", "Doha, Qatar", "Bengaluru",
+		"Muscat, Oman", "UAE-Dubai", "Gulf Region", "Remote (Anywhere)",
+	} {
+		if !Reachable(location) {
+			t.Errorf("Reachable(%q) = false, want true", location)
+		}
+	}
+}
+
+func TestSavedPlacesAreMatchedOnWordEdges(t *testing.T) {
+	gulf := Criteria{Locations: []string{"gulf"}}
+	for _, location := range []string{"Romania", "Remote, Romania", "Gulfport, MS"} {
+		if Matches(gulf, providers.Job{Title: "DevOps Engineer", Location: location}) {
+			t.Errorf("a Gulf search matched %q", location)
+		}
+	}
+	for _, location := range []string{"Dubai", "Muscat, Oman", "Riyadh, Saudi Arabia"} {
+		if !Matches(gulf, providers.Job{Title: "DevOps Engineer", Location: location}) {
+			t.Errorf("a Gulf search missed %q", location)
+		}
+	}
+	india := Criteria{Locations: []string{"india"}}
+	if Matches(india, providers.Job{Title: "Engineer", Location: "Indianapolis, Indiana"}) {
+		t.Error("an India search matched Indianapolis")
+	}
+	if !Matches(india, providers.Job{Title: "Engineer", Location: "Bengaluru, Karnataka"}) {
+		t.Error("an India search missed Bengaluru")
+	}
+	uk := Criteria{Locations: []string{"uk"}}
+	if Matches(uk, providers.Job{Title: "Engineer", Location: "Kyiv, Ukraine"}) {
+		t.Error("a UK search matched Ukraine")
+	}
+}
+
+// Needles ending in punctuation have no word edge to find, and must still match.
+func TestContainsWordAllowsPunctuationEdges(t *testing.T) {
+	if !containsWord("senior c++ developer", "c++") {
+		t.Error(`containsWord missed "c++"`)
+	}
+	if !containsWord("node.js engineer", "node.js") {
+		t.Error(`containsWord missed "node.js"`)
+	}
+	if containsWord("ras al khaimah", "khaima") {
+		t.Error("a partial word matched")
+	}
+}
+
+// The SQL the feed runs has to agree with the Go matcher, or the filter and the
+// matching disagree about the same job. Same list, same edges.
+func TestReachablePatternsAreWordEdged(t *testing.T) {
+	for _, p := range ReachablePatterns() {
+		if !strings.HasPrefix(p, `\y`) || !strings.HasSuffix(p, `\y`) {
+			t.Fatalf("pattern %q is not word-edged", p)
 		}
 	}
 }

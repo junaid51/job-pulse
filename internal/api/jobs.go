@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -159,10 +160,10 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			  and m.hidden_at is null` + extraWhere + `
 			  and (` + cursorAt + `::timestamptz is null
 			       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))
-			  and (` + b.add(locations) + `::text[] is null or j.location ilike any(` + b.add(locations) + `))
+			  and (` + b.add(locations) + `::text[] is null or j.location ~* any(` + b.add(locations) + `))
 			  and (not ` + b.add(remote) + ` or j.remote)
 			  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
-			       or j.location ilike any(` + b.add(marketPatterns) + `))` +
+			       or j.location ~* any(` + b.add(marketPatterns) + `))` +
 			searchSQL(words, excluded, &b) + `
 			order by ` + cursorExpr + ` desc, j.id desc
 			limit ` + b.add(limit)
@@ -220,14 +221,18 @@ func parseCursor(raw string) (time.Time, int64, error) {
 	return at, jobID, nil
 }
 
-// locationPatterns turns location= params into ilike patterns, expanded through
-// the same alias dictionary profile matching uses — "@uae" finds "Dubai" here
-// for exactly the reason a profile's "uae" does.
+// locationPatterns turns location= params into word-edge regexes, expanded
+// through the same alias dictionary profile matching uses — "@uae" finds
+// "Dubai" here for exactly the reason a profile's "uae" does.
+//
+// Word edges rather than "%india%": that pattern answered a request for India
+// with Indianapolis, which is the same class of wrong as answering "gulf" with
+// Gulfport. See match.containsWord.
 func locationPatterns(raw []string) []string {
 	var patterns []string
 	for _, raw := range raw {
 		for _, term := range match.LocationTerms(raw) {
-			patterns = append(patterns, "%"+term+"%")
+			patterns = append(patterns, `\y`+regexp.QuoteMeta(term)+`\y`)
 		}
 	}
 	return patterns
@@ -277,21 +282,25 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		"coalesce(m.names, '')") + `, ` + cursorExpr + ` as cursor_at
 		from jobs j
 		left join (
+			-- Hidden matches are excluded from the labels but still counted, so
+			-- that a job the reader dismissed everywhere stays dismissed here
+			-- too. Anything one of their feeds still shows, search still finds.
 			select mm.job_id,
-			       max(mm.created_at) as matched_at,
-			       max(mm.seen_at)    as seen_at,
-			       max(mm.applied_at) as applied_at,
-			       string_agg(distinct p.name, ', ') as names
+			       max(mm.created_at) filter (where mm.hidden_at is null) as matched_at,
+			       max(mm.seen_at)    filter (where mm.hidden_at is null) as seen_at,
+			       max(mm.applied_at) filter (where mm.hidden_at is null) as applied_at,
+			       string_agg(distinct p.name, ', ') filter (where mm.hidden_at is null) as names,
+			       count(*) filter (where mm.hidden_at is null) as visible
 			from matches mm
 			join profiles p on p.id = mm.profile_id and p.owner = ` + owner + `
-			where mm.hidden_at is null
 			group by mm.job_id
 		) m on m.job_id = j.id
-		where (` + b.add(locations) + `::text[] is null or j.location ilike any(` + b.add(locations) + `))
+		where (` + b.add(locations) + `::text[] is null or j.location ~* any(` + b.add(locations) + `))
 		  and (not ` + b.add(remote) + ` or j.remote)
 		  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
-		       or j.location ilike any(` + b.add(marketPatterns) + `))
-		  and (not ` + b.add(mine) + ` or m.job_id is not null)` + extraWhere + `
+		       or j.location ~* any(` + b.add(marketPatterns) + `))
+		  and (not ` + b.add(mine) + ` or m.job_id is not null)
+		  and (m.job_id is null or m.visible > 0)` + extraWhere + `
 		  and (` + cursorAt + `::timestamptz is null
 		       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))` +
 		searchSQL(words, excluded, &b) + anySQL(anyOf, &b) + `
