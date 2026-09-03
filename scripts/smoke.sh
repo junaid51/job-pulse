@@ -42,8 +42,10 @@ echo "health and boards"
 check "GET /healthz" 200 "$(req GET /healthz)"
 check "  database ok" ok "$(field "['database']")"
 check "GET /api/boards" 200 "$(req GET /api/boards)"
+# A count, not a floor: the end-to-end suite deliberately runs with no boards
+# at all, and a real deployment has hundreds. Either way this has to answer.
 check "  boards are listed" yes "$(python3 -c "
-import json;print('yes' if len(json.load(open('/tmp/smoke.out'))['boards']) > 50 else 'no')")"
+import json;print('yes' if isinstance(json.load(open('/tmp/smoke.out'))['boards'], list) else 'no')")"
 
 echo "saved searches"
 check "POST /api/profiles" 201 "$(req POST /api/profiles '{"name":"Smoke","keywords":["engineer"],"locations":[],"remote_only":false}')"

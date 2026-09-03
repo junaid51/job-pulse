@@ -46,7 +46,10 @@ test.describe('row actions', () => {
     await page.locator('.search input').fill('warehouse')
     await expect(rows(page)).toHaveCount(1)
     await rows(page).first().locator('button[title="Mark applied"]').click()
+    // Both signs of it: the badge, and the tick that now offers to undo.
     await expect(rows(page).first().locator('.applied-tag')).toBeVisible()
+    await expect(rows(page).first().locator('button[title="Applied — tap to undo"]'))
+      .toBeVisible()
 
     await page.locator('.search .clear').click()
     await chip(page, 'Applied').click()
@@ -66,6 +69,7 @@ test.describe('row actions', () => {
     await expect(uk).toHaveCount(1)
     await uk.locator('button[title="Mark applied"]').click()
     await expect(uk.locator('.applied-tag')).toBeVisible()
+    await expect(uk).toHaveClass(/applied/)
 
     await chip(page, 'Applied').click()
     await expect(page.locator('.where-btn')).toHaveText('Anywhere')
