@@ -165,7 +165,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = ` + owner + `
 			left join job_state s on s.owner = p.owner and s.job_id = j.id
-			where m.profile_id = ` + pid + `` + hidden + extraWhere + `
+			where m.profile_id = ` + pid + hidden + extraWhere + `
 			  and (` + cursorAt + `::timestamptz is null
 			       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))
 			  and (` + b.add(locations) + `::text[] is null or j.location ~* any(` + b.add(locations) + `))

@@ -23,7 +23,7 @@ test.describe('row actions', () => {
     await freshDevice(page, 'hidesearch')
     await openApp(page)
     await page.locator('.search input').fill('warehouse')
-    await expect(rows(page)).toHaveCount(1)
+    await expect(titles(page)).toHaveText([/Warehouse Associate/])
     const dismissed = await titles(page).first().innerText()
 
     await rows(page).first().locator('button[title="Hide this job"]').click()
@@ -32,7 +32,7 @@ test.describe('row actions', () => {
 
     // And the search bar must not hand it straight back on the next search.
     await page.locator('.search input').fill('associate')
-    await expect(rows(page)).toHaveCount(1)
+    await expect(titles(page)).toHaveText([/Associate Director/])
     await page.locator('.search input').fill('warehouse')
     await expect(page.locator('.state-title')).toContainText('Nothing matches')
     expect(dismissed).toContain('Warehouse')
@@ -43,8 +43,13 @@ test.describe('row actions', () => {
     await createSearch(device, { name: 'FE', keywords: ['frontend'], locations: ['dubai'] })
     await openApp(page)
 
+    // Wait for the row itself, not for a count: this device's saved search also
+    // shows exactly one row, so a count assertion passes against the list that
+    // is still on screen during the 400ms search debounce — and the click then
+    // marks the wrong job. That is how this test first passed while doing
+    // something else entirely.
     await page.locator('.search input').fill('warehouse')
-    await expect(rows(page)).toHaveCount(1)
+    await expect(titles(page)).toHaveText([/Warehouse Associate/])
     await rows(page).first().locator('button[title="Mark applied"]').click()
     // Both signs of it: the badge, and the tick that now offers to undo.
     await expect(rows(page).first().locator('.applied-tag')).toBeVisible()
@@ -81,6 +86,7 @@ test.describe('row actions', () => {
     await freshDevice(page, 'link')
     await openApp(page)
     await page.locator('.search input').fill('warehouse')
+    await expect(titles(page)).toHaveText([/Warehouse Associate/])
     await expect(rows(page).first()).toHaveAttribute('href', /example\.test/)
     await expect(rows(page).first()).toHaveAttribute('target', '_blank')
 

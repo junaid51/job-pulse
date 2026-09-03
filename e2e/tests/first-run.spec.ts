@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { expectNoSidewaysScroll, freshDevice, openApp, rows } from './helpers'
+import { expectNoSidewaysScroll, freshDevice, openApp, rows, titles } from './helpers'
 
 test.describe('a device with no history', () => {
   test('offers a first search, and the search bar works before one exists', async ({ page }) => {
@@ -30,6 +30,7 @@ test.describe('a device with no history', () => {
 
     await expect(page.locator('.chip.selected')).toHaveText(/backend/i)
     await expect(page.locator('.toast')).toContainText('Saved')
+    await expect(titles(page)).toContainText([/Backend Engineer/])
     // Two, not the one that was on screen: a search saved from the bar takes
     // the typed words and any @place, but not the Gulf + India region filter,
     // which is a global default rather than part of the query. So the saved

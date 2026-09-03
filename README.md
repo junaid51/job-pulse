@@ -31,6 +31,12 @@ one in Romania must never answer a search for the Gulf. Seed *after* the
 backend starts: its first cycle removes every job whose board is not in the
 file.
 
+One trap when running the browser suite by hand: the backend URL is baked into
+the bundle, so `dist` has to be built against whichever backend the tests will
+talk to. A `dist` left over from a production build sends the suite at
+production, where the seeded corpus does not exist — sixty-eight failures that
+say nothing about the app.
+
 Both suites run on every push (`.github/workflows/ci.yml`). They exist because
 the unit tests were green on a day when the X on a job row answered 404 for
 every search result, and the frontend swallowed it, so the button just looked
