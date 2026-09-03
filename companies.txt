@@ -423,3 +423,25 @@ greenhouse  groww        Groww           # 5 of 5 in Bengaluru
 # Workable account exists but is empty, SmartRecruiters reports zero, Lever and
 # Ashby 404. It was 64 postings with 52 in-market a week ago. Removed rather
 # than left to 404 every five minutes.
+
+# 2026-09-03 Gulf sweep, 127 employers × seven platforms (1032 slug/provider
+# pairs). Three additions, and the low yield is again the finding: the Gulf's
+# large employers run Workday, SuccessFactors, Taleo and Oracle, and the ones
+# reachable through these APIs are mostly already here.
+teamtailor         mumzworld                    Mumzworld     # 14 of 17 Gulf/Egypt/India
+ashby              quantexa                     Quantexa      # 3 of 31, Dubai
+smartrecruiters    devoteam                     Devoteam      # 1 of 100, Riyadh
+# A first poll stored 1, 7 and 99 of those: the 14-day age limit takes most of
+# what these boards list, because what a board lists and what arrived this
+# fortnight are different questions. They earn their place on what lands next,
+# not on the backlog — which is the whole premise of the app.
+# Refused, with the measurement:
+#   dubizzle — every posting still dated 2023-09-05, the third sweep to find
+#     and skip it. It is not a live board; stop probing it.
+#   namshi — the same six retail stylists as the last sweep.
+#   greenhouse:air, greenhouse:solutions, ashby:astra, teamtailor:air and
+#     teamtailor:stc — guessed slugs that belong to other companies entirely
+#     (Arlington, Virginia; US healthcare; "Remote - US Only"). A slug that
+#     resolves is not the employer you asked for, which is worth remembering:
+#     the first pass of this sweep ranked "greenhouse:air" as six-in-market
+#     because a bare "Remote" counted as reachable.
