@@ -502,10 +502,14 @@ func reconcileMatches(ctx context.Context, pool *pgxpool.Pool, profiles []profil
 			}
 		}
 		tag, err := pool.Exec(ctx, `
-			delete from matches
-			where profile_id = $1
-			  and applied_at is null
-			  and not (job_id = any($2::bigint[]))`, p.id, ids)
+			delete from matches m
+			where m.profile_id = $1
+			  and not (m.job_id = any($2::bigint[]))
+			  and not exists (
+			    select 1 from job_state s
+			    join profiles pp on pp.owner = s.owner
+			    where pp.id = m.profile_id and s.job_id = m.job_id
+			      and s.applied_at is not null)`, p.id, ids)
 		if err != nil {
 			return pruned, err
 		}
@@ -570,7 +574,9 @@ func deliverNotifications(ctx context.Context, pool *pgxpool.Pool, notifier *not
 		select m.profile_id, m.job_id, j.company, j.title
 		from matches m
 		join jobs j on j.id = m.job_id
-		where m.notified_at is null and m.hidden_at is null
+		join profiles p on p.id = m.profile_id
+		left join job_state s on s.owner = p.owner and s.job_id = m.job_id
+		where m.notified_at is null and s.hidden_at is null
 		order by m.profile_id, m.job_id`)
 	if err != nil {
 		return err

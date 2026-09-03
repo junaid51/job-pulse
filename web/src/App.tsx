@@ -36,7 +36,17 @@ export function App() {
   }, [tab])
 
   const [push, setPush] = useState<PushState>('off')
-  useEffect(() => { initPush().then(setPush) }, [])
+  // Also on every foreground, not only at boot. Firebase deletes a token it
+  // finds dead, and iOS keeps an installed PWA warm for hours — so a device
+  // whose token was dropped stayed silently unregistered until a reload that
+  // never happened. Re-registering the same token is a no-op server-side.
+  useEffect(() => {
+    const register = () => { initPush().then(setPush) }
+    register()
+    const onVisible = () => { if (document.visibilityState === 'visible') register() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   // Each tab keeps its place in the shared scroller, and re-selecting the
   // current tab is "take me to the top".

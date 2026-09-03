@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import { api, type Job } from '../api'
+import { api, describeError, type Job } from '../api'
 import { providerLabel, shortAgo } from '../format'
 import { invalidate } from '../query'
 import { showToast } from '../toast'
@@ -47,7 +47,9 @@ export const JobRow = memo(function JobRow(props: {
             .catch(() => showToast('Could not undo')),
         })
       })
-      .catch(() => { /* it stays visible; nothing to clean up */ })
+      // A dead button is worse than a failed one: this silently did nothing
+      // for every search result, because hunt state used to need a match row.
+      .catch((error) => showToast(describeError(error)))
   }
 
   const share = (event: React.MouseEvent) => {
@@ -66,7 +68,9 @@ export const JobRow = memo(function JobRow(props: {
     event.preventDefault()
     event.stopPropagation()
     setApplied((v) => !v) // optimistic; the answer corrects it
-    api.toggleApplied(job.id).then((r) => setApplied(r.applied)).catch(() => setApplied(job.applied))
+    api.toggleApplied(job.id)
+      .then((r) => setApplied(r.applied))
+      .catch((error) => { setApplied(job.applied); showToast(describeError(error)) })
   }
 
   return (

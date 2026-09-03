@@ -250,9 +250,10 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
     queryKey: ['jobs', searching ? 'corpus' : widened ? `wide:${scope}` : scope,
       term, sort, locations, remote, market, anyOf],
     queryFn: ({ pageParam }) => api.feed({
-      // Applied spans every saved search; a typed term spans every board; a
-      // widened saved search spans every board for its own keywords.
-      scope: searching || widened ? 'corpus' : scope === 'applied' ? 'all' : scope!,
+      // Applied spans every board, not only what your searches caught: you can
+      // apply to a job you found through the search bar, and it belongs in the
+      // list of what you applied to.
+      scope: searching || widened || scope === 'applied' ? 'corpus' : scope!,
       q: [term, ...scopeExcluded].filter(Boolean).join(' '),
       keywords: anyOf,
       locations, remote, market, sort, cursor: pageParam,
