@@ -50,16 +50,13 @@ func unhideJob(pool *pgxpool.Pool) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "id must be a number")
 			return
 		}
-		// The row goes only if it was holding nothing else.
+		// Clearing the timestamp is the whole undo. An emptied row is left
+		// behind on purpose: deleting it in the same statement is not possible
+		// anyway (a data-modifying CTE cannot delete the row it just updated,
+		// and does so silently), and one row per undone gesture is nothing.
 		if _, err := pool.Exec(r.Context(), `
-			with cleared as (
-				update job_state set hidden_at = null
-				where owner = $1 and job_id = $2
-				returning owner, job_id, applied_at
-			)
-			delete from job_state s
-			using cleared c
-			where s.owner = c.owner and s.job_id = c.job_id and c.applied_at is null`,
+			update job_state set hidden_at = null
+			where owner = $1 and job_id = $2`,
 			deviceID(r), jobID); err != nil {
 			serverError(w, "unhiding job", err)
 			return
