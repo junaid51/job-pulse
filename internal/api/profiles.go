@@ -149,8 +149,10 @@ func updateProfile(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		// Widened criteria should show results immediately. Matches that no longer
-		// qualify are left alone: they were real when they were recorded.
+		// Both directions land immediately: backfill adds what the new criteria
+		// catch and drops what they no longer catch, so "Save changes" is never
+		// a control that appears to do nothing until the next poll cycle.
+		// Applications survive either way — see backfill.
 		matched, err := backfill(r, pool, p)
 		if err != nil {
 			serverError(w, "backfilling profile", err)

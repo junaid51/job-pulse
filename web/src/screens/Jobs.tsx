@@ -82,7 +82,7 @@ export function Jobs({ goToSettings }: { goToSettings: () => void }) {
                 {candidate.unread > 0 && <span className="chip-count">{candidate.unread}</span>}
               </button>
             ))}
-            <button className={`chip ${!searching && scope === 'applied' ? 'selected' : ''}`}
+            <button className={`chip ${scope === 'applied' ? 'selected' : ''}`}
               onClick={() => setSelected('applied')}>Applied</button>
             <button className="chip chip-add" onClick={newSearch}>+ New</button>
           </div>
@@ -152,6 +152,10 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // search itself was saved with. Selecting another chip hands the question
   // back to that search.
   const [whereTouched, setWhereTouched] = useState(false)
+  // Kept apart from whereTouched: flipping the remote switch used to hand Where
+  // to the Gulf + India default, so asking for remote roles inside a saved
+  // search quietly threw away the places that search watches.
+  const [remoteTouched, setRemoteTouched] = useState(false)
   const [whereOpen, setWhereOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -205,8 +209,18 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // has no business overruling them, and it was: a search that asked for the UK
   // matched three UK jobs and the Gulf + India default hid all three.
   const savedPlaces = current?.locations ?? []
-  const savedWhere = !searching && typeof scope === 'number' && !whereTouched
-  const market = savedWhere ? false : myMarkets && !debouncedPlace
+  // Applied is a record of what this reader did, not a slice of the corpus, so
+  // a global region default has no business filtering it — and it did: mark a
+  // job in London applied and the Applied chip showed nothing at all.
+  const appliedScope = scope === 'applied'
+  const scopeOwnsWhere = !searching && !whereTouched
+    && (typeof scope === 'number' || appliedScope)
+  const market = scopeOwnsWhere ? false : myMarkets && !debouncedPlace
+  // A search saved as remote-only matched only remote roles, so a switch
+  // reading "off" above that feed is the same lie in miniature. It stays the
+  // search's answer until this reader gives their own.
+  const remote = !searching && !remoteTouched && current?.remote_only
+    ? true : remoteOnly
 
   // A saved search applies its own places when a job is matched, so its match
   // list holds nothing outside them and Where has nothing wider to reveal —
@@ -215,8 +229,11 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // feed stops asking the match list and asks the corpus for the same keywords.
   // The search's own places still decide what it notifies about; they no longer
   // decide what you are allowed to look at.
-  const locations = savedWhere ? atTokens : rawLocations
-  const widening = !searching && scope !== null && whereTouched
+  const locations = scopeOwnsWhere ? atTokens : rawLocations
+  // Widening asks the corpus for the scope's keywords, which is meaningless for
+  // Applied: those rows are the reader's own actions, and a job they applied to
+  // outside their keywords would have vanished from the list of them.
+  const widening = !searching && !appliedScope && scope !== null && whereTouched
     && (!myMarkets || debouncedPlace !== '')
   const scopeKeywords = typeof scope === 'number'
     ? current?.keywords ?? []
@@ -226,19 +243,19 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   const widened = widening && anyOf.length > 0
 
   // Switching chips hands "where" back to the search that owns it.
-  useEffect(() => { setWhereTouched(false) }, [scope])
+  useEffect(() => { setWhereTouched(false); setRemoteTouched(false) }, [scope])
   useEffect(() => { onSearching(searching) }, [searching, onSearching])
 
   const feed = useInfiniteQuery({
     queryKey: ['jobs', searching ? 'corpus' : widened ? `wide:${scope}` : scope,
-      term, sort, locations, remoteOnly, market, anyOf],
+      term, sort, locations, remote, market, anyOf],
     queryFn: ({ pageParam }) => api.feed({
       // Applied spans every saved search; a typed term spans every board; a
       // widened saved search spans every board for its own keywords.
       scope: searching || widened ? 'corpus' : scope === 'applied' ? 'all' : scope!,
       q: [term, ...scopeExcluded].filter(Boolean).join(' '),
       keywords: anyOf,
-      locations, remote: remoteOnly, market, sort, cursor: pageParam,
+      locations, remote, market, sort, cursor: pageParam,
     }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
@@ -425,9 +442,9 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
 
         <button className="where-btn" onClick={() => setWhereOpen(true)}>
           <PinIcon />
-          <span>{savedWhere
-            ? savedPlacesLabel(savedPlaces, remoteOnly)
-            : whereLabel(place, remoteOnly, myMarkets)}</span>
+          <span>{scopeOwnsWhere
+            ? savedPlacesLabel(savedPlaces, remote)
+            : whereLabel(place, remote, myMarkets)}</span>
         </button>
 
         {searching && (
@@ -465,10 +482,11 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
       {whereOpen && (
         <WhereSheet
           place={place} setPlace={(v) => { setWhereTouched(true); setPlace(v) }}
-          remoteOnly={remoteOnly} setRemoteOnly={(v) => { setWhereTouched(true); setRemoteOnly(v) }}
+          remoteOnly={remote} setRemoteOnly={(v) => { setRemoteTouched(true); setRemoteOnly(v) }}
           myMarkets={myMarkets} setMyMarkets={(v) => { setWhereTouched(true); setMyMarkets(v) }}
-          savedPlaces={savedWhere ? savedPlaces : []}
-          savedName={current?.name}
+          scopeOwns={scopeOwnsWhere}
+          savedPlaces={scopeOwnsWhere ? savedPlaces : []}
+          savedName={appliedScope ? undefined : current?.name}
           onClose={() => setWhereOpen(false)}
         />
       )}
@@ -491,6 +509,9 @@ function WhereSheet(props: {
   place: string; setPlace: (v: string) => void
   remoteOnly: boolean; setRemoteOnly: (v: boolean) => void
   myMarkets: boolean; setMyMarkets: (v: boolean) => void
+  /** True while the chip on screen answers "where" itself, so no region here
+   *  is in force and none of them may look selected. */
+  scopeOwns: boolean
   savedPlaces: string[]
   savedName?: string
   onClose: () => void
@@ -507,20 +528,24 @@ function WhereSheet(props: {
     <div className="sheet-backdrop" onClick={props.onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <h2>Where</h2>
-        {props.savedPlaces.length > 0 && (
+        {props.scopeOwns && (
           <small>
-            “{props.savedName}” watches {props.savedPlaces.join(', ')}. Choosing
-            here looks beyond it — the search keeps watching its own places.
+            {props.savedName
+              ? <>“{props.savedName}” watches {props.savedPlaces.length
+                  ? props.savedPlaces.join(', ') : 'anywhere'}. Choosing here
+                  looks beyond it — the search keeps watching its own places.</>
+              : <>Everything you applied to, wherever it was. Choosing here
+                  narrows the list.</>}
           </small>
         )}
 
         <div className="sheet-body">
         <div className="picker">
           <button type="button"
-            className={`pick ${!props.place && props.myMarkets ? 'on' : ''}`}
+            className={`pick ${!props.scopeOwns && !props.place && props.myMarkets ? 'on' : ''}`}
             onClick={() => region(true)}>Gulf + India</button>
           <button type="button"
-            className={`pick ${!props.place && !props.myMarkets ? 'on' : ''}`}
+            className={`pick ${!props.scopeOwns && !props.place && !props.myMarkets ? 'on' : ''}`}
             onClick={() => region(false)}>Anywhere</button>
           {WHERE_PLACES.map((name) => (
             <button type="button" key={name}

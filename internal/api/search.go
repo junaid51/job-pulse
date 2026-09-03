@@ -103,7 +103,10 @@ func boundary(term string) string {
 		quoted = `\y` + quoted
 	}
 	if isWordByte(quoted[len(quoted)-1]) {
-		quoted += `\y`
+		// A plural is the same word, exactly as match.containsWord treats it:
+		// "platform" has to find "Cloud Security Platforms" whether it was
+		// typed here or saved as a keyword.
+		quoted += `(es|s)?\y`
 	}
 	return quoted
 }

@@ -3,7 +3,10 @@
 // substring first, then each of its aliases. Case-insensitive throughout.
 package match
 
-import "strings"
+import (
+	"regexp"
+	"strings"
+)
 
 // keywordAliases expands common role names into the words job titles actually
 // use: "frontend" should find "React Engineer", because that is the same job
@@ -21,6 +24,8 @@ import "strings"
 // also matches "javascript" — which is the accepted cost of keeping this a
 // dictionary instead of a language model.
 var keywordAliases = map[string][]string{
+	// Whole-word matching means "go" no longer reaches "Golang" by itself.
+	"go": {"golang"},
 	"frontend": {
 		"front-end", "front end", "front‑end",
 		"react", "angular", "vue", "svelte", "nextjs", "next.js",
@@ -313,18 +318,20 @@ func Reachable(location string) bool {
 		return true
 	}
 	for _, region := range reachableRegions {
-		if strings.Contains(location, region) {
+		if containsWord(location, region) {
 			return true
 		}
 	}
 	return false
 }
 
-// ReachablePatterns is the same list as SQL ilike patterns.
+// The same list as SQL regexes, on word edges to match Reachable exactly: as
+// ilike patterns "%india%" put every job in Indianapolis behind the Gulf +
+// India filter, 302 postings' worth.
 func ReachablePatterns() []string {
 	patterns := make([]string, 0, len(reachableRegions))
 	for _, region := range reachableRegions {
-		patterns = append(patterns, "%"+region+"%")
+		patterns = append(patterns, `\y`+regexp.QuoteMeta(region)+`\y`)
 	}
 	return patterns
 }

@@ -34,7 +34,9 @@ func TestSearchWordsSplitsPlaceTokens(t *testing.T) {
 }
 
 func TestBoundaryAnchorsOnlyWordCharacters(t *testing.T) {
-	if got := boundary("react"); got != `\yreact\y` {
+	// The optional plural keeps a typed word and a saved keyword in agreement:
+	// both find "Cloud Security Platforms" from "platform".
+	if got := boundary("react"); got != `\yreact(es|s)?\y` {
 		t.Errorf("boundary(react) = %q", got)
 	}
 	// A plus sign is not a word character, so an anchor after it can never
@@ -42,7 +44,7 @@ func TestBoundaryAnchorsOnlyWordCharacters(t *testing.T) {
 	if got := boundary("c++"); got != `\yc\+\+` {
 		t.Errorf("boundary(c++) = %q", got)
 	}
-	if got := boundary(".net"); got != `\.net\y` {
+	if got := boundary(".net"); got != `\.net(es|s)?\y` {
 		t.Errorf("boundary(.net) = %q", got)
 	}
 }
@@ -56,7 +58,7 @@ func TestShortWordsStillMatchCompanyNames(t *testing.T) {
 	if len(b.args()) != 3 {
 		t.Errorf("args = %v, want title, location and company patterns", b.args())
 	}
-	if got := b.args()[2]; got != `\yd4\y` {
+	if got := b.args()[2]; got != `\yd4(es|s)?\y` {
 		t.Errorf("company pattern = %q", got)
 	}
 }
