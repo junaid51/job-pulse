@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -122,6 +123,14 @@ func careerjetGet(ctx context.Context, key, site string, query url.Values, v any
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		// This API explains itself in the body and the explanation is the whole
+		// diagnosis — "Unauthorized access from IP 1.2.3.4" names the address to
+		// declare in the publisher dashboard, and "Undeclared referrer" names a
+		// different mistake entirely. A bare 403 sends you hunting for both.
+		var body careerjetPage
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&body); err == nil && body.Error != "" {
+			return fmt.Errorf("careerjet %d: %s", resp.StatusCode, body.Error)
+		}
 		return statusError{code: resp.StatusCode, url: "careerjet query"}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(v); err != nil {
