@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arrivalLabel, buildItems, jobIdentity, parseQuery, whereLabel } from './feed'
+import { arrivalLabel, buildItems, jobIdentity, parseQuery, savedPlacesLabel, whereLabel } from './feed'
 import type { FeedRow } from './feed'
 
 describe('parseQuery', () => {
@@ -116,5 +116,25 @@ describe('buildItems', () => {
 
   it('is empty while rows are still loading', () => {
     expect(buildItems(null, 'matched', now)).toEqual([])
+  })
+})
+
+// The Where button used to read "Gulf + India" whatever search was selected —
+// and that default hid three UK jobs a search had explicitly asked for.
+describe('savedPlacesLabel', () => {
+  it('names one or two places outright', () => {
+    expect(savedPlacesLabel(['gulf'], false)).toBe('gulf')
+    expect(savedPlacesLabel(['dubai', 'gulf'], false)).toBe('dubai · gulf')
+  })
+  it('counts the rest, so the button stays a button', () => {
+    expect(savedPlacesLabel(['dubai', 'abu dhabi', 'gulf', 'uae', 'saudi'], false))
+      .toBe('dubai +4')
+  })
+  it('calls a search with no place anywhere, because it is', () => {
+    expect(savedPlacesLabel([], false)).toBe('Anywhere')
+    expect(savedPlacesLabel(['  '], false)).toBe('Anywhere')
+  })
+  it('still says when remote-only is on', () => {
+    expect(savedPlacesLabel(['gulf'], true)).toBe('gulf · remote')
   })
 })

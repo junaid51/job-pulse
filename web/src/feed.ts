@@ -46,6 +46,19 @@ export function whereLabel(place: string, remoteOnly: boolean, myMarkets: boolea
   return remoteOnly ? `${where} · remote` : where
 }
 
+/** What a saved search's own places read as on the Where button.
+ *
+ *  Two names fit; beyond that it becomes a count, because the button has to
+ *  stay a button. Empty means the search never named a place, which is
+ *  genuinely anywhere. */
+export function savedPlacesLabel(places: string[], remoteOnly: boolean): string {
+  const named = places.map((p) => p.trim()).filter(Boolean)
+  const where = named.length === 0 ? 'Anywhere'
+    : named.length <= 2 ? named.join(' · ')
+    : `${named[0]} +${named.length - 1}`
+  return remoteOnly ? `${where} · remote` : where
+}
+
 /** Two boards can carry the same posting; to a reader it is one job. */
 export function jobIdentity(job: { title: string; company: string; location: string }): string {
   return `${job.title}|${job.company}|${job.location}`.toLowerCase()

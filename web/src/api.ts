@@ -112,6 +112,8 @@ export const api = {
   feed: (p: {
     scope: number | 'all' | 'corpus'
     q?: string; locations?: string[]; remote?: boolean; market?: boolean
+    /** ORed, the way a saved search means its keywords. */
+    keywords?: string[]
     sort?: JobSort; cursor?: string
   }) => {
     const query = [
@@ -124,6 +126,7 @@ export const api = {
       p.market ? 'market=1' : '',
       p.cursor ? `cursor=${encodeURIComponent(p.cursor)}` : '',
       ...(p.locations ?? []).map((l) => `location=${encodeURIComponent(l)}`),
+      ...(p.keywords ?? []).map((k) => `keyword=${encodeURIComponent(k)}`),
     ].filter(Boolean).join('&')
     return request<{ jobs: Job[]; next_cursor?: string }>(`/api/jobs?${query}`)
       .then((r) => ({ jobs: r.jobs ?? [], next: r.next_cursor ?? null }))
