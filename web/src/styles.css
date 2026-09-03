@@ -541,6 +541,14 @@ mark.hit {
   font-size: 12.5px; line-height: 1.45;
 }
 
+/* the same shape as a warning, in the app's own colour: this is information,
+   not a problem */
+.notice.quiet {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: color-mix(in srgb, var(--accent) 86%, var(--on-surface));
+}
+
 /* the editor's optional half, opened by a word rather than a form */
 .more-link {
   align-self: flex-start; color: var(--accent);

@@ -6,7 +6,7 @@ import { api, describeError, type JobSort, type Profile } from '../api'
 import { JobRow } from '../components/JobRow'
 import { Empty, ErrorState, Loading, SkeletonList } from '../components/States'
 import { invalidate } from '../query'
-import { buildItems, parseQuery, whereLabel } from '../feed'
+import { buildItems, parseQuery, savedPlacesLabel, whereLabel } from '../feed'
 import { showToast } from '../toast'
 import { useEscape } from '../useEscape'
 
@@ -148,6 +148,10 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // cannot work: a company board is chosen whole, and brings its Ohio roles
   // along with its Dubai one. On by default, one tap to see everything.
   const [myMarkets, setMyMarkets] = useState(true)
+  // Until the reader touches Where, a saved search's feed uses the places the
+  // search itself was saved with. Selecting another chip hands the question
+  // back to that search.
+  const [whereTouched, setWhereTouched] = useState(false)
   const [whereOpen, setWhereOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -179,6 +183,8 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  const current = typeof scope === 'number' ? profiles.find((p) => p.id === scope) : undefined
+
   // "@place" typed into search filters location the same way the Where sheet
   // does, through the same alias dictionary the matcher uses.
   // "-word" rules a posting out, the same way a saved search's exclusions do,
@@ -187,22 +193,52 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // rules the backend uses — see feed.ts.
   const { words, places: atTokens, excluded } = parseQuery(debounced)
   const term = [...words, ...excluded].join(' ')
-  const locations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
+  const rawLocations = debouncedPlace ? [...atTokens, debouncedPlace] : atTokens
   // A typed term searches every board, not just what your searches caught —
   // hiding jobs because they missed your keywords answers the wrong question.
   const searching = words.length > 0 || atTokens.length > 0 || excluded.length > 0
   // A named place is the answer to "where", so it replaces the region filter
   // rather than intersecting with it — otherwise asking for London while the
   // region said Gulf returned nothing, silently.
-  const market = myMarkets && !debouncedPlace
+  // The places a saved search was saved with are part of the search. Until the
+  // reader says otherwise, they are the answer to "where" — a global default
+  // has no business overruling them, and it was: a search that asked for the UK
+  // matched three UK jobs and the Gulf + India default hid all three.
+  const savedPlaces = current?.locations ?? []
+  const savedWhere = !searching && typeof scope === 'number' && !whereTouched
+  const market = savedWhere ? false : myMarkets && !debouncedPlace
+
+  // A saved search applies its own places when a job is matched, so its match
+  // list holds nothing outside them and Where has nothing wider to reveal —
+  // picking Anywhere on a Gulf search changed precisely nothing, which is
+  // indefensible for a control that says "Anywhere". Once Where is touched, the
+  // feed stops asking the match list and asks the corpus for the same keywords.
+  // The search's own places still decide what it notifies about; they no longer
+  // decide what you are allowed to look at.
+  const locations = savedWhere ? atTokens : rawLocations
+  const widening = !searching && scope !== null && whereTouched
+    && (!myMarkets || debouncedPlace !== '')
+  const scopeKeywords = typeof scope === 'number'
+    ? current?.keywords ?? []
+    : profiles.flatMap((p) => p.keywords)
+  const anyOf = widening ? scopeKeywords.filter((k) => !k.startsWith('-')) : []
+  const scopeExcluded = widening ? scopeKeywords.filter((k) => k.startsWith('-')) : []
+  const widened = widening && anyOf.length > 0
+
+  // Switching chips hands "where" back to the search that owns it.
+  useEffect(() => { setWhereTouched(false) }, [scope])
   useEffect(() => { onSearching(searching) }, [searching, onSearching])
 
   const feed = useInfiniteQuery({
-    queryKey: ['jobs', searching ? 'corpus' : scope, term, sort, locations, remoteOnly, market],
+    queryKey: ['jobs', searching ? 'corpus' : widened ? `wide:${scope}` : scope,
+      term, sort, locations, remoteOnly, market, anyOf],
     queryFn: ({ pageParam }) => api.feed({
-      // Applied spans every saved search; a typed term spans every board.
-      scope: searching ? 'corpus' : scope === 'applied' ? 'all' : scope!,
-      q: term, locations, remote: remoteOnly, market, sort, cursor: pageParam,
+      // Applied spans every saved search; a typed term spans every board; a
+      // widened saved search spans every board for its own keywords.
+      scope: searching || widened ? 'corpus' : scope === 'applied' ? 'all' : scope!,
+      q: [term, ...scopeExcluded].filter(Boolean).join(' '),
+      keywords: anyOf,
+      locations, remote: remoteOnly, market, sort, cursor: pageParam,
     }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.next ?? undefined,
@@ -231,7 +267,6 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
     api.markSeen().then(() => invalidate('profiles')).catch(() => { marked.current = false })
   }, [rows, searching, sort])
 
-  const current = typeof scope === 'number' ? profiles.find((p) => p.id === scope) : undefined
   // What caused each row: the typed term while searching, otherwise the
   // keywords of the searches in scope. Aliases match server-side without
   // highlight — the dictionary lives in Go, and duplicating it here would drift.
@@ -272,6 +307,7 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
   // which one is on screen.
   const scopeName = sort === 'applied' ? 'jobs you applied to'
     : searching ? 'every job from every board'
+    : widened ? `every job matching “${current ? current.name : 'your searches'}”`
     : current ? `your “${current.name}” matches`
     : 'jobs your searches caught'
 
@@ -389,7 +425,9 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
 
         <button className="where-btn" onClick={() => setWhereOpen(true)}>
           <PinIcon />
-          <span>{whereLabel(place, remoteOnly, myMarkets)}</span>
+          <span>{savedWhere
+            ? savedPlacesLabel(savedPlaces, remoteOnly)
+            : whereLabel(place, remoteOnly, myMarkets)}</span>
         </button>
 
         {searching && (
@@ -417,11 +455,20 @@ function JobList({ scope, profiles, onCreateProfile, onSavedSearch, onSearching 
         )}
       </div>
 
+      {widened && (
+        <p className="notice quiet">
+          Showing every job for {current ? `“${current.name}”` : 'your searches'} —
+          its own places only decide what it notifies you about.
+        </p>
+      )}
+
       {whereOpen && (
         <WhereSheet
-          place={place} setPlace={setPlace}
-          remoteOnly={remoteOnly} setRemoteOnly={setRemoteOnly}
-          myMarkets={myMarkets} setMyMarkets={setMyMarkets}
+          place={place} setPlace={(v) => { setWhereTouched(true); setPlace(v) }}
+          remoteOnly={remoteOnly} setRemoteOnly={(v) => { setWhereTouched(true); setRemoteOnly(v) }}
+          myMarkets={myMarkets} setMyMarkets={(v) => { setWhereTouched(true); setMyMarkets(v) }}
+          savedPlaces={savedWhere ? savedPlaces : []}
+          savedName={current?.name}
           onClose={() => setWhereOpen(false)}
         />
       )}
@@ -444,6 +491,8 @@ function WhereSheet(props: {
   place: string; setPlace: (v: string) => void
   remoteOnly: boolean; setRemoteOnly: (v: boolean) => void
   myMarkets: boolean; setMyMarkets: (v: boolean) => void
+  savedPlaces: string[]
+  savedName?: string
   onClose: () => void
 }) {
   const [draft, setDraft] = useState(
@@ -458,6 +507,12 @@ function WhereSheet(props: {
     <div className="sheet-backdrop" onClick={props.onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
         <h2>Where</h2>
+        {props.savedPlaces.length > 0 && (
+          <small>
+            “{props.savedName}” watches {props.savedPlaces.join(', ')}. Choosing
+            here looks beyond it — the search keeps watching its own places.
+          </small>
+        )}
 
         <div className="sheet-body">
         <div className="picker">

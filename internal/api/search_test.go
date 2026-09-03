@@ -89,3 +89,23 @@ func TestSearchSQLExcludesEverywhere(t *testing.T) {
 		t.Error("an exclusion must rule out every field, so the parts are ANDed")
 	}
 }
+
+// A saved search means "devops or cloud or platform"; a typed query means every
+// word. Mixing the two up is what made a saved search's feed impossible to
+// widen.
+func TestAnySQLOrsItsTerms(t *testing.T) {
+	var b binder
+	sql := anySQL([]string{"devops", "cloud"}, &b)
+	if !strings.HasPrefix(sql, " and (") {
+		t.Errorf("the whole set is one condition: %q", sql)
+	}
+	if strings.Count(sql, " or (j.title") != 1 {
+		t.Errorf("terms must be ORed with each other: %q", sql)
+	}
+	if len(b.args()) != 6 {
+		t.Errorf("args = %d, want three patterns per term", len(b.args()))
+	}
+	if anySQL(nil, &b) != "" {
+		t.Error("no terms must add no condition")
+	}
+}

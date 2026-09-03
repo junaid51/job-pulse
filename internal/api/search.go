@@ -121,3 +121,26 @@ func boundaries(terms []string) []string {
 func isWordByte(c byte) bool {
 	return c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
+
+// anySQL matches a job if ANY of the terms does.
+//
+// A saved search means its keywords that way — "devops or cloud or platform" —
+// while a typed query means every word of it, so the two cannot share a
+// builder. This is what lets the feed of a saved search be widened: its own
+// places were applied when the job was matched, so the match list holds nothing
+// outside them and no filter can reveal what was never there. Asking the corpus
+// for the same keywords can.
+func anySQL(terms []string, b *binder) string {
+	conditions := make([]string, 0, len(terms))
+	for _, term := range terms {
+		roles, places := match.SearchTerms(term)
+		conditions = append(conditions,
+			"(j.title ~* any("+b.add(boundaries(roles))+")"+
+				" or j.location ~* any("+b.add(boundaries(places))+")"+
+				" or j.company ~* "+b.add(boundary(term))+")")
+	}
+	if len(conditions) == 0 {
+		return ""
+	}
+	return " and (" + strings.Join(conditions, " or ") + ")"
+}
