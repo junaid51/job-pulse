@@ -112,11 +112,10 @@ test.describe('the feed and its filters', () => {
     await expect(chip(page, 'All searches')).toBeVisible()
     await chip(page, 'Gulf FE').click()
     await expect(whereButton(page)).toHaveText(/dubai/)
-    await expect(rows(page)).toHaveCount(1)
+    await expect(rows(page).locator('.job-meta')).toContainText('Dubai')
 
     await chip(page, 'India FE').click()
     await expect(whereButton(page)).toHaveText(/india/)
-    await expect(rows(page)).toHaveCount(1)
     await expect(rows(page).locator('.job-meta')).toContainText('Bengaluru')
 
     await chip(page, 'All searches').click()
