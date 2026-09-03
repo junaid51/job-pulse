@@ -1,0 +1,126 @@
+# Everything that can be checked without a deployment: the unit tests, and then
+# the whole app driven through a browser.
+#
+# The browser half exists because unit tests were green on a day when the X on
+# a job row answered 404 for every search result and the failure was swallowed,
+# so the button simply looked dead. Nothing anywhere pressed it. These tests
+# press it.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npx tsc --noEmit -p tsconfig.json
+        working-directory: web
+      - run: npx vitest run
+        working-directory: web
+
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: jobpulse
+          POSTGRES_PASSWORD: jobpulse
+          POSTGRES_DB: jobpulse
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jobpulse -d jobpulse"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://jobpulse:jobpulse@localhost:5432/jobpulse?sslmode=disable
+      API: http://localhost:8091
+      WEB: http://localhost:4173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            e2e/package-lock.json
+
+      # The real backend, with no boards at all: a poll cycle then reaches
+      # nothing and the corpus is exactly what seed.sql says it is. Migrations
+      # run on startup, as they do in production.
+      - name: start the backend
+        run: |
+          go build -o /tmp/jobpulse ./cmd/jobpulse
+          PORT=8091 POLL_INTERVAL=1h \
+            COMPANIES_FILE=e2e/fixtures/companies.txt \
+            /tmp/jobpulse > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf "$API/healthz" >/dev/null && break
+            sleep 1
+          done
+          curl -sf "$API/healthz" || { cat /tmp/backend.log; exit 1; }
+
+      # After startup, never before: the first cycle deletes every job whose
+      # board is not in the file, which is all of them.
+      - name: seed the corpus
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f e2e/fixtures/seed.sql
+
+      - name: build and serve the app
+        run: |
+          npm ci
+          VITE_JOBPULSE_API=$API npm run build
+          npx --yes http-server dist -p 4173 -c-1 --cors -s > /tmp/web.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf "$WEB/index.html" >/dev/null && break
+            sleep 1
+          done
+          curl -sf "$WEB/index.html" > /dev/null || { cat /tmp/web.log; exit 1; }
+        working-directory: web
+
+      - name: run the browser suite
+        run: |
+          npm ci
+          npx playwright install --with-deps webkit chromium
+          E2E_BASE_URL=$WEB E2E_API=$API npx playwright test
+        working-directory: e2e
+
+      # The API's own surface, including the routes no screen calls in a happy
+      # path. Re-seeded first because the suite hides and applies as it goes,
+      # and because this script ends by asking for a poll.
+      - name: run the API smoke test
+        if: always()
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f e2e/fixtures/seed.sql
+          bash scripts/smoke.sh "$API"
+
+      - name: keep the evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            /tmp/backend.log
+          retention-days: 7

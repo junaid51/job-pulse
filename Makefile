@@ -1,7 +1,7 @@
 # Thin wrappers around the commands in the README. Nothing here is required:
 # every target is one line you could type yourself.
 
-.PHONY: up down run build test tidy psql health app webtest
+.PHONY: up down run build test tidy psql health app webtest smoke e2e
 
 up:    ## start PostgreSQL
 	docker compose up -d
@@ -32,3 +32,9 @@ webtest:
 
 app:   ## run the web app against the local backend
 	cd web && VITE_JOBPULSE_API=http://localhost:8080 npm run dev
+
+smoke: ## exercise every route against a running backend (default localhost:8091)
+	bash scripts/smoke.sh $(API)
+
+e2e:   ## the browser suite: needs a backend with no boards and the seeded corpus
+	cd e2e && npm install && npx playwright test
