@@ -141,12 +141,17 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		// column its cursor compares.
 		cursorExpr := `coalesce(j.posted_at, 'epoch'::timestamptz)`
 		extraWhere := ``
+		hidden := ` and s.hidden_at is null`
 		switch sort {
 		case "matched":
 			cursorExpr = `m.created_at`
 		case "applied":
+			// No hidden filter here: dismissing a row from the feed must not
+			// erase the record that you applied to it. Everywhere else, hidden
+			// means hidden.
 			cursorExpr = `s.applied_at`
 			extraWhere = ` and s.applied_at is not null`
+			hidden = ``
 		}
 		var b binder
 		owner, pid := b.add(deviceID(r)), b.add(profileID)
@@ -160,8 +165,7 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = ` + owner + `
 			left join job_state s on s.owner = p.owner and s.job_id = j.id
-			where m.profile_id = ` + pid + `
-			  and s.hidden_at is null` + extraWhere + `
+			where m.profile_id = ` + pid + `` + hidden + extraWhere + `
 			  and (` + cursorAt + `::timestamptz is null
 			       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))
 			  and (` + b.add(locations) + `::text[] is null or j.location ~* any(` + b.add(locations) + `))
@@ -266,6 +270,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 
 	cursorExpr := `coalesce(j.posted_at, 'epoch'::timestamptz)`
 	extraWhere := ``
+	hidden := ` and s.hidden_at is null`
 	switch sort {
 	case "matched":
 		// Arrival order across the whole corpus. Restricting this to matched
@@ -276,6 +281,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 	case "applied":
 		cursorExpr = `s.applied_at`
 		extraWhere = ` and s.applied_at is not null`
+		hidden = ``
 	}
 
 	var b binder
@@ -302,8 +308,7 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		  and (not ` + b.add(remote) + ` or j.remote)
 		  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
 		       or j.location ~* any(` + b.add(marketPatterns) + `))
-		  and (not ` + b.add(mine) + ` or m.job_id is not null)
-		  and s.hidden_at is null` + extraWhere + `
+		  and (not ` + b.add(mine) + ` or m.job_id is not null)` + hidden + extraWhere + `
 		  and (` + cursorAt + `::timestamptz is null
 		       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))` +
 		searchSQL(words, excluded, &b) + anySQL(anyOf, &b) + `
