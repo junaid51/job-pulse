@@ -1,0 +1,11 @@
+{
+  "name": "jobpulse-e2e",
+  "private": true,
+  "description": "End-to-end suite. Separate from web/ so the app's own dependencies stay untouched.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.49.1"
+  }
+}

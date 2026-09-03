@@ -1,0 +1,3 @@
+# Deliberately empty: the end-to-end suite runs the real backend with no boards,
+# so a poll cycle does nothing and reaches nothing. The corpus comes from
+# seed.sql instead, which is the only way these tests can assert exact counts.

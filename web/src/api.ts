@@ -62,7 +62,13 @@ export const deviceId: string = (() => {
   const KEY = 'jobpulse-device'
   let id = localStorage.getItem(KEY)
   if (!id) {
-    id = crypto.randomUUID()
+    // crypto.randomUUID exists only in a secure context. Served over plain
+    // http on a LAN address — which is how you open the dev build on a phone —
+    // it is undefined, and calling it crashed the bundle at module load: a
+    // blank screen with one line in the console. The fallback does not need to
+    // be cryptographic; it needs to be unique to this browser.
+    id = crypto.randomUUID?.()
+      ?? `d-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
     localStorage.setItem(KEY, id)
   }
   return id

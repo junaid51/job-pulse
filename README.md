@@ -13,6 +13,29 @@ matches it against search profiles, and pushes one summary per profile to the
 phone; the app is an installable PWA with search, sorting and push. A full cycle
 takes a few seconds; the deployment runs entirely on free tiers.
 
+## Tests
+
+```bash
+go test ./...                     # the matcher, the poller, the API's query building
+cd web && npx vitest run          # the feed's pure logic
+scripts/smoke.sh                  # every route, against a running backend
+cd e2e && npx playwright test     # the whole app, driven through a phone browser
+```
+
+The browser suite runs the real backend against a real Postgres with
+`COMPANIES_FILE=e2e/fixtures/companies.txt` — deliberately empty, so a poll
+cycle reaches nothing and the corpus is exactly the thirteen rows in
+`e2e/fixtures/seed.sql`. Two of those rows are there because they were bugs:
+a posting in "Indianapolis, Indiana" must never answer a search for India, and
+one in Romania must never answer a search for the Gulf. Seed *after* the
+backend starts: its first cycle removes every job whose board is not in the
+file.
+
+Both suites run on every push (`.github/workflows/ci.yml`). They exist because
+the unit tests were green on a day when the X on a job row answered 404 for
+every search result, and the frontend swallowed it, so the button just looked
+dead.
+
 ## Stack
 
 Go · chi · pgx · golang-migrate · PostgreSQL · React · Vite · TypeScript
