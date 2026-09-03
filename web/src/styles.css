@@ -440,7 +440,8 @@ nav {
   .job-row:hover .row-actions, .job-row:focus-within .row-actions { opacity: 1; }
 }
 .applied-tag {
-  display: inline-block; vertical-align: 2px; margin-left: 6px;
+  /* Its own child of the row's column, so nothing can clip it. */
+  align-self: flex-start; display: inline-block; margin-bottom: 1px;
   font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
   color: var(--muted); border: 1px solid var(--line);
   border-radius: 4px; padding: 0.5px 4px;

@@ -79,9 +79,13 @@ export const JobRow = memo(function JobRow(props: {
       {props.showUnread && <span className={`dot ${job.seen_at ? '' : 'unread'}`} />}
       <CompanyMark name={job.company} />
       <span className="job-main">
+        {/* Outside the title, not inside it: the title is clamped to two lines
+            with overflow hidden, so on a phone a long one clipped this badge
+            away entirely and the only sign you had applied was the state of a
+            13px tick. */}
+        {applied && <span className="applied-tag">APPLIED</span>}
         <span className="job-title">
           <Highlighted text={job.title} terms={props.highlight} />
-          {applied && <span className="applied-tag">APPLIED</span>}
         </span>
         <span className="job-meta">{meta}</span>
         {job.salary && <span className="job-salary">{job.salary}</span>}
