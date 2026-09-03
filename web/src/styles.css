@@ -284,6 +284,11 @@ main { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;
   align-items: flex-start; text-align: left; padding: 11px 8px 11px 16px;
 }
+/* align-items: flex-start sizes these children to their content, so the
+   ellipsis rule on .job-meta never fires: a search with eight places rendered
+   one long line that pushed the whole page sideways on a phone. Every other
+   row here is a stretch column, which is why only this one spilled. */
+.profile-main > * { max-width: 100%; }
 .profile-row .icon-btn { margin: 0; }
 .profile-row .icon-btn:hover { color: var(--danger); background: transparent; }
 .error-text { color: var(--danger); font-size: 12.5px; margin: 0; }

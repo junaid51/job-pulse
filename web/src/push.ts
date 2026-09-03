@@ -24,6 +24,12 @@ const VAPID = import.meta.env.VITE_JOBPULSE_VAPID ?? ''
 
 export type PushState = 'unsupported' | 'off' | 'pending' | 'on'
 
+// Why the last attempt failed, for the one screen that can act on it. A push
+// setup that is broken and silent is the failure mode this whole app cannot
+// afford: the notification *is* the product.
+let lastError: string | null = null
+export const pushError = () => lastError
+
 // The cheap pre-check that needs no Firebase: can this browser do push at all?
 const nativeSupport = () =>
   'Notification' in window && 'serviceWorker' in navigator && 'PushManager' in window
@@ -38,6 +44,7 @@ async function connect(): Promise<PushState> {
   const app = initializeApp(firebaseConfig)
   const messaging = getMessaging(app)
   const registration = await navigator.serviceWorker.ready
+  lastError = null
   const token = await getToken(messaging, {
     vapidKey: VAPID || undefined,
     serviceWorkerRegistration: registration,
@@ -59,6 +66,7 @@ export async function initPush(): Promise<PushState> {
   if (!nativeSupport()) return 'unsupported'
   if (Notification.permission !== 'granted') return 'off'
   return connect().catch((error) => {
+    lastError = String(error?.message ?? error)
     console.warn('push: token unavailable:', error)
     return 'off'
   })
@@ -68,8 +76,12 @@ export async function initPush(): Promise<PushState> {
 export async function enablePush(): Promise<PushState> {
   if (!nativeSupport()) return 'unsupported'
   const permission = await Notification.requestPermission()
-  if (permission !== 'granted') return 'off'
+  if (permission !== 'granted') {
+    lastError = 'This browser refused notification permission.'
+    return 'off'
+  }
   return connect().catch((error) => {
+    lastError = String(error?.message ?? error)
     console.warn('push: token unavailable:', error)
     return 'off'
   })

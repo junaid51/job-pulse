@@ -6,7 +6,7 @@ import { TermPicker } from '../components/TermPicker'
 import { providerLabel, shortAgo } from '../format'
 import { useQuery } from '@tanstack/react-query'
 import { invalidate } from '../query'
-import { enablePush, type PushState } from '../push'
+import { enablePush, pushError, type PushState } from '../push'
 import { showToast } from '../toast'
 import { useEscape } from '../useEscape'
 
@@ -43,7 +43,7 @@ export function Settings({ push, setPush }: { push: PushState; setPush: (s: Push
       )}
 
       <h2 className="section-h">Notifications</h2>
-      <PushHealth push={push} />
+      <PushHealth push={push} setPush={setPush} />
       {push !== 'on' && (
         <div className="pad stack">
           <button
@@ -197,18 +197,45 @@ function QuietHours({ from, to, timezone }: { from: number; to: number; timezone
 /** What the server actually knows, as opposed to what the browser reports.
  *  A token can expire silently, and until this existed the only symptom was
  *  alerts quietly never arriving. */
-function PushHealth({ push }: { push: PushState }) {
+function PushHealth({ push, setPush }: { push: PushState; setPush: (s: PushState) => void }) {
   const status = useQuery({ queryKey: ['push-status'], queryFn: api.pushStatus })
   const [testing, setTesting] = useState(false)
-  if (!status.data) return null
-  const { registered, timezone } = status.data
+  const [fixing, setFixing] = useState(false)
+  const { registered = false, timezone } = status.data ?? {}
   const enabled = push === 'on'
+  // Granted here, unknown to the server: the token this browser registered was
+  // deleted after Firebase reported it dead, which happens on its own. iOS
+  // keeps an installed PWA warm for hours, so nothing re-registers until a
+  // reload that never comes — and this state used to offer no button at all.
+  const orphaned = enabled && status.data != null && !registered
+  const reregister = async () => {
+    setFixing(true)
+    try {
+      setPush(await enablePush())
+      invalidate('push-status')
+    } finally {
+      setFixing(false)
+    }
+  }
+  if (!status.data) return null
   return (
     <>
       <div className="kv">
         <span>Push</span>
         <span className="kv-value">{describePush(push, registered)}</span>
       </div>
+      {orphaned && (
+        <div className="pad stack">
+          <button className="btn-filled wide" disabled={fixing} onClick={reregister}>
+            {fixing ? 'Registering…' : 'Register this device again'}
+          </button>
+          <p className="state-detail">
+            This browser has permission, but the server has no token for it —
+            alerts cannot arrive until it does. One tap re-registers.
+            {pushError() ? ` Last attempt: ${pushError()}` : ''}
+          </p>
+        </div>
+      )}
       {registered && enabled && (
         <QuietHours from={status.data.quiet_from ?? 0} to={status.data.quiet_to ?? 0}
           timezone={timezone} />

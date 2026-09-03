@@ -34,9 +34,10 @@ func listProfiles(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := pool.Query(r.Context(), `
 			select p.id, p.name, p.keywords, p.locations, p.remote_only, p.created_at,
-			       count(m.job_id) filter (where m.seen_at is null and m.hidden_at is null)
+			       count(m.job_id) filter (where m.seen_at is null and s.hidden_at is null)
 			from profiles p
 			left join matches m on m.profile_id = p.id
+			left join job_state s on s.owner = p.owner and s.job_id = m.job_id
 			where p.owner = $1
 			group by p.id order by p.id`, deviceID(r))
 		if err != nil {
@@ -220,10 +221,13 @@ func backfill(r *http.Request, pool *pgxpool.Pool, p profile) (int, error) {
 	}
 
 	if _, err := pool.Exec(ctx, `
-		delete from matches
-		where profile_id = $1
-		  and applied_at is null
-		  and not (job_id = any($2::bigint[]))`, p.ID, ids); err != nil {
+		delete from matches m
+		where m.profile_id = $1
+		  and not (m.job_id = any($2::bigint[]))
+		  and not exists (select 1 from job_state s
+		                  where s.owner = $3 and s.job_id = m.job_id
+		                    and s.applied_at is not null)`,
+		p.ID, ids, deviceID(r)); err != nil {
 		return 0, err
 	}
 	if len(ids) == 0 {

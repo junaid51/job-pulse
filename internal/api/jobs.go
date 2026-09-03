@@ -47,7 +47,7 @@ const (
 func jobColumns(matchedAt, matchedBy string) string {
 	return `j.id, j.provider, j.company, j.title, j.location, j.remote, j.url,
 	        j.salary, j.posted_at, ` + matchedAt + `, m.seen_at,
-	        m.applied_at is not null, m.applied_at, ` + matchedBy
+	        s.applied_at is not null, s.applied_at, ` + matchedBy
 
 }
 
@@ -104,9 +104,12 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		// opens on.
 		mine := r.URL.Query().Get("mine") == "1"
 		// An exclusions-only query ("-civil") is a real question — everything
-		// except that — so it routes like any other search.
+		// except that — so it routes like any other search. So is "what have I
+		// applied to": it needs no other filter, and it must reach jobs found
+		// through the search bar, which no saved search ever caught.
 		if r.URL.Query().Get("profile_id") == "" &&
-			(mine || len(words) > 0 || len(excluded) > 0 || len(anyOf) > 0 || locations != nil) {
+			(mine || sort == "applied" || len(words) > 0 || len(excluded) > 0 ||
+				len(anyOf) > 0 || locations != nil) {
 			searchAllJobs(w, r, pool, words, excluded, anyOf, locations, marketPatterns,
 				sort, limit, remote, mine)
 			return
@@ -142,8 +145,8 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 		case "matched":
 			cursorExpr = `m.created_at`
 		case "applied":
-			cursorExpr = `m.applied_at`
-			extraWhere = ` and m.applied_at is not null`
+			cursorExpr = `s.applied_at`
+			extraWhere = ` and s.applied_at is not null`
 		}
 		var b binder
 		owner, pid := b.add(deviceID(r)), b.add(profileID)
@@ -156,8 +159,9 @@ func listJobs(pool *pgxpool.Pool) http.HandlerFunc {
 			from matches m
 			join jobs j on j.id = m.job_id
 			join profiles p on p.id = m.profile_id and p.owner = ` + owner + `
+			left join job_state s on s.owner = p.owner and s.job_id = j.id
 			where m.profile_id = ` + pid + `
-			  and m.hidden_at is null` + extraWhere + `
+			  and s.hidden_at is null` + extraWhere + `
 			  and (` + cursorAt + `::timestamptz is null
 			       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))
 			  and (` + b.add(locations) + `::text[] is null or j.location ~* any(` + b.add(locations) + `))
@@ -270,8 +274,8 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		// A job nobody matched still arrived when we first saw it.
 		cursorExpr = `coalesce(m.matched_at, j.first_seen_at)`
 	case "applied":
-		cursorExpr = `m.applied_at`
-		extraWhere = ` and m.applied_at is not null`
+		cursorExpr = `s.applied_at`
+		extraWhere = ` and s.applied_at is not null`
 	}
 
 	var b binder
@@ -282,25 +286,24 @@ func searchAllJobs(w http.ResponseWriter, r *http.Request, pool *pgxpool.Pool,
 		"coalesce(m.names, '')") + `, ` + cursorExpr + ` as cursor_at
 		from jobs j
 		left join (
-			-- Hidden matches are excluded from the labels but still counted, so
-			-- that a job the reader dismissed everywhere stays dismissed here
-			-- too. Anything one of their feeds still shows, search still finds.
 			select mm.job_id,
-			       max(mm.created_at) filter (where mm.hidden_at is null) as matched_at,
-			       max(mm.seen_at)    filter (where mm.hidden_at is null) as seen_at,
-			       max(mm.applied_at) filter (where mm.hidden_at is null) as applied_at,
-			       string_agg(distinct p.name, ', ') filter (where mm.hidden_at is null) as names,
-			       count(*) filter (where mm.hidden_at is null) as visible
+			       max(mm.created_at) as matched_at,
+			       max(mm.seen_at)    as seen_at,
+			       string_agg(distinct p.name, ', ') as names
 			from matches mm
 			join profiles p on p.id = mm.profile_id and p.owner = ` + owner + `
 			group by mm.job_id
 		) m on m.job_id = j.id
+		-- Dismissed and applied are per device and per job, so they survive a
+		-- search: a job marked applied is marked applied wherever it appears,
+		-- and one that was dismissed does not come back through the search bar.
+		left join job_state s on s.owner = ` + owner + ` and s.job_id = j.id
 		where (` + b.add(locations) + `::text[] is null or j.location ~* any(` + b.add(locations) + `))
 		  and (not ` + b.add(remote) + ` or j.remote)
 		  and (` + b.add(marketPatterns) + `::text[] is null or j.location = ''
 		       or j.location ~* any(` + b.add(marketPatterns) + `))
 		  and (not ` + b.add(mine) + ` or m.job_id is not null)
-		  and (m.job_id is null or m.visible > 0)` + extraWhere + `
+		  and s.hidden_at is null` + extraWhere + `
 		  and (` + cursorAt + `::timestamptz is null
 		       or (` + cursorExpr + `, j.id) < (` + cursorAt + `, ` + cursorID + `::bigint))` +
 		searchSQL(words, excluded, &b) + anySQL(anyOf, &b) + `
