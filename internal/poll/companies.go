@@ -42,6 +42,15 @@ func ParseCompanies(r io.Reader) ([]Company, error) {
 		if text == "" || strings.HasPrefix(text, "#") {
 			continue
 		}
+		// A comment after an entry is still a comment. Only a whole-line "#"
+		// was being honoured, so every measurement I noted beside a board —
+		// "Groww  # 5 of 5 in Bengaluru" — became part of its display name,
+		// and for an aggregator, whose board name stands in when a posting does
+		// not name its employer, it became the company: the feed listed jobs
+		// from an outfit called "Careerjet # 8 of 31".
+		if head, _, found := strings.Cut(text, " #"); found {
+			text = strings.TrimSpace(head)
+		}
 		fields := strings.Fields(text)
 		if len(fields) < 2 {
 			return nil, fmt.Errorf("line %d: want \"provider slug [name]\", got %q", line, text)
