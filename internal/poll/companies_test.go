@@ -217,3 +217,46 @@ func TestDueNowRotatesPastAFailingBoard(t *testing.T) {
 		t.Errorf("dueNow kept %v, want just [second]", kept)
 	}
 }
+
+// Every measurement noted beside an entry became part of its display name, and
+// through the aggregator fallback became a company: the feed carried postings
+// from "Careerjet # 8 of 31". A comment is a comment wherever it starts.
+func TestParseCompaniesStripsTrailingComments(t *testing.T) {
+	file := strings.NewReader(`
+# a whole-line comment
+greenhouse  groww       Groww   # 5 of 5 in Bengaluru
+careerjet   devops|dubai|en_AE  Careerjet  # 21 of 60
+lever       aldar
+ashby       quantexa    Quantexa  # 3 of 31, Dubai
+`)
+	companies, err := ParseCompanies(file)
+	if err != nil {
+		t.Fatalf("ParseCompanies: %v", err)
+	}
+	want := []struct{ slug, name string }{
+		{"groww", "Groww"},
+		{"devops|dubai|en_AE", "Careerjet"},
+		{"aldar", ""},
+		{"quantexa", "Quantexa"},
+	}
+	if len(companies) != len(want) {
+		t.Fatalf("parsed %d entries, want %d", len(companies), len(want))
+	}
+	for i, w := range want {
+		if companies[i].Slug != w.slug || companies[i].Name != w.name {
+			t.Errorf("entry %d = %q/%q, want %q/%q",
+				i, companies[i].Slug, companies[i].Name, w.slug, w.name)
+		}
+	}
+}
+
+// A slug can hold a "#" as long as it is not written the way a comment is.
+func TestParseCompaniesKeepsHashesInsideFields(t *testing.T) {
+	companies, err := ParseCompanies(strings.NewReader("workday  host.com/Site?x=a#b  Acme"))
+	if err != nil {
+		t.Fatalf("ParseCompanies: %v", err)
+	}
+	if companies[0].Slug != "host.com/Site?x=a#b" || companies[0].Name != "Acme" {
+		t.Errorf("got %q/%q", companies[0].Slug, companies[0].Name)
+	}
+}

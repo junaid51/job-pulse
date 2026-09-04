@@ -717,6 +717,13 @@ type storedJob struct {
 	job providers.Job
 }
 
+// aggregator names the providers whose boards are a query across many employers
+// rather than one employer's own board.
+var aggregator = map[string]bool{
+	"careerjet": true, "jobven": true, "jobspipe": true,
+	"himalayas": true, "jobicy": true,
+}
+
 // insertJobs writes every posting and returns only the ones that did not exist
 // before. "on conflict do nothing returning id" is the whole of new-job
 // detection: a row comes back only when the insert actually happened.
@@ -728,9 +735,16 @@ func insertJobs(ctx context.Context, pool *pgxpool.Pool, c Company, jobs []provi
 	// Some boards (Lever, Ashby) do not name the company, so fill it in on the
 	// struct itself — the same value must reach both the insert and, through
 	// storedJob, the notification that names the company.
-	for i := range jobs {
-		if jobs[i].Company == "" {
-			jobs[i].Company = c.displayName()
+	//
+	// Aggregators are exempt: their board is a search, not an employer, so
+	// lending it a posting whose employer is withheld — recruiters do that
+	// routinely — invents a company that does not exist. Better a row with no
+	// company, which the feed simply leaves out, than a confident wrong one.
+	if !aggregator[c.Provider] {
+		for i := range jobs {
+			if jobs[i].Company == "" {
+				jobs[i].Company = c.displayName()
+			}
 		}
 	}
 
