@@ -260,3 +260,30 @@ func TestParseCompaniesKeepsHashesInsideFields(t *testing.T) {
 		t.Errorf("got %q/%q", companies[0].Slug, companies[0].Name)
 	}
 }
+
+// A metered board that failed must not sit out its whole interval: two jobspipe
+// searches took a transient 502 and were not tried again for five hours.
+func TestDueNowRetriesAFailedMeteredBoardSooner(t *testing.T) {
+	now := time.Date(2026, 9, 3, 12, 0, 0, 0, time.UTC)
+	twoHoursAgo := now.Add(-2 * time.Hour)
+
+	failed := Company{Provider: "jobspipe", Slug: "ae,sa|frontend",
+		LastPolledAt: &twoHoursAgo, LastFailed: true}
+	succeeded := Company{Provider: "jobspipe", Slug: "ae,sa|analyst",
+		LastPolledAt: &twoHoursAgo}
+
+	due := dueNow([]Company{succeeded, failed}, now)
+	if len(due) != 1 || due[0].Slug != failed.Slug {
+		got := make([]string, len(due))
+		for i, c := range due {
+			got[i] = c.Slug
+		}
+		t.Fatalf("due = %v, want only the failed board", got)
+	}
+
+	// And an hour later the retry window has not reopened for the one that
+	// worked: its twelve-hour interval still stands.
+	if len(dueNow([]Company{succeeded}, now.Add(time.Hour))) != 0 {
+		t.Error("a board that succeeded was polled again inside its interval")
+	}
+}

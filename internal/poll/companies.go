@@ -21,6 +21,10 @@ type Company struct {
 	Name     string
 	// LastPolledAt feeds the per-provider throttle; nil means never polled.
 	LastPolledAt *time.Time
+	// LastFailed is whether the most recent attempt errored. A metered board
+	// waits hours between polls, and a transient failure used to cost the whole
+	// interval — twelve hours of blindness for one 502.
+	LastFailed bool
 }
 
 // displayName is what jobs from this board are labelled with when the provider
@@ -116,7 +120,8 @@ func SyncCompanies(ctx context.Context, pool *pgxpool.Pool, path string) (int, e
 
 func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	rows, err := pool.Query(ctx,
-		`select provider, slug, name, last_polled_at from companies order by provider, slug`)
+		`select provider, slug, name, last_polled_at, coalesce(last_error, '') <> ''
+		 from companies order by provider, slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +130,7 @@ func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	var companies []Company
 	for rows.Next() {
 		var c Company
-		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name, &c.LastPolledAt); err != nil {
+		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name, &c.LastPolledAt, &c.LastFailed); err != nil {
 			return nil, err
 		}
 		companies = append(companies, c)
