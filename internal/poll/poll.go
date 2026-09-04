@@ -178,14 +178,31 @@ var heavyBoards = map[string]time.Duration{
 	"smartrecruiters:AccorHotel|ae,sa": time.Hour,
 }
 
+// retryAfterFailure caps the wait after a failed attempt, for providers whose
+// meter counts the jobs they return rather than the calls they answer: a call
+// that failed returned nothing, so trying again costs nothing. jobspipe is
+// deliberately the only entry — jobven meters calls, so a spent call is spent
+// whether it succeeded or not, and careerjet's own interval is an hour anyway.
+//
+// It was worth writing: two jobspipe searches took a 502 and were then not
+// attempted again for five hours, with seven still to go, while the API had
+// been healthy the whole time.
+var retryAfterFailure = map[string]time.Duration{"jobspipe": time.Hour}
+
 // boardInterval is the minimum gap between polls of one board: the provider's
 // own limit, or a longer one for a board too expensive to fetch every cycle.
 func boardInterval(c Company) (time.Duration, bool) {
-	if interval, heavy := heavyBoards[c.Provider+":"+c.Slug]; heavy {
-		return interval, true
+	interval, metered := heavyBoards[c.Provider+":"+c.Slug]
+	if !metered {
+		interval, metered = minPollInterval[c.Provider]
 	}
-	interval, metered := minPollInterval[c.Provider]
-	return interval, metered
+	if !metered {
+		return 0, false
+	}
+	if retry, ok := retryAfterFailure[c.Provider]; ok && c.LastFailed && retry < interval {
+		return retry, true
+	}
+	return interval, true
 }
 
 // reconcileEvery bounds how often matches are re-derived from scratch. The
