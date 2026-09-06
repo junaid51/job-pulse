@@ -16,6 +16,11 @@ type board struct {
 	Jobs         int        `json:"jobs"`
 	LastPolledAt *time.Time `json:"last_polled_at"`
 	LastError    *string    `json:"last_error"`
+	// Discovered says the scout found this board rather than a person listing
+	// it, and Retired that it was dropped for producing nothing. Both are shown
+	// because a reader is owed an answer to "where did this come from".
+	Discovered bool `json:"discovered"`
+	Retired    bool `json:"retired"`
 }
 
 // listBoards reports every board's health. The corpus is shared, so this is
@@ -24,10 +29,11 @@ func listBoards(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := pool.Query(r.Context(), `
 			select c.provider, c.slug, c.name, c.last_polled_at, c.last_error,
-			       count(j.id)
+			       count(j.id), c.origin = 'agent', not c.active
 			from companies c
 			left join jobs j on j.provider = c.provider and j.slug = c.slug
-			group by c.provider, c.slug, c.name, c.last_polled_at, c.last_error
+			group by c.provider, c.slug, c.name, c.last_polled_at, c.last_error,
+			         c.origin, c.active
 			order by c.name, c.slug`)
 		if err != nil {
 			serverError(w, "listing boards", err)
@@ -39,7 +45,7 @@ func listBoards(pool *pgxpool.Pool) http.HandlerFunc {
 		for rows.Next() {
 			var b board
 			if err := rows.Scan(&b.Provider, &b.Slug, &b.Name, &b.LastPolledAt,
-				&b.LastError, &b.Jobs); err != nil {
+				&b.LastError, &b.Jobs, &b.Discovered, &b.Retired); err != nil {
 				serverError(w, "reading boards", err)
 				return
 			}

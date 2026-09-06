@@ -465,6 +465,7 @@ mark.hit {
 .board-dot.bad { background: var(--danger); }
 .board-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .board-name { font-size: 13px; font-weight: 550; }
+.board-name .applied-tag { margin-left: 6px; vertical-align: 1px; }
 .board-row .job-meta { font-size: 11.5px; }
 
 /* device identity */
