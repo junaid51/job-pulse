@@ -21,13 +21,22 @@ check() { # check <description> <expected> <actual>
   [ "$2" = "$3" ] && ok "$1" || no "$1 — wanted $2, got $3"
 }
 
+# POLL_TOKEN, when the deployment has one, unlocks the endpoints that change
+# what the machine watches. Without it those are expected to refuse, which is
+# itself worth checking.
+# One header either way, because an empty array under `set -u` is an error on
+# the bash macOS ships.
+AUTH_HEADER="X-Smoke: unauthenticated"
+[ -n "${POLL_TOKEN:-}" ] && AUTH_HEADER="Authorization: Bearer $POLL_TOKEN"
+
 req() { # req <method> <path> [body] → status code
   local method=$1 path=$2 body=${3:-}
   if [ -n "$body" ]; then
     curl -s -o /tmp/smoke.out -w '%{http_code}' -X "$method" "$API$path" \
-      -H "X-Device: $DEV" -H 'Content-Type: application/json' -d "$body"
+      -H "X-Device: $DEV" -H 'Content-Type: application/json' -H "$AUTH_HEADER" -d "$body"
   else
-    curl -s -o /tmp/smoke.out -w '%{http_code}' -X "$method" "$API$path" -H "X-Device: $DEV"
+    curl -s -o /tmp/smoke.out -w '%{http_code}' -X "$method" "$API$path" \
+      -H "X-Device: $DEV" -H "$AUTH_HEADER"
   fi
 }
 field() { python3 -c "import json;print(json.load(open('/tmp/smoke.out'))$1)" 2>/dev/null; }
@@ -109,19 +118,28 @@ check "a bad quiet window is refused" 400 "$(req PUT /api/devices/quiet-hours '{
 check "POST /api/devices needs a token" 400 "$(req POST /api/devices '{"platform":"web"}')"
 
 echo "discovery"
-check "GET /api/discovery" 200 "$(req GET '/api/discovery?limit=3')"
-check "  it offers only employer boards, no aggregators or tenant URLs" yes "$(python3 -c "
+if [ -z "${POLL_TOKEN:-}" ] && [ "$(req GET '/api/discovery?limit=1')" = "401" ]; then
+  # A deployment with a token set: check that it is actually enforced, and say
+  # plainly that the rest went unchecked rather than reporting a pass.
+  check "discovery refuses an unauthenticated caller" 401 "$(req GET '/api/discovery?limit=1')"
+  check "adding a board refuses one too" 401 \
+    "$(req POST /api/boards '{"provider":"greenhouse","slug":"whoever"}')"
+  echo "  (set POLL_TOKEN to check the rest of discovery against this deployment)"
+else
+  check "GET /api/discovery" 200 "$(req GET '/api/discovery?limit=3')"
+  check "  it offers only employer boards, no aggregators or tenant URLs" yes "$(python3 -c "
 import json
 offered = json.load(open('/tmp/smoke.out'))['providers']
 bad = [p for p in offered if p in ['careerjet','jobven','jobspipe','himalayas','jobicy','workday','oracle','phenom']]
 print('yes' if offered and not bad else 'no ' + str(bad))")"
-# Both of these are refusals, so they change nothing — which is what makes them
-# safe to run against production.
-check "an aggregator cannot be added as an employer board" 400 \
-  "$(req POST /api/boards '{"provider":"himalayas","slug":"whoever","employer":"Whoever"}')"
-check "a board that answers with nothing is refused" 422 \
-  "$(req POST /api/boards '{"provider":"greenhouse","slug":"jobpulse-smoke-no-such-board","employer":"Nobody"}')"
-check "  and the refusal is remembered" refused "$(field "['status']")"
+  # Both of these are refusals, so they change nothing — which is what makes
+  # them safe to run against production.
+  check "an aggregator cannot be added as an employer board" 400 \
+    "$(req POST /api/boards '{"provider":"himalayas","slug":"whoever","employer":"Whoever"}')"
+  check "a board that answers with nothing is refused" 422 \
+    "$(req POST /api/boards '{"provider":"greenhouse","slug":"jobpulse-smoke-no-such-board","employer":"Nobody"}')"
+  check "  and the refusal is remembered" refused "$(field "['status']")"
+fi
 
 echo "polling"
 # 202 locally, 401 in production, where the endpoint carries POLL_TOKEN. Both
