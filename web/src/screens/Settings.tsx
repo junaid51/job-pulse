@@ -116,19 +116,28 @@ function Boards() {
   if (boards.error) return <p className="state-detail pad">{describeError(boards.error)}</p>
   if (!boards.data) return <Loading />
   const failing = boards.data.filter((b) => b.last_error)
+  const found = boards.data.filter((b) => b.discovered && !b.retired)
   return (
     <>
       <p className="state-detail pad">
         {boards.data.length} sources · {boards.data.reduce((n, b) => n + b.jobs, 0)} live jobs
         {failing.length > 0 && ` · ${failing.length} failing`}
+        {found.length > 0 && ` · ${found.length} found by the scout`}
       </p>
       {boards.data.map((b) => (
         <div className="board-row" key={`${b.provider}:${b.slug}`}>
           <span className={`board-dot ${b.last_error ? 'bad' : 'ok'}`} />
           <span className="board-main">
-            <span className="board-name">{b.name || b.slug}</span>
+            <span className="board-name">
+              {b.name || b.slug}
+              {/* Where a board came from is part of what it is: one the scout
+                  found is on trial, and one that produced nothing was dropped. */}
+              {b.discovered && !b.retired && <span className="applied-tag">FOUND</span>}
+              {b.retired && <span className="applied-tag">RETIRED</span>}
+            </span>
             <span className="job-meta">
               {providerLabel(b.provider)} · {b.jobs} {b.jobs === 1 ? 'job' : 'jobs'}
+              {b.retired ? ' · produced nothing, no longer polled' : ''}
               {b.last_error ? ` · ${b.last_error}` : ''}
             </span>
           </span>

@@ -71,6 +71,12 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 			  and lower(j.company) not in (
 				select distinct lower(company) from jobs where not (provider = any($1)))
 			  and j.company <> ''
+			  -- Not staffing agencies. They are the top of this list by volume —
+			  -- one of them accounts for seventeen matches on its own, and a
+			  -- quarter of all matches come from firms like them — but a direct
+			  -- board would only deliver the same reposted listings sooner. The
+			  -- point of discovery is the employer behind the posting.
+			  and j.company !~* '(staffing|recruit|manpower|placement|executive search|talent solutions|hr solutions|outsourc)'
 			group by j.company
 			order by matches desc, j.company
 			limit $2`, aggregators, limit)

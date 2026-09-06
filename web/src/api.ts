@@ -42,6 +42,10 @@ export interface Board {
   jobs: number
   last_polled_at: string | null
   last_error: string | null
+  /** Found by the scout rather than listed by hand. */
+  discovered: boolean
+  /** Dropped for producing nothing during its probation. */
+  retired: boolean
 }
 
 export interface ProfileInput {
