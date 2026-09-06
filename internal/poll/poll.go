@@ -405,7 +405,7 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	// when they were first seen.
 	tag, err := pool.Exec(ctx, `
 		delete from jobs
-		where coalesce(posted_at, first_seen_at) < now() - $1::interval`,
+		where coalesce(posted_at, first_seen_at) < now() - $1::interval`+keptForApplication,
 		maxJobAge.String())
 	if err != nil {
 		return stats, err
@@ -416,7 +416,7 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	staleAggregated, err := pool.Exec(ctx, `
 		delete from jobs
 		where provider = any($1)
-		  and coalesce(posted_at, first_seen_at) < now() - $2::interval`,
+		  and coalesce(posted_at, first_seen_at) < now() - $2::interval`+keptForApplication,
 		windowProviders(), maxAggregatorJobAge.String())
 	if err != nil {
 		return stats, err
@@ -429,11 +429,11 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	// Rows from before the slug column are exempt; they are claimed by their
 	// board when re-seen, and age out on their own if never claimed.
 	orphans, err := pool.Exec(ctx, `
-		delete from jobs j
-		where j.slug <> ''
+		delete from jobs
+		where jobs.slug <> ''
 		  and not exists (
 			select 1 from companies c
-			where c.provider = j.provider and c.slug = j.slug)`)
+			where c.provider = jobs.provider and c.slug = jobs.slug)`+keptForApplication)
 	if err != nil {
 		return stats, err
 	}
@@ -442,7 +442,8 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	// The reachability sweep, paired with the remote-feed filter at ingest.
 	unreachable, err := pool.Exec(ctx, `
 		delete from jobs
-		where provider = any($1) and location <> '' and not (location ilike any($2))`,
+		where provider = any($1) and location <> ''
+		  and not (location ilike any($2))`+keptForApplication,
 		[]string{"himalayas", "jobicy"}, reachablePatterns())
 	if err != nil {
 		return stats, err
@@ -450,7 +451,8 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	stats.Removed += unreachable.RowsAffected()
 
 	// The exclusion sweep, paired with the ingest filter above.
-	excluded, err := pool.Exec(ctx, `delete from jobs where location ilike any($1)`,
+	excluded, err := pool.Exec(ctx,
+		`delete from jobs where location ilike any($1)`+keptForApplication,
 		excludedPatterns())
 	if err != nil {
 		return stats, err
@@ -706,6 +708,15 @@ func youngEnough(jobs []providers.Job, now time.Time, maxAge time.Duration) []pr
 	return kept
 }
 
+// keptForApplication excludes postings the reader has applied to from every
+// sweep. job_state cascades from jobs, so a housekeeping delete silently took
+// the record of an application with it — removing two dead boards by hand this
+// week would have erased any application to them. A posting can stop being
+// worth showing; the fact that you applied to it does not expire.
+const keptForApplication = ` and not exists (
+			select 1 from job_state s
+			where s.job_id = jobs.id and s.applied_at is not null)`
+
 // deleteAbsent removes this board's stored jobs that its current listing no
 // longer contains. Rows from before the slug column existed carry ” and are
 // first claimed by their board when re-seen (see insertJobs), so they are
@@ -717,7 +728,8 @@ func deleteAbsent(ctx context.Context, pool *pgxpool.Pool, c Company, current []
 	}
 	tag, err := pool.Exec(ctx, `
 		delete from jobs
-		where provider = $1 and slug = $2 and not (external_id = any($3))`,
+		where provider = $1 and slug = $2
+		  and not (external_id = any($3))`+keptForApplication,
 		c.Provider, c.Slug, ids)
 	if err != nil {
 		return err
