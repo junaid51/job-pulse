@@ -114,6 +114,22 @@ jobs:
           psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f e2e/fixtures/seed.sql
           bash scripts/smoke.sh "$API"
 
+      # A housekeeping sweep must never take a job you applied to with it:
+      # job_state cascades from jobs, so every delete over the corpus was
+      # quietly able to erase the record of an application.
+      - name: the sweep spares an application
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f e2e/fixtures/seed.sql
+          psql "$DATABASE_URL" -q -c "update jobs set posted_at = now() - interval '40 days', first_seen_at = now() - interval '40 days' where external_id in ('e2e-1','e2e-2');"
+          applied=$(psql "$DATABASE_URL" -t -A -c "select id from jobs where external_id='e2e-1';")
+          curl -sf -X POST "$API/api/jobs/$applied/applied" -H "X-Device: sweep-ci" > /dev/null
+          curl -sf -X POST "$API/api/poll" > /dev/null
+          sleep 10
+          survived=$(psql "$DATABASE_URL" -t -A -c "select count(*) from jobs where external_id='e2e-1';")
+          swept=$(psql "$DATABASE_URL" -t -A -c "select count(*) from jobs where external_id='e2e-2';")
+          echo "applied job rows: $survived (want 1); un-applied twin: $swept (want 0)"
+          [ "$survived" = "1" ] && [ "$swept" = "0" ]
+
       - name: keep the evidence
         if: failure()
         uses: actions/upload-artifact@v4
