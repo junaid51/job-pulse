@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -132,17 +133,48 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"targets":    targets,
 			"do_not_try": skip,
-			"providers":  providerNames(),
+			"providers":  discoverable(),
 		})
 	}
 }
 
-func providerNames() []string {
-	names := make([]string, 0, len(providers.All))
-	for name := range providers.All {
-		names = append(names, name)
+// discoverable is the set of providers a board may be discovered on: one
+// employer's own board, addressed by a slug you could guess from the employer's
+// name. Two exclusions, both learned by watching a scout work:
+//
+// Aggregators ignore the slug and answer with their whole feed, so probing
+// "himalayas:namshi" returned twenty postings that had nothing to do with
+// Namshi — and the scout proposed it, because the gate only asked whether
+// reachable postings came back. It would have polled the same feed twice under
+// a made-up employer.
+//
+// Workday, Oracle and Phenom are addressed by a tenant URL with facet ids in
+// it, which no amount of guessing from a company name will produce. The scout
+// burned three turns discovering that "namshi" is not a hostname. Finding those
+// tenants is real work and worth doing, but it is not this.
+var discoverableProviders = []string{
+	"ashby", "greenhouse", "lever", "recruitee", "smartrecruiters",
+	"teamtailor", "workable",
+}
+
+func discoverable() []string {
+	names := make([]string, 0, len(discoverableProviders))
+	for _, name := range discoverableProviders {
+		if _, known := providers.All[name]; known {
+			names = append(names, name)
+		}
 	}
+	sort.Strings(names)
 	return names
+}
+
+func isDiscoverable(provider string) bool {
+	for _, name := range discoverable() {
+		if name == provider {
+			return true
+		}
+	}
+	return false
 }
 
 // addBoard verifies a proposal and, if it holds up, starts polling it.
@@ -165,6 +197,13 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 		in.Slug = strings.TrimSpace(in.Slug)
 		in.Employer = strings.TrimSpace(in.Employer)
 		fetch, known := providers.All[in.Provider]
+		if known && !isDiscoverable(in.Provider) {
+			writeError(w, http.StatusBadRequest, in.Provider+
+				" is not a provider a board can be discovered on: it is either a "+
+				"search across many employers, or addressed by a tenant URL rather "+
+				"than the employer's name")
+			return
+		}
 		if !known || in.Slug == "" {
 			writeError(w, http.StatusBadRequest, "provider must be one this app can read, and slug is required")
 			return
