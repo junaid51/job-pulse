@@ -130,6 +130,24 @@ jobs:
           echo "applied job rows: $survived (want 1); un-applied twin: $swept (want 0)"
           [ "$survived" = "1" ] && [ "$swept" = "0" ]
 
+      # Probation retires a board that never delivered, and must not retire the
+      # small employer who posts one role every couple of months: postings age
+      # out, so "holds nothing today" is a different question from "never
+      # produced anything".
+      - name: probation keeps a board that has delivered
+        run: |
+          psql "$DATABASE_URL" -q -c "delete from companies where origin='agent';
+            insert into companies (provider, slug, name, origin, added_at, produced_at)
+            values ('greenhouse','ci-delivered','Delivered','agent', now() - interval '21 days', now() - interval '18 days');
+            insert into companies (provider, slug, name, origin, added_at)
+            values ('greenhouse','ci-never','Never','agent', now() - interval '21 days');"
+          curl -sf -X POST "$API/api/poll" > /dev/null
+          sleep 10
+          delivered=$(psql "$DATABASE_URL" -t -A -c "select active from companies where slug='ci-delivered';")
+          never=$(psql "$DATABASE_URL" -t -A -c "select active from companies where slug='ci-never';")
+          echo "delivered board active: $delivered (want t); never-delivered: $never (want f)"
+          [ "$delivered" = "t" ] && [ "$never" = "f" ]
+
       - name: keep the evidence
         if: failure()
         uses: actions/upload-artifact@v4

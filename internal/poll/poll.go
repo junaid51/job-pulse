@@ -462,17 +462,19 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	}
 	stats.Removed += excluded.RowsAffected()
 
-	// Probation. A discovered board that has produced nothing at all by the end
-	// of its window stops being polled — and the row stays, because the row is
-	// the memory of having tried. Delete it and next week's scout rediscovers
-	// the same dead board, forever.
+	// Probation. A discovered board that has never once delivered a posting by
+	// the end of its window stops being polled — and the row stays, because the
+	// row is the memory of having tried. Delete it and next week's scout
+	// rediscovers the same dead board, forever.
+	//
+	// "Never delivered", not "holds nothing today": postings age out after a
+	// fortnight, so the second question retires the small employer who posts one
+	// role every couple of months alongside the board that was always empty.
 	retired, err := pool.Exec(ctx, `
 		update companies set active = false
 		where origin = 'agent' and active
 		  and added_at < now() - $1::interval
-		  and not exists (
-			select 1 from jobs j
-			where j.provider = companies.provider and j.slug = companies.slug)`,
+		  and produced_at is null`,
 		ProbationPeriod.String())
 	if err != nil {
 		return stats, err
@@ -700,6 +702,18 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 	if err != nil {
 		recordResult(ctx, pool, c, err)
 		return 0, nil, err
+	}
+
+	// Remember that this board delivered. Probation is about whether a board
+	// has ever been worth reading, and "holds a posting today" is a different
+	// question: postings age out, so a board that produced once and went quiet
+	// looked identical to one that never produced at all.
+	if len(jobs) > 0 {
+		if _, err := pool.Exec(ctx,
+			`update companies set produced_at = now() where provider = $1 and slug = $2`,
+			c.Provider, c.Slug); err != nil {
+			return 0, nil, err
+		}
 	}
 
 	// The fetch is this board's complete current list, so anything stored from
