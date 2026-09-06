@@ -1,0 +1,53 @@
+# The scout: once a week, look for direct job boards belonging to employers
+# whose postings already match a saved search but only ever arrive through an
+# aggregator. Those jobs are reaching this reader hours late — jobspipe's median
+# lag measured twenty-one hours — and a direct board turns that into minutes.
+#
+# It runs here rather than on the backend for two reasons: this repository is
+# public, so GitHub's standard runners are free and have four cores against
+# Render's tenth of one; and a weekly agent has no business sharing a process
+# with the poller that has to survive.
+#
+# The model runs on the runner and costs nothing. If GROQ_API_KEY is set as a
+# secret it uses Groq's free tier instead, which is a far more capable model —
+# either way the scout only proposes. The server verifies every proposal itself.
+name: scout
+on:
+  schedule:
+    - cron: "23 4 * * 1" # Monday, early, before anyone is applying to anything
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: how many employers to look for
+        default: "5"
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: bring up a model
+        if: ${{ !secrets.GROQ_API_KEY }}
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/version && break; sleep 2; done
+          ollama pull "${SCOUT_LOCAL_MODEL}"
+        env:
+          SCOUT_LOCAL_MODEL: qwen2.5:7b
+
+      - name: scout
+        env:
+          JOBPULSE_API: ${{ vars.JOBPULSE_API || 'https://jobpulse-68gm.onrender.com' }}
+          POLL_TOKEN: ${{ secrets.POLL_TOKEN }}
+          # Groq's free tier if a key is present, the runner's own model if not.
+          SCOUT_MODEL_URL: ${{ secrets.GROQ_API_KEY && 'https://api.groq.com/openai/v1/chat/completions' || 'http://localhost:11434/v1/chat/completions' }}
+          SCOUT_MODEL: ${{ secrets.GROQ_API_KEY && 'llama-3.3-70b-versatile' || 'qwen2.5:7b' }}
+          SCOUT_MODEL_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: go run ./cmd/scout -targets ${{ inputs.targets || 5 }} -turns 12

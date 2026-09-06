@@ -108,6 +108,21 @@ check "quiet hours can be set" 200 "$(req PUT /api/devices/quiet-hours '{"from":
 check "a bad quiet window is refused" 400 "$(req PUT /api/devices/quiet-hours '{"from":99,"to":8}')"
 check "POST /api/devices needs a token" 400 "$(req POST /api/devices '{"platform":"web"}')"
 
+echo "discovery"
+check "GET /api/discovery" 200 "$(req GET '/api/discovery?limit=3')"
+check "  it offers only employer boards, no aggregators or tenant URLs" yes "$(python3 -c "
+import json
+offered = json.load(open('/tmp/smoke.out'))['providers']
+bad = [p for p in offered if p in ['careerjet','jobven','jobspipe','himalayas','jobicy','workday','oracle','phenom']]
+print('yes' if offered and not bad else 'no ' + str(bad))")"
+# Both of these are refusals, so they change nothing — which is what makes them
+# safe to run against production.
+check "an aggregator cannot be added as an employer board" 400 \
+  "$(req POST /api/boards '{"provider":"himalayas","slug":"whoever","employer":"Whoever"}')"
+check "a board that answers with nothing is refused" 422 \
+  "$(req POST /api/boards '{"provider":"greenhouse","slug":"jobpulse-smoke-no-such-board","employer":"Nobody"}')"
+check "  and the refusal is remembered" refused "$(field "['status']")"
+
 echo "polling"
 # 202 locally, 401 in production, where the endpoint carries POLL_TOKEN. Both
 # mean the request was answered without waiting for a cycle, which is the
