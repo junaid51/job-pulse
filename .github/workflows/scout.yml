@@ -32,20 +32,29 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # A model on the runner, unless a Groq key makes one unnecessary. The
+      # check is in the script rather than an `if:` because the secrets context
+      # is not dependable in a step condition.
       - name: bring up a model
-        if: ${{ !secrets.GROQ_API_KEY }}
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SCOUT_LOCAL_MODEL: qwen2.5:7b
         run: |
+          if [ -n "$GROQ_API_KEY" ]; then
+            echo "Groq key present; no local model needed"
+            exit 0
+          fi
           curl -fsSL https://ollama.com/install.sh | sh
           nohup ollama serve > /tmp/ollama.log 2>&1 &
-          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/version && break; sleep 2; done
-          ollama pull "${SCOUT_LOCAL_MODEL}"
-        env:
-          SCOUT_LOCAL_MODEL: qwen2.5:7b
+          for i in $(seq 1 30); do curl -sf http://localhost:11434/api/version >/dev/null && break; sleep 2; done
+          ollama pull "$SCOUT_LOCAL_MODEL"
 
       - name: scout
         env:
-          JOBPULSE_API: ${{ vars.JOBPULSE_API || 'https://jobpulse-68gm.onrender.com' }}
-          POLL_TOKEN: ${{ secrets.POLL_TOKEN }}
+          # The names this repository already uses, set when the poll alarm
+          # was wired up — no new secrets to create.
+          JOBPULSE_API: ${{ secrets.JOBPULSE_URL }}
+          POLL_TOKEN: ${{ secrets.JOBPULSE_POLL_TOKEN }}
           # Groq's free tier if a key is present, the runner's own model if not.
           SCOUT_MODEL_URL: ${{ secrets.GROQ_API_KEY && 'https://api.groq.com/openai/v1/chat/completions' || 'http://localhost:11434/v1/chat/completions' }}
           SCOUT_MODEL: ${{ secrets.GROQ_API_KEY && 'llama-3.3-70b-versatile' || 'qwen2.5:7b' }}
