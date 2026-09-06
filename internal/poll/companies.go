@@ -25,6 +25,9 @@ type Company struct {
 	// waits hours between polls, and a transient failure used to cost the whole
 	// interval — twelve hours of blindness for one 502.
 	LastFailed bool
+	// Origin is "file" for a board listed in companies.txt and "agent" for one
+	// discovered at runtime. It decides who may delete the row.
+	Origin string
 }
 
 // displayName is what jobs from this board are labelled with when the provider
@@ -96,9 +99,10 @@ func SyncCompanies(ctx context.Context, pool *pgxpool.Pool, path string) (int, e
 	for i, c := range companies {
 		provs[i], slugs[i] = c.Provider, c.Slug
 		_, err := tx.Exec(ctx, `
-			insert into companies (provider, slug, name)
-			values ($1, $2, $3)
-			on conflict (provider, slug) do update set name = excluded.name`,
+			insert into companies (provider, slug, name, origin)
+			values ($1, $2, $3, 'file')
+			on conflict (provider, slug) do update
+			set name = excluded.name, origin = 'file'`,
 			c.Provider, c.Slug, c.Name)
 		if err != nil {
 			return 0, err
@@ -107,7 +111,8 @@ func SyncCompanies(ctx context.Context, pool *pgxpool.Pool, path string) (int, e
 
 	_, err = tx.Exec(ctx, `
 		delete from companies c
-		where not exists (
+		where c.origin = 'file'
+		  and not exists (
 			select 1 from unnest($1::text[], $2::text[]) as f(provider, slug)
 			where f.provider = c.provider and f.slug = c.slug
 		)`, provs, slugs)
@@ -120,8 +125,9 @@ func SyncCompanies(ctx context.Context, pool *pgxpool.Pool, path string) (int, e
 
 func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	rows, err := pool.Query(ctx,
-		`select provider, slug, name, last_polled_at, coalesce(last_error, '') <> ''
-		 from companies order by provider, slug`)
+		`select provider, slug, name, last_polled_at,
+		        coalesce(last_error, '') <> '', origin
+		 from companies where active order by provider, slug`)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +136,8 @@ func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	var companies []Company
 	for rows.Next() {
 		var c Company
-		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name, &c.LastPolledAt, &c.LastFailed); err != nil {
+		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name, &c.LastPolledAt,
+			&c.LastFailed, &c.Origin); err != nil {
 			return nil, err
 		}
 		companies = append(companies, c)
