@@ -13,6 +13,26 @@ matches it against search profiles, and pushes one summary per profile to the
 phone; the app is an installable PWA with search, sorting and push. A full cycle
 takes a few seconds; the deployment runs entirely on free tiers.
 
+## The scout
+
+Once a week, `cmd/scout` looks for direct boards belonging to employers whose
+postings already match a saved search but only ever arrive through an
+aggregator — jobs that are reaching you hours late when a direct board would
+deliver them in minutes.
+
+```bash
+# against a local backend, with a model on your own machine and no keys at all
+docker run -d -p 11434:11434 -v ollama-models:/root/.ollama ollama/ollama
+docker exec ollama ollama pull qwen2.5:7b
+go run ./cmd/scout -targets 3
+```
+
+It proposes; it never decides. `POST /api/boards` probes each offer itself and
+refuses anything that does not answer with reachable postings, so a confident
+wrong answer costs nothing. In CI it runs on GitHub's free public-repository
+runners with the model on the runner — or on Groq's free tier if `GROQ_API_KEY`
+is set as a secret.
+
 ## Tests
 
 ```bash

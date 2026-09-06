@@ -377,6 +377,37 @@ that grows at the head shows duplicates. Ten extra lines, one real bug avoided.
 No auth, per the brief. That means: bind to `127.0.0.1` at home, or reach it
 through a private tunnel. Do not put this on a public IP.
 
+### Discovery (added 2026-09-06)
+
+```
+GET  /api/discovery?limit=  employers worth looking for, and everything already judged
+POST /api/boards            offer a board; the server probes it and decides
+```
+
+Both carry the poll token. They exist so a board can be found while the app is
+running: `companies.txt` used to be written into the `companies` table at every
+boot with anything absent deleted, which meant discovery had to end in a pull
+request, and a pull request nobody merges finds nobody a job. Rows now carry an
+`origin`; the file reconciles only its own.
+
+The rule that makes this safe is that **whatever proposes a board does not get
+to decide**. `POST /api/boards` probes the board itself, with the provider code
+the poller uses, and refuses anything that does not independently answer with
+postings this hunt can reach. A scout driven by a 3B model proposed a Greenhouse
+board it had itself just probed and found empty, reasoning that "Air Arabia is a
+major company and may have Gulf postings"; the gate refused it on the numbers.
+
+A board that survives the gate is on probation for a fortnight. Producing
+nothing retires it — `active = false`, never a delete, because the row is the
+memory of having tried, and `board_candidates` keeps the refusals for the same
+reason. That table is doing in SQL what `companies.txt` has been doing in
+comments: "dubizzle, third sweep, every posting still dated 2023, stop probing
+it."
+
+The budget is a hundred discovered boards. Production polls 202 in 26 seconds
+against a five-minute interval, so the ceiling before cycles overlap is around a
+thousand — and overlapping cycles are how the poller died the first time.
+
 ---
 
 ## 8. Web app
@@ -479,6 +510,23 @@ has been over-designed.
 ---
 
 ## 11. What I deliberately did NOT build
+
+**A model anywhere near the notification path.** The whole product is the gap
+between a posting appearing and this phone buzzing. `cmd/scout` runs weekly, in
+GitHub Actions, on a free public-repository runner, and touches nothing the
+poller depends on: it reads `/api/discovery`, probes hiring systems, and offers
+what it finds. If it is broken, or rate-limited, or hallucinating, the app
+behaves exactly as it does without it.
+
+What the model is actually for is narrow, and worth stating because it took
+measuring to find out. Turning "Lean Technologies" into `leantech` is a string
+transformation, and both a 3B and a 7B model failed it identically — they probed
+`lean-technologies` six times and never tried another spelling — so the sweep is
+code. What the model does is read a name like "Halian | Managed Services,
+Recruitment Agency & Contract Staffing", know the employer is Halian, and look
+at what came back to say whether it is really them. The 3B could not reliably
+take the final action even when told to (it announced the proposal and called
+nothing); the 7B does. Groq's free tier is wired in for when a key exists.
 
 **Global job search / crawling.** No provider offers it, and getting it means
 scraping aggregators or driving a headless browser. A curated `companies.txt` is
