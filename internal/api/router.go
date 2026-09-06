@@ -34,6 +34,11 @@ func NewRouter(pool *pgxpool.Pool, notifier *notify.Notifier) http.Handler {
 		r.Post("/notifications/seen", markSeen(pool))
 
 		r.Get("/boards", listBoards(pool))
+		// Discovery. Both carry the poll token: they describe the machine and
+		// they change what it watches, which is nobody's business but the
+		// deployment's.
+		r.Get("/discovery", discoveryTargets(pool))
+		r.Post("/boards", addBoard(pool))
 
 		r.Post("/devices", registerDevice(pool))
 		r.Get("/devices/status", deviceStatus(pool))

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -271,6 +272,7 @@ type Stats struct {
 	NewMatches int   `json:"new_matches"`
 	Removed    int64 `json:"removed"`
 	Pruned     int64 `json:"pruned"`
+	Retired    int64 `json:"retired"`
 }
 
 // Run polls immediately, then every interval until ctx is cancelled.
@@ -306,6 +308,7 @@ func logCycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier
 		"new_matches", stats.NewMatches,
 		"removed", stats.Removed,
 		"pruned", stats.Pruned,
+		"retired", stats.Retired,
 		"duration", time.Since(start).Round(time.Millisecond).String(),
 	)
 }
@@ -458,6 +461,35 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 		return stats, err
 	}
 	stats.Removed += excluded.RowsAffected()
+
+	// Probation. A discovered board that has produced nothing at all by the end
+	// of its window stops being polled — and the row stays, because the row is
+	// the memory of having tried. Delete it and next week's scout rediscovers
+	// the same dead board, forever.
+	retired, err := pool.Exec(ctx, `
+		update companies set active = false
+		where origin = 'agent' and active
+		  and added_at < now() - $1::interval
+		  and not exists (
+			select 1 from jobs j
+			where j.provider = companies.provider and j.slug = companies.slug)`,
+		ProbationPeriod.String())
+	if err != nil {
+		return stats, err
+	}
+	if n := retired.RowsAffected(); n > 0 {
+		if _, err := pool.Exec(ctx, `
+			update board_candidates c set verdict = 'retired',
+			       reason = 'produced no postings during probation', decided_at = now()
+			from companies co
+			where co.provider = c.provider and co.slug = c.slug
+			  and co.origin = 'agent' and not co.active`); err != nil {
+			return stats, err
+		}
+		slog.Info("discovered boards retired", "count", n,
+			"after", ProbationPeriod.String())
+		stats.Retired += n
+	}
 
 	// Matches are derived data, so every cycle re-derives them: editing the
 	// alias dictionary is meant to fix what a profile finds, and without this
@@ -745,6 +777,23 @@ type storedJob struct {
 	id  int64
 	job providers.Job
 }
+
+// AggregatorProviders is the aggregator set, for callers outside this package
+// that need to tell a search apart from an employer's own board.
+func AggregatorProviders() []string {
+	out := make([]string, 0, len(aggregator))
+	for name := range aggregator {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ProbationPeriod is how long a board discovered at runtime has to produce
+// something before it is retired. It was added on the strength of one probe;
+// the only honest test is what it actually delivers, and the currency is
+// postings stored.
+const ProbationPeriod = 14 * 24 * time.Hour
 
 // aggregator names the providers whose boards are a query across many employers
 // rather than one employer's own board.
