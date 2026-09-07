@@ -111,9 +111,22 @@ type judged struct {
 }
 
 type workList struct {
-	Targets   []target `json:"targets"`
-	Skip      []judged `json:"do_not_try"`
+	Targets []target `json:"targets"`
+	Skip    []judged `json:"do_not_try"`
+	// Providers is everything that may be proposed; Sweepable is the narrower
+	// set a spelling sweep can reach. A tenant on Workday or Oracle only ever
+	// arrives by reading it off a careers page.
 	Providers []string `json:"providers"`
+	Sweepable []string `json:"name_addressable"`
+}
+
+// sweep is the list to try spellings against, falling back to everything the
+// server will accept if an older deployment does not send one.
+func (w workList) sweep() []string {
+	if len(w.Sweepable) > 0 {
+		return w.Sweepable
+	}
+	return w.Providers
 }
 
 func fetchWork(ctx context.Context, cfg config) (workList, error) {
@@ -265,6 +278,20 @@ func toolSpecs(providerNames []string) []map[string]any {
 			}, "required": []string{"employer"}},
 		}},
 		{"type": "function", "function": map[string]any{
+			"name":        "find_hiring_system",
+			"description": "Open every plausible careers page for an employer at once and report which hiring systems they name. Use this when find_boards comes up empty: large employers run systems addressed by a tenant address rather than their name, and their careers page gives it away.",
+			"parameters": map[string]any{"type": "object", "properties": map[string]any{
+				"employer": map[string]any{"type": "string"},
+			}, "required": []string{"employer"}},
+		}},
+		{"type": "function", "function": map[string]any{
+			"name":        "read_careers_page",
+			"description": "Open a company's careers page and report which hiring system it uses. Use this when find_boards comes up empty: big employers run systems addressed by a tenant address rather than their name, and the page gives it away. Try careers.<company>.com, www.<company>.com/careers, or a link this tool suggested.",
+			"parameters": map[string]any{"type": "object", "properties": map[string]any{
+				"url": map[string]any{"type": "string", "description": "the page to open, with https://"},
+			}, "required": []string{"url"}},
+		}},
+		{"type": "function", "function": map[string]any{
 			"name":        "probe_board",
 			"description": "Read an employer's job board on one applicant tracking system. Says how many postings it has and how many are somewhere this job hunt can reach.",
 			"parameters": map[string]any{"type": "object", "properties": map[string]any{
@@ -291,8 +318,18 @@ Given an employer, work out whether they publish jobs on a hiring system this
 app can read, and propose it if they do.
 
 How to work:
-- Call find_boards first with the employer's name. It searches every system and
-  tries the usual spellings, so one call does most of the work.
+- Call find_boards first with the employer's name. It searches the systems that
+  are addressed by a company's name and tries the usual spellings, so one call
+  does most of the work.
+- If that finds nothing, call find_hiring_system with the employer's name. It
+  opens their careers pages and reports the hiring system each one names. Large
+  employers run systems addressed by a tenant address rather than their name, so
+  this is the only way to reach them: every spelling of "Etihad" missed, while
+  their careers page said "EtihadAirways5" — ninety-eight postings, half of them
+  in Abu Dhabi.
+- Whatever it reports, probe it before proposing it.
+- read_careers_page opens one specific page, for following a link another tool
+  suggested.
 - If it finds nothing, the name may be the problem rather than the employer.
   Company names in job postings carry taglines and legal wrappers:
   "Halian | Managed Services, Recruitment Agency" is Halian, and
@@ -386,7 +423,7 @@ func hunt(ctx context.Context, cfg config, work workList, t target) (outcome, er
 				if strings.TrimSpace(name) == "" {
 					name = t.Employer
 				}
-				answer = findBoards(ctx, work.Providers, name)
+				answer = findBoards(ctx, work.sweep(), name)
 				// Record the hits so a proposal can be bound to one of them.
 				encoded, _ := json.Marshal(answer["hits"])
 				var hits []map[string]any
@@ -398,6 +435,14 @@ func hunt(ctx context.Context, cfg config, work workList, t target) (outcome, er
 						probed[provider+":"+slug] = h
 					}
 				}
+			case "find_hiring_system":
+				name := args["employer"]
+				if strings.TrimSpace(name) == "" {
+					name = t.Employer
+				}
+				answer = findHiringSystem(ctx, name)
+			case "read_careers_page":
+				answer = readCareersPage(ctx, args["url"])
 			case "probe_board":
 				if skip[args["provider"]+":"+args["slug"]] {
 					// Already judged once. Saying so is cheaper than probing,

@@ -137,36 +137,52 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, map[string]any{
-			"targets":    targets,
-			"do_not_try": skip,
-			"providers":  discoverable(),
+			"targets":          targets,
+			"do_not_try":       skip,
+			"providers":        discoverable(),
+			"name_addressable": sweepable(),
 		})
 	}
 }
 
-// discoverable is the set of providers a board may be discovered on: one
-// employer's own board, addressed by a slug you could guess from the employer's
-// name. Two exclusions, both learned by watching a scout work:
+// Two lists, because they answer different questions.
 //
-// Aggregators ignore the slug and answer with their whole feed, so probing
-// "himalayas:namshi" returned twenty postings that had nothing to do with
-// Namshi — and the scout proposed it, because the gate only asked whether
-// reachable postings came back. It would have polled the same feed twice under
-// a made-up employer.
+// nameAddressable is what a sweep over spellings of a company's name can reach:
+// one employer's own board, addressed by something you could guess. Workday,
+// Oracle and Phenom are not on it — they are addressed by a tenant host with
+// site and facet ids, and a scout burned three turns discovering that "namshi"
+// is not a hostname.
 //
-// Workday, Oracle and Phenom are addressed by a tenant URL with facet ids in
-// it, which no amount of guessing from a company name will produce. The scout
-// burned three turns discovering that "namshi" is not a hostname. Finding those
-// tenants is real work and worth doing, but it is not this.
-var discoverableProviders = []string{
+// discoverable is what may be *proposed*, which is wider, because a careers
+// page will hand over a tenant that no guess produces: Etihad's SmartRecruiters
+// id is "EtihadAirways5" and Emaar's Oracle tenant is
+// "emhm.fa.em2.oraclecloud.com". Aggregators stay out of both — they ignore the
+// slug and answer with their whole feed, so probing "himalayas:namshi" returned
+// twenty postings that had nothing to do with Namshi.
+var nameAddressable = []string{
 	"ashby", "greenhouse", "lever", "recruitee", "smartrecruiters",
 	"teamtailor", "workable",
 }
 
-func discoverable() []string {
-	names := make([]string, 0, len(discoverableProviders))
-	for _, name := range discoverableProviders {
+func sweepable() []string {
+	names := make([]string, 0, len(nameAddressable))
+	for _, name := range nameAddressable {
 		if _, known := providers.All[name]; known {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func discoverable() []string {
+	aggregators := map[string]bool{}
+	for _, name := range poll.AggregatorProviders() {
+		aggregators[name] = true
+	}
+	names := make([]string, 0, len(providers.All))
+	for name := range providers.All {
+		if !aggregators[name] {
 			names = append(names, name)
 		}
 	}
@@ -205,9 +221,7 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 		fetch, known := providers.All[in.Provider]
 		if known && !isDiscoverable(in.Provider) {
 			writeError(w, http.StatusBadRequest, in.Provider+
-				" is not a provider a board can be discovered on: it is either a "+
-				"search across many employers, or addressed by a tenant URL rather "+
-				"than the employer's name")
+				" is a search across many employers, not one employer's own board")
 			return
 		}
 		if !known || in.Slug == "" {
