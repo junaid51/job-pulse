@@ -127,11 +127,19 @@ if [ -z "${POLL_TOKEN:-}" ] && [ "$(req GET '/api/discovery?limit=1')" = "401" ]
   echo "  (set POLL_TOKEN to check the rest of discovery against this deployment)"
 else
   check "GET /api/discovery" 200 "$(req GET '/api/discovery?limit=3')"
-  check "  it offers only employer boards, no aggregators or tenant URLs" yes "$(python3 -c "
+  # Two lists with different jobs. Anything but an aggregator may be proposed,
+  # because a careers page hands over Workday and Oracle tenants no guess would
+  # produce; only name-addressed systems belong in a sweep over spellings.
+  check "  no aggregator may be proposed" yes "$(python3 -c "
 import json
 offered = json.load(open('/tmp/smoke.out'))['providers']
-bad = [p for p in offered if p in ['careerjet','jobven','jobspipe','himalayas','jobicy','workday','oracle','phenom']]
+bad = [p for p in offered if p in ['careerjet','jobven','jobspipe','himalayas','jobicy']]
 print('yes' if offered and not bad else 'no ' + str(bad))")"
+  check "  and the name sweep excludes tenant-addressed systems" yes "$(python3 -c "
+import json
+sweep = json.load(open('/tmp/smoke.out'))['name_addressable']
+bad = [p for p in sweep if p in ['careerjet','jobven','jobspipe','himalayas','jobicy','workday','oracle','phenom']]
+print('yes' if sweep and not bad else 'no ' + str(bad))")"
   # Both of these are refusals, so they change nothing — which is what makes
   # them safe to run against production.
   check "an aggregator cannot be added as an employer board" 400 \
