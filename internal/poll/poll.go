@@ -645,7 +645,8 @@ func deliverNotifications(ctx context.Context, pool *pgxpool.Pool, notifier *not
 	}
 
 	rows, err := pool.Query(ctx, `
-		select p.owner, p.name, m.profile_id, m.job_id, j.company, j.title, j.location, j.url
+		select p.owner, p.name, m.profile_id, m.job_id,
+		       j.company, j.title, j.location, j.url, j.salary
 		from matches m
 		join jobs j on j.id = m.job_id
 		join profiles p on p.id = m.profile_id
@@ -670,12 +671,12 @@ func deliverNotifications(ctx context.Context, pool *pgxpool.Pool, notifier *not
 
 	for rows.Next() {
 		var (
-			owner, search             string
-			profileID, jobID          int64
-			company, title, loc, jURL string
+			owner, search                     string
+			profileID, jobID                  int64
+			company, title, loc, jURL, salary string
 		)
 		if err := rows.Scan(&owner, &search, &profileID, &jobID,
-			&company, &title, &loc, &jURL); err != nil {
+			&company, &title, &loc, &jURL, &salary); err != nil {
 			return err
 		}
 		identity := strings.ToLower(company) + "|" + strings.ToLower(title)
@@ -685,7 +686,10 @@ func deliverNotifications(ctx context.Context, pool *pgxpool.Pool, notifier *not
 		p, seen := postings[owner][identity]
 		if !seen {
 			p = &pending{announcement: notify.Announcement{
-				Job: providers.Job{Company: company, Title: title, Location: loc, URL: jURL},
+				Job: providers.Job{
+					Company: company, Title: title, Location: loc,
+					URL: jURL, Salary: salary,
+				},
 			}}
 			postings[owner][identity] = p
 			byOwner[owner] = append(byOwner[owner], identity)
