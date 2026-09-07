@@ -380,7 +380,8 @@ through a private tunnel. Do not put this on a public IP.
 ### Discovery (added 2026-09-06)
 
 ```
-GET  /api/discovery?limit=  employers worth looking for, and everything already judged
+GET  /api/discovery?limit=  employers worth looking for, boards that have stopped
+                            answering, and everything already judged
 POST /api/boards            offer a board; the server probes it and decides
 ```
 
@@ -413,6 +414,31 @@ memory of having tried, and `board_candidates` keeps the refusals for the same
 reason. That table is doing in SQL what `companies.txt` has been doing in
 comments: "dubizzle, third sweep, every posting still dated 2023, stop probing
 it."
+
+The other half of discovery is boards that have **stopped** answering, and it
+matters more, because that failure is silent: a dead board 404s once a cycle,
+its postings age out over a fortnight, and the alerts it would have sent simply
+never arrive. ClickHouse and PhonePe both died in one week — PhonePe was 64
+postings with 52 reachable — and the only reason either was noticed is a human
+reading poll logs. `companies.failing_since` dates the trouble rather than
+merely reporting it, so a renamed slug can be told from a database wobble, and a
+board is only chased after six hours of failing.
+
+Chasing one starts with the sweep rather than the model, because a company that
+moves systems usually keeps its name: a board on another system bearing this
+employer's name and carrying reachable postings is the answer, and ClickHouse
+left Greenhouse for Ashby under the same slug. Handed exactly that on its first
+turn, a 7B model instead read the careers page, took a *different company's*
+board off it — Langfuse's, linked from ClickHouse's page — and offered it as the
+replacement, twice. So resemblance to the employer's name is now checked in code
+for every name-addressed candidate, tenant hosts excepted since being on the
+company's own page is the evidence there. When the sweep answers plainly the
+replacement is proposed without a model turn at all, in about two seconds.
+
+A replacement may retire what it takes over from, but only a board discovery
+itself added and only one genuinely failing. A board listed in `companies.txt`
+belongs to whoever wrote the file — deactivating it here would be overruled at
+the next boot, and silently — so the answer says to remove the line instead.
 
 The budget is a hundred discovered boards. Production polls 202 in 26 seconds
 against a five-minute interval, so the ceiling before cycles overlap is around a
