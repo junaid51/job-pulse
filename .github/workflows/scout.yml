@@ -14,12 +14,17 @@
 name: scout
 on:
   schedule:
-    - cron: "23 4 * * 1" # Monday, early, before anyone is applying to anything
+    # Daily, not weekly. The work list has a half-life: eight to eighteen new
+    # employers a day turn up whose postings match a saved search but only
+    # arrive through an aggregator, and aggregator postings age out after seven
+    # days, taking their matches with them. A weekly run would watch most of
+    # its own candidates expire before ever looking at them.
+    - cron: "23 4 * * *"
   workflow_dispatch:
     inputs:
       targets:
         description: how many employers to look for
-        default: "5"
+        default: "8"
 
 jobs:
   scout:
@@ -32,10 +37,21 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # Ask what there is to do before spending four minutes downloading a
+      # model. Most days there will be something; on the days there is not, this
+      # run costs seconds.
+      - name: what is worth looking for
+        id: work
+        env:
+          JOBPULSE_API: ${{ secrets.JOBPULSE_URL }}
+          POLL_TOKEN: ${{ secrets.JOBPULSE_POLL_TOKEN }}
+        run: go run ./cmd/scout -list | tee -a "$GITHUB_OUTPUT"
+
       # A model on the runner, unless a Groq key makes one unnecessary. The
       # check is in the script rather than an `if:` because the secrets context
       # is not dependable in a step condition.
       - name: bring up a model
+        if: steps.work.outputs.targets != '0'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SCOUT_LOCAL_MODEL: qwen2.5:7b
@@ -50,6 +66,7 @@ jobs:
           ollama pull "$SCOUT_LOCAL_MODEL"
 
       - name: scout
+        if: steps.work.outputs.targets != '0'
         env:
           # The names this repository already uses, set when the poll alarm
           # was wired up — no new secrets to create.
@@ -59,4 +76,4 @@ jobs:
           SCOUT_MODEL_URL: ${{ secrets.GROQ_API_KEY && 'https://api.groq.com/openai/v1/chat/completions' || 'http://localhost:11434/v1/chat/completions' }}
           SCOUT_MODEL: ${{ secrets.GROQ_API_KEY && 'llama-3.3-70b-versatile' || 'qwen2.5:7b' }}
           SCOUT_MODEL_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: go run ./cmd/scout -targets ${{ inputs.targets || 5 }} -turns 12
+        run: go run ./cmd/scout -targets ${{ inputs.targets || 8 }} -turns 12

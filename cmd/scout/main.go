@@ -62,6 +62,9 @@ func run() error {
 	}
 	flag.IntVar(&cfg.maxTargets, "targets", 5, "how many employers to look for")
 	flag.IntVar(&cfg.maxTurns, "turns", 10, "how many model turns to allow per employer")
+	// -list needs no model at all, so a scheduled run can find out whether
+	// there is anything to do before spending four minutes downloading one.
+	listOnly := flag.Bool("list", false, "print what there is to look for, and stop")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Minute)
@@ -70,6 +73,13 @@ func run() error {
 	work, err := fetchWork(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("asking the server what is worth looking for: %w", err)
+	}
+	if *listOnly {
+		for _, t := range work.Targets {
+			slog.Info("worth looking for", "employer", t.Employer, "matches", t.Matches)
+		}
+		fmt.Printf("targets=%d\n", len(work.Targets))
+		return nil
 	}
 	if len(work.Targets) == 0 {
 		slog.Info("nothing to look for; every matched employer already has a board")
