@@ -365,9 +365,20 @@ func Summarize(announcements []Announcement) (title, body string) {
 		if only.Job.Company != "" {
 			title += " · " + only.Job.Company
 		}
+		// Where, then what it pays, then what caught it. Pay is the commonest
+		// reason this reader decides not to apply, and one posting in five
+		// states it, so putting it here saves opening the app to find out.
+		where := joinAnd(only.Locations)
+		if pay := strings.TrimSpace(only.Job.Salary); pay != "" {
+			if where == "" {
+				where = pay
+			} else {
+				where += " · " + pay
+			}
+		}
 		var parts []string
-		if places := joinAnd(only.Locations); places != "" {
-			parts = append(parts, places)
+		if where != "" {
+			parts = append(parts, where)
 		}
 		if searches := joinAnd(only.Searches); searches != "" {
 			parts = append(parts, "caught by "+searches)

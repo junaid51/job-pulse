@@ -29,6 +29,35 @@ func TestSummarizeOnePostingIsActionableFromTheLockScreen(t *testing.T) {
 	}
 }
 
+// Pay is the first thing this reader checks and the commonest reason they do
+// not apply. One in five matched postings carries it — "$20 - $50/hour" — and
+// until now you had to open the app to find that out.
+func TestSummarizeShowsThePayWhenTheBoardStatesIt(t *testing.T) {
+	_, body := Summarize([]Announcement{{
+		Job: providers.Job{
+			Title: "Senior Backend Engineer", Company: "Quik Hire Staffing",
+			Salary: "$20 - $50/hour",
+		},
+		Locations: []string{"United Arab Emirates"},
+		Searches:  []string{"Backend · Dubai"},
+	}})
+	if body != "United Arab Emirates · $20 - $50/hour — caught by Backend · Dubai" {
+		t.Errorf("body = %q", body)
+	}
+}
+
+// Most boards say nothing about pay, and an alert must not imply they did.
+func TestSummarizeSaysNothingAboutPayWhenTheBoardDidNot(t *testing.T) {
+	_, body := Summarize([]Announcement{{
+		Job:       providers.Job{Title: "DevOps Engineer", Company: "Devoteam"},
+		Locations: []string{"Riyadh"},
+		Searches:  []string{"Devops · Gulf"},
+	}})
+	if body != "Riyadh — caught by Devops · Gulf" {
+		t.Errorf("body = %q", body)
+	}
+}
+
 func TestSummarizeNamesEverySearchThatCaughtIt(t *testing.T) {
 	_, body := Summarize([]Announcement{{
 		Job:       providers.Job{Title: "DevOps Engineer", Company: "Devoteam"},
