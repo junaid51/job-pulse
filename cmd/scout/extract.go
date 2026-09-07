@@ -146,8 +146,11 @@ func careerLinks(page, pageURL string) []string {
 	return out
 }
 
-// readCareersPage fetches a page and reports what hiring system it points at.
-func readCareersPage(ctx context.Context, rawURL string) map[string]any {
+// readCareersPage fetches one page and reports what hiring system it points at.
+// It filters by employer for the same reason findHiringSystem does: the model
+// followed this tool to careers.clickhouse.com, took Langfuse's board off it,
+// and offered it as ClickHouse's.
+func readCareersPage(ctx context.Context, rawURL, employer string) map[string]any {
 	target, err := url.Parse(strings.TrimSpace(rawURL))
 	if err != nil || (target.Scheme != "http" && target.Scheme != "https") {
 		return map[string]any{"error": "give me an http or https address"}
@@ -162,10 +165,19 @@ func readCareersPage(ctx context.Context, rawURL string) map[string]any {
 	if status != http.StatusOK {
 		return map[string]any{"fetched": false, "http_status": status}
 	}
+	mine, others := []candidate{}, 0
+	for _, c := range atsCandidates(page, target.String()) {
+		if employer == "" || resemblesEmployer(c.Provider, c.Slug, employer) {
+			mine = append(mine, c)
+			continue
+		}
+		others++
+	}
 	return map[string]any{
-		"fetched":          true,
-		"hiring_systems":   atsCandidates(page, target.String()),
-		"pages_worth_next": careerLinks(page, target.String()),
+		"fetched":                        true,
+		"hiring_systems":                 mine,
+		"other_companies_boards_ignored": others,
+		"pages_worth_next":               careerLinks(page, target.String()),
 	}
 }
 
@@ -254,6 +266,48 @@ func careersURLs(employer string) []string {
 	return out
 }
 
+// resemblesEmployer reports whether a slug plausibly belongs to this employer.
+//
+// A careers page mentions other companies' boards — partners, portfolio
+// companies, integrations. Chasing ClickHouse's dead Greenhouse board, the
+// scout read careers.clickhouse.com, picked "ashby:langfuse" off it, and
+// proposed Langfuse's board as ClickHouse's new one; only the guard stopped it,
+// and had Langfuse carried Gulf postings the gate would have accepted the wrong
+// company's board outright.
+//
+// Applied to name-addressed systems only. A Workday or Oracle tenant host bears
+// no relation to the company name — Emaar's is emhm.fa.em2.oraclecloud.com —
+// and finding one on the company's own careers page is evidence enough.
+func resemblesEmployer(provider, slug, employer string) bool {
+	switch provider {
+	case "oracle", "workday", "phenom":
+		return true
+	}
+	bare := func(in string) string {
+		var out []rune
+		for _, r := range strings.ToLower(in) {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+				out = append(out, r)
+			}
+		}
+		return string(out)
+	}
+	candidate := bare(slug)
+	if candidate == "" {
+		return false
+	}
+	for _, form := range append(slugVariants(employer), employer) {
+		name := bare(form)
+		if len(name) < 3 {
+			continue
+		}
+		if strings.Contains(candidate, name) || strings.Contains(name, candidate) {
+			return true
+		}
+	}
+	return false
+}
+
 // findHiringSystem opens every plausible careers page for an employer at once
 // and reports every hiring system any of them names.
 func findHiringSystem(ctx context.Context, employer string) map[string]any {
@@ -266,6 +320,7 @@ func findHiringSystem(ctx context.Context, employer string) map[string]any {
 		mu       sync.Mutex
 		readings []reading
 		opened   []string
+		ignored  int
 		wg       sync.WaitGroup
 	)
 	gate := make(chan struct{}, 6)
@@ -279,11 +334,19 @@ func findHiringSystem(ctx context.Context, employer string) map[string]any {
 			if err != nil || status != http.StatusOK {
 				return
 			}
-			found := atsCandidates(page, target)
+			mine, others := []candidate{}, 0
+			for _, c := range atsCandidates(page, target) {
+				if resemblesEmployer(c.Provider, c.Slug, employer) {
+					mine = append(mine, c)
+					continue
+				}
+				others++
+			}
 			mu.Lock()
 			opened = append(opened, target)
-			if len(found) > 0 {
-				readings = append(readings, reading{target, found})
+			ignored += others
+			if len(mine) > 0 {
+				readings = append(readings, reading{target, mine})
 			}
 			mu.Unlock()
 		}(target)
@@ -294,5 +357,8 @@ func findHiringSystem(ctx context.Context, employer string) map[string]any {
 		"pages_tried":  urls,
 		"pages_opened": opened,
 		"found":        readings,
+		// Said out loud rather than dropped in silence: these were other
+		// companies' boards mentioned on the page, not this employer's.
+		"other_companies_boards_ignored": ignored,
 	}
 }

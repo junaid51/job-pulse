@@ -78,17 +78,38 @@ func run() error {
 		for _, t := range work.Targets {
 			slog.Info("worth looking for", "employer", t.Employer, "matches", t.Matches)
 		}
-		fmt.Printf("targets=%d\n", len(work.Targets))
+		for _, a := range work.Ailing {
+			slog.Info("board has stopped answering", "board", a.Provider+":"+a.Slug,
+				"employer", a.Employer, "postings still held", a.PostingsHeld,
+				"error", truncate(a.Error, 80))
+		}
+		fmt.Printf("targets=%d\n", len(work.Targets)+len(work.Ailing))
 		return nil
 	}
-	if len(work.Targets) == 0 {
-		slog.Info("nothing to look for; every matched employer already has a board")
+	if len(work.Targets) == 0 && len(work.Ailing) == 0 {
+		slog.Info("nothing to do: every matched employer has a board and every board answers")
 		return nil
 	}
 	slog.Info("scouting", "targets", len(work.Targets), "already judged", len(work.Skip),
 		"model", cfg.model)
 
 	added, refused := 0, 0
+
+	// The broken ones first. A board that has stopped answering is losing
+	// alerts now, where a warm-list employer is only ever an improvement.
+	for i, a := range work.Ailing {
+		if i >= cfg.maxTargets {
+			break
+		}
+		outcome, err := chase(ctx, cfg, work, a)
+		if err != nil {
+			slog.Warn("gave up on an ailing board", "board", a.Provider+":"+a.Slug, "error", err)
+			continue
+		}
+		added += outcome.added
+		refused += outcome.refused
+	}
+
 	for i, t := range work.Targets {
 		if i >= cfg.maxTargets {
 			break
@@ -120,8 +141,21 @@ type judged struct {
 	Verdict  string `json:"verdict"`
 }
 
+// ailing is a board that has stopped answering. Worth chasing because the
+// failure is silent: it 404s once a cycle, its postings age out over a
+// fortnight, and the alerts it would have sent never arrive. ClickHouse and
+// PhonePe both died this week and only a human reading poll logs noticed.
+type ailing struct {
+	Provider     string `json:"provider"`
+	Slug         string `json:"slug"`
+	Employer     string `json:"employer"`
+	Error        string `json:"error"`
+	PostingsHeld int    `json:"postings_still_held"`
+}
+
 type workList struct {
 	Targets []target `json:"targets"`
+	Ailing  []ailing `json:"ailing"`
 	Skip    []judged `json:"do_not_try"`
 	// Providers is everything that may be proposed; Sweepable is the narrower
 	// set a spelling sweep can reach. A tenant on Workday or Oracle only ever
@@ -252,10 +286,15 @@ func findBoards(ctx context.Context, providerNames []string, employer string) ma
 
 // proposeBoard hands the guess to the server, which probes it again and
 // decides. Its answer is returned verbatim so the model reads its own verdict.
-func proposeBoard(ctx context.Context, cfg config, provider, slug, employer, reason string) map[string]any {
-	body, _ := json.Marshal(map[string]string{
+func proposeBoard(ctx context.Context, cfg config, provider, slug, employer, reason string,
+	replaces ...string) map[string]any {
+	payload := map[string]string{
 		"provider": provider, "slug": slug, "employer": employer, "reason": reason,
-	})
+	}
+	if len(replaces) > 0 && replaces[0] != "" {
+		payload["replaces"] = replaces[0]
+	}
+	body, _ := json.Marshal(payload)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		cfg.api+"/api/boards", bytes.NewReader(body))
 	if err != nil {
@@ -374,7 +413,7 @@ type toolCall struct {
 	} `json:"function"`
 }
 
-func hunt(ctx context.Context, cfg config, work workList, t target) (outcome, error) {
+func hunt(ctx context.Context, cfg config, work workList, t target, brief ...string) (outcome, error) {
 	var result outcome
 	skip := map[string]bool{}
 	for _, j := range work.Skip {
@@ -390,11 +429,15 @@ func hunt(ctx context.Context, cfg config, work workList, t target) (outcome, er
 	proposedAlready := map[string]bool{}
 	nudged := false
 
+	opening := fmt.Sprintf(
+		"Find the job board for: %s\n(%d of this reader's matches come from this employer, but only through an aggregator, which means they arrive hours late.)",
+		t.Employer, t.Matches)
+	if len(brief) > 0 && brief[0] != "" {
+		opening = brief[0]
+	}
 	messages := []chatMessage{
 		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: fmt.Sprintf(
-			"Find the job board for: %s\n(%d of this reader's matches come from this employer, but only through an aggregator, which means they arrive hours late.)",
-			t.Employer, t.Matches)},
+		{Role: "user", Content: opening},
 	}
 	tools := toolSpecs(work.Providers)
 
@@ -452,7 +495,7 @@ func hunt(ctx context.Context, cfg config, work workList, t target) (outcome, er
 				}
 				answer = findHiringSystem(ctx, name)
 			case "read_careers_page":
-				answer = readCareersPage(ctx, args["url"])
+				answer = readCareersPage(ctx, args["url"], t.Employer)
 			case "probe_board":
 				if skip[args["provider"]+":"+args["slug"]] {
 					// Already judged once. Saying so is cheaper than probing,
@@ -507,6 +550,46 @@ func hunt(ctx context.Context, cfg config, work workList, t target) (outcome, er
 	return result, nil
 }
 
+// chase works out where a dead board's postings went. Same tools and the same
+// gate as looking for a new one — what differs is the question, and that the
+// employer's name is already known.
+func chase(ctx context.Context, cfg config, work workList, a ailing) (outcome, error) {
+	employer := a.Employer
+	if employer == "" {
+		employer = a.Slug
+	}
+
+	// Sweep first, and if the sweep answers plainly, act on it. A company that
+	// has moved systems usually keeps its name, so a board on another system
+	// bearing this employer's name and carrying reachable postings is the
+	// answer — ClickHouse left Greenhouse for Ashby under the same slug. The
+	// model was handed exactly that on its first turn and wandered off to a
+	// different company's board instead, twice.
+	if best, ok := bestSweepHit(findBoards(ctx, work.sweep(), employer), employer); ok {
+		slog.Info("the sweep answered plainly", "board", best.provider+":"+best.slug,
+			"replacing", a.Provider+":"+a.Slug)
+		answer := proposeBoard(ctx, cfg, best.provider, best.slug, employer,
+			fmt.Sprintf("%s:%s stopped answering; this board carries the same employer's postings",
+				a.Provider, a.Slug),
+			a.Provider+":"+a.Slug)
+		var result outcome
+		switch answer["status"] {
+		case "watching":
+			result.added++
+		case "refused":
+			result.refused++
+		}
+		slog.Info("proposed a replacement", "answer", answer)
+		return result, nil
+	}
+
+	return hunt(ctx, cfg, work, target{Employer: employer}, fmt.Sprintf(
+		`The board %s:%s has stopped answering. It was %s, it still holds %d postings we can no longer refresh, and the error is: %s
+
+Work out where their postings went. A slug can be renamed, a company can move to another hiring system, and a company can stop hiring altogether — those are three different answers and only the first two have something to propose. If they have moved, propose the board they moved to. If they are simply gone, say so and stop.`,
+		a.Provider, a.Slug, employer, a.PostingsHeld, truncate(a.Error, 160)))
+}
+
 func ask(ctx context.Context, cfg config, messages []chatMessage, tools []map[string]any) (chatMessage, error) {
 	payload, err := json.Marshal(map[string]any{
 		"model": cfg.model, "messages": messages, "tools": tools,
@@ -553,6 +636,33 @@ func ask(ctx context.Context, cfg config, messages []chatMessage, tools []map[st
 }
 
 type pair struct{ provider, slug string }
+
+// bestSweepHit is the one board a sweep found that plainly belongs to this
+// employer and has postings worth having. More than one, or none, is a
+// judgement call and goes to the model.
+func bestSweepHit(sweep map[string]any, employer string) (pair, bool) {
+	encoded, err := json.Marshal(sweep["hits"])
+	if err != nil {
+		return pair{}, false
+	}
+	var hits []map[string]any
+	if err := json.Unmarshal(encoded, &hits); err != nil {
+		return pair{}, false
+	}
+	var found []pair
+	for _, h := range hits {
+		reachable, _ := h["reachable_postings"].(float64)
+		provider, _ := h["provider"].(string)
+		slug, _ := h["slug"].(string)
+		if reachable > 0 && resemblesEmployer(provider, slug, employer) {
+			found = append(found, pair{provider, slug})
+		}
+	}
+	if len(found) == 1 {
+		return found[0], true
+	}
+	return pair{}, false
+}
 
 // solePending is the one board that was found and not yet offered, if there is
 // exactly one. Anything else is a judgement call and stays with the model.

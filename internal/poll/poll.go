@@ -1064,7 +1064,16 @@ func recordResult(ctx context.Context, pool *pgxpool.Pool, c Company, cause erro
 	// timestamp never advances is first for ever. Six Careerjet searches went
 	// live behind an unauthorised IP and exactly one of them was ever tried —
 	// the other five were starved by the failure of the first.
-	query := `update companies set last_polled_at = now(), last_error = $3
+	// failing_since dates the trouble rather than merely reporting it: the
+	// first failure sets it, a success clears it, and a run of failures leaves
+	// it alone. Without that, a board renamed a week ago and a database wobble
+	// thirty seconds ago are the same row.
+	query := `update companies
+		set last_polled_at = now(), last_error = $3,
+		    failing_since = case
+		        when $3::text is null then null
+		        else coalesce(failing_since, now())
+		    end
 		where provider = $1 and slug = $2`
 	var lastError any
 	if cause != nil {

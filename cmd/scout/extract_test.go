@@ -121,3 +121,29 @@ func TestCareersURLsReachTheRealPages(t *testing.T) {
 		}
 	}
 }
+
+// A careers page names other companies' boards, and one of them nearly became
+// ClickHouse's replacement board.
+func TestOtherCompaniesBoardsAreNotThisEmployers(t *testing.T) {
+	if resemblesEmployer("ashby", "langfuse", "ClickHouse") {
+		t.Error("langfuse was accepted as ClickHouse")
+	}
+	if !resemblesEmployer("ashby", "clickhouse", "ClickHouse") {
+		t.Error("clickhouse was rejected as ClickHouse")
+	}
+	// The identifiers that name-guessing could not produce still have to pass.
+	if !resemblesEmployer("smartrecruiters", "EtihadAirways5", "Etihad Airways") {
+		t.Error("EtihadAirways5 was rejected as Etihad Airways")
+	}
+	if !resemblesEmployer("ashby", "leantech", "Lean Technologies") {
+		t.Error("leantech was rejected as Lean Technologies")
+	}
+	// A tenant host bears no relation to the company name, and being on the
+	// company's own careers page is the evidence.
+	if !resemblesEmployer("oracle", "emhm.fa.em2.oraclecloud.com|CX_1001", "Emaar") {
+		t.Error("an Oracle tenant found on Emaar's own page was rejected")
+	}
+	if !resemblesEmployer("workday", "kbr.wd5.myworkdayjobs.com/KBR_Careers", "Anything") {
+		t.Error("a Workday tenant was rejected")
+	}
+}

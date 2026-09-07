@@ -30,6 +30,12 @@ import (
 //
 // The scout holds no database credentials and gets no vote.
 
+// ailingFor is how long a board must have been failing before it is worth
+// investigating. Long enough that a Supabase connect wobble, a 502 from an
+// aggregator, or a board being briefly unreachable has resolved itself; short
+// enough that a renamed slug is chased while its postings are still fresh.
+const ailingFor = 6 * time.Hour
+
 // maxDiscoveredBoards caps what discovery may add. Cycle time is the real
 // constraint: production polls 202 boards in 26 seconds against a five-minute
 // interval, so the ceiling before cycles overlap is around a thousand — and
@@ -136,8 +142,54 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		// Boards that have stopped answering. A dead one is worse than a missing
+		// one: it costs no error anybody sees, its postings age out quietly, and
+		// the notifications it would have sent never arrive. Transient failures
+		// are excluded by time rather than by reading the error text, because
+		// the text is the provider's and changes without notice.
+		ailingRows, err := pool.Query(r.Context(), `
+			select c.provider, c.slug, c.name, coalesce(c.last_error, ''),
+			       c.failing_since, count(j.id)
+			from companies c
+			left join jobs j on j.provider = c.provider and j.slug = c.slug
+			where c.active
+			  and c.failing_since is not null
+			  and c.failing_since < now() - $1::interval
+			group by c.provider, c.slug, c.name, c.last_error, c.failing_since
+			order by count(j.id) desc, c.failing_since
+			limit $2`, ailingFor.String(), limit)
+		if err != nil {
+			serverError(w, "listing ailing boards", err)
+			return
+		}
+		defer ailingRows.Close()
+
+		type ailing struct {
+			Provider     string    `json:"provider"`
+			Slug         string    `json:"slug"`
+			Employer     string    `json:"employer"`
+			Error        string    `json:"error"`
+			FailingSince time.Time `json:"failing_since"`
+			PostingsHeld int       `json:"postings_still_held"`
+		}
+		broken := []ailing{}
+		for ailingRows.Next() {
+			var a ailing
+			if err := ailingRows.Scan(&a.Provider, &a.Slug, &a.Employer, &a.Error,
+				&a.FailingSince, &a.PostingsHeld); err != nil {
+				serverError(w, "reading ailing boards", err)
+				return
+			}
+			broken = append(broken, a)
+		}
+		if err := ailingRows.Err(); err != nil {
+			serverError(w, "reading ailing boards", err)
+			return
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
 			"targets":          targets,
+			"ailing":           broken,
 			"do_not_try":       skip,
 			"providers":        discoverable(),
 			"name_addressable": sweepable(),
@@ -210,6 +262,9 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 			Slug     string `json:"slug"`
 			Employer string `json:"employer"`
 			Reason   string `json:"reason"`
+			// Replaces names a board this one takes over from, as
+			// "provider:slug". Set when a company has moved hiring systems.
+			Replaces string `json:"replaces"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -321,10 +376,47 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, map[string]any{
+		answer := map[string]any{
 			"status": "watching", "postings": len(found), "reachable": reachable,
 			"storable":       storable,
 			"probation_days": int(poll.ProbationPeriod.Hours() / 24),
-		})
+		}
+		if note := retireReplaced(r, pool, in.Replaces); note != "" {
+			answer["replaced"] = note
+		}
+		writeJSON(w, http.StatusCreated, answer)
 	}
+}
+
+// retireReplaced stops polling a board this one takes over from — but only a
+// board that discovery added and that is genuinely failing. A board listed in
+// companies.txt belongs to whoever wrote the file: deactivating it here would
+// be overruled at the next boot anyway, and silently, so the answer says what
+// to do instead.
+func retireReplaced(r *http.Request, pool *pgxpool.Pool, replaces string) string {
+	provider, slug, ok := strings.Cut(strings.TrimSpace(replaces), ":")
+	if !ok || provider == "" || slug == "" {
+		return ""
+	}
+	var origin string
+	var failing *time.Time
+	err := pool.QueryRow(r.Context(),
+		`select origin, failing_since from companies where provider = $1 and slug = $2`,
+		provider, slug).Scan(&origin, &failing)
+	if err != nil {
+		return ""
+	}
+	if failing == nil {
+		return replaces + " is answering fine, so it stays"
+	}
+	if origin != "agent" {
+		return replaces + " is listed in companies.txt; remove the line there"
+	}
+	if _, err := pool.Exec(r.Context(), `
+		update companies set active = false
+		where provider = $1 and slug = $2 and origin = 'agent'`,
+		provider, slug); err != nil {
+		return ""
+	}
+	return replaces + " retired: it stopped answering and this board took over"
 }
