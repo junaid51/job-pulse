@@ -15,7 +15,7 @@ takes a few seconds; the deployment runs entirely on free tiers.
 
 ## The scout
 
-Once a week, `cmd/scout` looks for direct boards belonging to employers whose
+Once a day, `cmd/scout` looks for direct boards belonging to employers whose
 postings already match a saved search but only ever arrive through an
 aggregator — jobs that are reaching you hours late when a direct board would
 deliver them in minutes.
@@ -26,6 +26,11 @@ docker run -d -p 11434:11434 -v ollama-models:/root/.ollama ollama/ollama
 docker exec ollama ollama pull qwen2.5:7b
 go run ./cmd/scout -targets 3
 ```
+
+Daily rather than weekly because the work list has a half-life: eight to
+eighteen new such employers turn up a day, and aggregator postings age out after
+seven days, taking their matches with them. `scout -list` answers "is there
+anything to do" without needing a model at all, so a quiet day costs seconds.
 
 It proposes; it never decides. `POST /api/boards` probes each offer itself and
 refuses anything that does not answer with reachable postings, so a confident

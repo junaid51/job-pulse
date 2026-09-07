@@ -397,6 +397,16 @@ postings this hunt can reach. A scout driven by a 3B model proposed a Greenhouse
 board it had itself just probed and found empty, reasoning that "Air Arabia is a
 major company and may have Gulf postings"; the gate refused it on the numbers.
 
+The gate reports two counts and they are not the same number. `reachable` is
+postings somewhere this hunt can work; `storable` is how many the poller would
+actually keep, which applies the fourteen-day ingest rule. Speechify's
+Greenhouse board answers with 824 openings, 51 of them reachable and **none**
+storable — every one was first published months ago and is only being refreshed.
+It is a real board that polls cleanly and contributes nothing until the company
+posts something new, and probation is what decides whether it ever does.
+Acceptance still turns on `reachable`, because that is what proves the board is
+genuine; the record says which.
+
 A board that survives the gate is on probation for a fortnight. Producing
 nothing retires it — `active = false`, never a delete, because the row is the
 memory of having tried, and `board_candidates` keeps the refusals for the same
@@ -512,7 +522,7 @@ has been over-designed.
 ## 11. What I deliberately did NOT build
 
 **A model anywhere near the notification path.** The whole product is the gap
-between a posting appearing and this phone buzzing. `cmd/scout` runs weekly, in
+between a posting appearing and this phone buzzing. `cmd/scout` runs daily, in
 GitHub Actions, on a free public-repository runner, and touches nothing the
 poller depends on: it reads `/api/discovery`, probes hiring systems, and offers
 what it finds. If it is broken, or rate-limited, or hallucinating, the app

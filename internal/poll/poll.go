@@ -803,6 +803,27 @@ func AggregatorProviders() []string {
 	return out
 }
 
+// WouldStore reports how many of a board's postings this app would actually
+// keep: the ingest rules, applied by a caller that needs to know before the
+// board is ever polled. Without it the discovery gate accepted a board on the
+// strength of fifty-one reachable postings, every one of which ingest then
+// dropped — Speechify's Greenhouse board carries 824 openings whose first
+// publication is all more than a fortnight old, so it polled cleanly and
+// delivered nothing.
+func WouldStore(provider string, jobs []providers.Job) int {
+	kept := youngEnough(jobs, time.Now(), ageLimit(provider))
+	if !remoteFeedProviders[provider] {
+		return len(kept)
+	}
+	n := 0
+	for _, j := range kept {
+		if reachable(j.Location) {
+			n++
+		}
+	}
+	return n
+}
+
 // ProbationPeriod is how long a board discovered at runtime has to produce
 // something before it is retired. It was added on the strength of one probe;
 // the only honest test is what it actually delivers, and the currency is

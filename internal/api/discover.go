@@ -262,6 +262,12 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 				reachable++
 			}
 		}
+		// What the poller would actually keep today, which is not the same
+		// number: a board of openings first published months ago is a real board
+		// with nothing to contribute until it posts again. Acceptance still
+		// turns on reachable postings — the board is genuine, and probation is
+		// what decides whether it delivers — but the record has to say which.
+		storable := poll.WouldStore(in.Provider, found)
 		if err != nil || len(found) == 0 || reachable == 0 {
 			why := "the board answered with no postings this hunt can reach"
 			if err != nil {
@@ -280,7 +286,7 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 			}
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{
 				"status": "refused", "reason": why,
-				"postings": len(found), "reachable": reachable,
+				"postings": len(found), "reachable": reachable, "storable": storable,
 			})
 			return
 		}
@@ -289,11 +295,17 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 		if name == "" {
 			name = in.Slug
 		}
+		reason := strings.TrimSpace(in.Reason)
+		if storable == 0 {
+			reason = strings.TrimSpace(reason + " — nothing fresh enough to store today; " +
+				"every posting was first published over a fortnight ago, so it has " +
+				"until the end of probation to post something new")
+		}
 		if _, err := pool.Exec(r.Context(), `
 			insert into companies (provider, slug, name, origin, added_reason)
 			values ($1, $2, $3, 'agent', $4)
 			on conflict (provider, slug) do nothing`,
-			in.Provider, in.Slug, name, strings.TrimSpace(in.Reason)); err != nil {
+			in.Provider, in.Slug, name, reason); err != nil {
 			serverError(w, "adding the board", err)
 			return
 		}
@@ -303,7 +315,7 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 			on conflict (provider, slug) do update
 			set verdict = 'added', reason = excluded.reason, postings = excluded.postings,
 			    reachable = excluded.reachable, decided_at = now()`,
-			in.Provider, in.Slug, in.Employer, strings.TrimSpace(in.Reason),
+			in.Provider, in.Slug, in.Employer, reason,
 			len(found), reachable); err != nil {
 			serverError(w, "recording the addition", err)
 			return
@@ -311,6 +323,7 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"status": "watching", "postings": len(found), "reachable": reachable,
+			"storable":       storable,
 			"probation_days": int(poll.ProbationPeriod.Hours() / 24),
 		})
 	}
