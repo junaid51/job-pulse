@@ -608,8 +608,29 @@ func dueNow(companies []Company, now time.Time) []Company {
 	return due
 }
 
-// deliverNotifications announces the matches nobody has been told about yet,
-// one push per profile, and records what went out.
+// appendUnique keeps a list of the places a posting was listed, or the searches
+// that caught it, without repeating either.
+func appendUnique(list []string, value string) []string {
+	if value = strings.TrimSpace(value); value == "" {
+		return list
+	}
+	for _, existing := range list {
+		if strings.EqualFold(existing, value) {
+			return list
+		}
+	}
+	return append(list, value)
+}
+
+// deliverNotifications announces the postings nobody has been told about yet,
+// one push per device per cycle, and records what went out.
+//
+// The unit is a posting, not a match, and that is the whole change here.
+// Measured over a week: 294 alerts for 173 distinct jobs. Three overlapping
+// devops searches meant one Riyadh role buzzed the same phone three times, and
+// a role listed in nine cities arrived as nine separate rows. Both are now one
+// announcement carrying every search that caught it and every city it was
+// listed in.
 //
 // The queue lives in the database rather than in this cycle's results, which is
 // the whole point: a push that fails, or a phone inside its quiet hours, is
@@ -624,49 +645,79 @@ func deliverNotifications(ctx context.Context, pool *pgxpool.Pool, notifier *not
 	}
 
 	rows, err := pool.Query(ctx, `
-		select m.profile_id, m.job_id, j.company, j.title
+		select p.owner, p.name, m.profile_id, m.job_id, j.company, j.title, j.location, j.url
 		from matches m
 		join jobs j on j.id = m.job_id
 		join profiles p on p.id = m.profile_id
 		left join job_state s on s.owner = p.owner and s.job_id = m.job_id
 		where m.notified_at is null and s.hidden_at is null
-		order by m.profile_id, m.job_id`)
+		order by p.owner, lower(j.company), lower(j.title), m.job_id`)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	pendingJobs := map[int64][]providers.Job{}
-	pendingIDs := map[int64][]int64{}
+	// One posting, however many searches caught it and however many cities it
+	// was listed in. Keyed on company and title, which is what a reader means
+	// by "the same job".
+	type pending struct {
+		announcement notify.Announcement
+		profileIDs   []int64
+		jobIDs       []int64
+	}
+	byOwner := map[string][]string{}             // owner -> identities, in order
+	postings := map[string]map[string]*pending{} // owner -> identity -> posting
+
 	for rows.Next() {
-		var profileID, jobID int64
-		var job providers.Job
-		if err := rows.Scan(&profileID, &jobID, &job.Company, &job.Title); err != nil {
+		var (
+			owner, search             string
+			profileID, jobID          int64
+			company, title, loc, jURL string
+		)
+		if err := rows.Scan(&owner, &search, &profileID, &jobID,
+			&company, &title, &loc, &jURL); err != nil {
 			return err
 		}
-		pendingJobs[profileID] = append(pendingJobs[profileID], job)
-		pendingIDs[profileID] = append(pendingIDs[profileID], jobID)
+		identity := strings.ToLower(company) + "|" + strings.ToLower(title)
+		if postings[owner] == nil {
+			postings[owner] = map[string]*pending{}
+		}
+		p, seen := postings[owner][identity]
+		if !seen {
+			p = &pending{announcement: notify.Announcement{
+				Job: providers.Job{Company: company, Title: title, Location: loc, URL: jURL},
+			}}
+			postings[owner][identity] = p
+			byOwner[owner] = append(byOwner[owner], identity)
+		}
+		p.announcement.Locations = appendUnique(p.announcement.Locations, loc)
+		p.announcement.Searches = appendUnique(p.announcement.Searches, search)
+		p.profileIDs = append(p.profileIDs, profileID)
+		p.jobIDs = append(p.jobIDs, jobID)
 	}
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	owners := make(map[int64]profile, len(profiles))
-	for _, p := range profiles {
-		owners[p.id] = p
-	}
-	for profileID, jobs := range pendingJobs {
-		p, known := owners[profileID]
-		if !known {
+	for owner, identities := range byOwner {
+		announcements := make([]notify.Announcement, 0, len(identities))
+		var profileIDs, jobIDs []int64
+		for _, identity := range identities {
+			p := postings[owner][identity]
+			announcements = append(announcements, p.announcement)
+			profileIDs = append(profileIDs, p.profileIDs...)
+			jobIDs = append(jobIDs, p.jobIDs...)
+		}
+		if !notifier.Notify(ctx, owner, announcements) {
 			continue
 		}
-		if !notifier.Notify(ctx, p.owner, p.name, jobs) {
-			continue
-		}
+		// Every match behind an announcement is marked, or the ones that were
+		// folded into it would be announced again next cycle.
 		if _, err := pool.Exec(ctx, `
-			update matches set notified_at = now()
-			where profile_id = $1 and job_id = any($2::bigint[])`,
-			profileID, pendingIDs[profileID]); err != nil {
+			update matches m set notified_at = now()
+			from unnest($1::bigint[], $2::bigint[]) as told(profile_id, job_id)
+			where m.profile_id = told.profile_id and m.job_id = told.job_id`,
+			profileIDs, jobIDs); err != nil {
 			return err
 		}
 	}

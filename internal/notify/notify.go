@@ -86,11 +86,24 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentialsFile string) *Notif
 // The bool is whether this announcement is finished with. False means try
 // again next cycle, and it carries the quiet-hours case: a 3am match is not
 // dropped any more, it waits for morning and goes out then.
-func (n *Notifier) Notify(ctx context.Context, owner, profileName string, jobs []providers.Job) bool {
-	if len(jobs) == 0 {
+// Announcement is one posting worth telling somebody about: the posting itself,
+// every place it was listed, and every saved search that caught it.
+//
+// It exists because the unit of an alert is a job, not a match. Over one week
+// 294 alerts went out for 173 distinct jobs — three overlapping devops searches
+// meant a single Riyadh role buzzed the same phone three times, and a role
+// listed in nine cities was nine separate rows.
+type Announcement struct {
+	Job       providers.Job
+	Locations []string
+	Searches  []string
+}
+
+func (n *Notifier) Notify(ctx context.Context, owner string, announcements []Announcement) bool {
+	if len(announcements) == 0 {
 		return true
 	}
-	title, body := Summarize(profileName, jobs)
+	title, body := Summarize(announcements)
 
 	if n.client == nil {
 		slog.Info("notification (not sent: push disabled)", "title", title, "body", body)
@@ -333,24 +346,51 @@ const maxCompanies = 3
 
 // Summarize writes the two lines a push notification shows: how many jobs and
 // which companies they are at.
-func Summarize(profileName string, jobs []providers.Job) (title, body string) {
-	noun := "new jobs"
-	if len(jobs) == 1 {
-		noun = "new job"
+// Summarize writes the two lines that land on a lock screen.
+//
+// One posting gets its own name, because that is the moment the whole app is
+// for: enough on the lock screen to decide whether to open the thing and apply.
+// Several get a count, because at that point the useful information is who is
+// hiring.
+func Summarize(announcements []Announcement) (title, body string) {
+	switch len(announcements) {
+	case 0:
+		return "", ""
+	case 1:
+		only := announcements[0]
+		title = only.Job.Title
+		if title == "" {
+			title = "A new role"
+		}
+		if only.Job.Company != "" {
+			title += " · " + only.Job.Company
+		}
+		var parts []string
+		if places := joinAnd(only.Locations); places != "" {
+			parts = append(parts, places)
+		}
+		if searches := joinAnd(only.Searches); searches != "" {
+			parts = append(parts, "caught by "+searches)
+		}
+		body = strings.Join(parts, " — ")
+		if body == "" {
+			body = "Open JobPulse to see it."
+		}
+		return title, body
 	}
-	title = fmt.Sprintf("%d %s · %s", len(jobs), noun, profileName)
+
+	title = fmt.Sprintf("%d new roles", len(announcements))
 
 	// Several postings at one company are common, and repeating the name tells
 	// you nothing.
 	var companies []string
 	seen := map[string]bool{}
-	for _, job := range jobs {
-		if name := job.Company; name != "" && !seen[name] {
+	for _, a := range announcements {
+		if name := a.Job.Company; name != "" && !seen[name] {
 			seen[name] = true
 			companies = append(companies, name)
 		}
 	}
-
 	switch {
 	case len(companies) == 0:
 		body = "Open JobPulse to see them."
@@ -361,4 +401,22 @@ func Summarize(profileName string, jobs []providers.Job) (title, body string) {
 			strings.Join(companies[:maxCompanies], ", "), len(companies)-maxCompanies)
 	}
 	return title, body
+}
+
+// joinAnd lists things the way a person would say them out loud.
+func joinAnd(items []string) string {
+	kept := make([]string, 0, len(items))
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			kept = append(kept, item)
+		}
+	}
+	switch len(kept) {
+	case 0:
+		return ""
+	case 1:
+		return kept[0]
+	default:
+		return strings.Join(kept[:len(kept)-1], ", ") + " and " + kept[len(kept)-1]
+	}
 }

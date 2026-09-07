@@ -11,81 +11,94 @@ import (
 	"github.com/junaid51/job-pulse/internal/providers"
 )
 
-func TestSummarize(t *testing.T) {
-	at := func(companies ...string) []providers.Job {
-		jobs := make([]providers.Job, 0, len(companies))
-		for _, company := range companies {
-			jobs = append(jobs, providers.Job{Company: company, Title: "Engineer"})
-		}
-		return jobs
+// An announcement is one posting, however many saved searches caught it and
+// however many cities it was listed in. Over a week, 294 alerts went out for
+// 173 distinct jobs: three overlapping devops searches meant one Riyadh role
+// buzzed the same phone three times.
+func TestSummarizeOnePostingIsActionableFromTheLockScreen(t *testing.T) {
+	title, body := Summarize([]Announcement{{
+		Job:       providers.Job{Title: "React Native Developer", Company: "Tawantech"},
+		Locations: []string{"Riyadh"},
+		Searches:  []string{"Frontend"},
+	}})
+	if title != "React Native Developer · Tawantech" {
+		t.Errorf("title = %q", title)
 	}
-
-	tests := []struct {
-		name      string
-		profile   string
-		jobs      []providers.Job
-		wantTitle string
-		wantBody  string
-	}{
-		{
-			name:      "one job is singular",
-			profile:   "Backend Go",
-			jobs:      at("Stripe"),
-			wantTitle: "1 new job · Backend Go",
-			wantBody:  "Stripe",
-		},
-		{
-			name:      "several companies are listed",
-			profile:   "Backend Go",
-			jobs:      at("Stripe", "Spotify", "OpenAI"),
-			wantTitle: "3 new jobs · Backend Go",
-			wantBody:  "Stripe, Spotify, OpenAI",
-		},
-		{
-			name:      "repeated companies are named once",
-			profile:   "Remote only",
-			jobs:      at("Stripe", "Stripe", "Stripe"),
-			wantTitle: "3 new jobs · Remote only",
-			wantBody:  "Stripe",
-		},
-		{
-			name:      "a long list is truncated",
-			profile:   "ML",
-			jobs:      at("Stripe", "Spotify", "OpenAI", "Visa", "Channable"),
-			wantTitle: "5 new jobs · ML",
-			wantBody:  "Stripe, Spotify, OpenAI and 2 more",
-		},
-		{
-			name:      "no company names still says something useful",
-			profile:   "ML",
-			jobs:      at("", ""),
-			wantTitle: "2 new jobs · ML",
-			wantBody:  "Open JobPulse to see them.",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			title, body := Summarize(tc.profile, tc.jobs)
-			if title != tc.wantTitle {
-				t.Errorf("title = %q, want %q", title, tc.wantTitle)
-			}
-			if body != tc.wantBody {
-				t.Errorf("body = %q, want %q", body, tc.wantBody)
-			}
-		})
+	if body != "Riyadh — caught by Frontend" {
+		t.Errorf("body = %q", body)
 	}
 }
 
-// A Notifier with no credentials must be usable rather than nil, so the poller
-// never has to check, and it must not touch the database on the way to doing
-// nothing — hence the nil pool.
+func TestSummarizeNamesEverySearchThatCaughtIt(t *testing.T) {
+	_, body := Summarize([]Announcement{{
+		Job:       providers.Job{Title: "DevOps Engineer", Company: "Devoteam"},
+		Locations: []string{"Riyadh"},
+		Searches:  []string{"Devops · Gulf", "sam", "Salim Jobs"},
+	}})
+	if body != "Riyadh — caught by Devops · Gulf, sam and Salim Jobs" {
+		t.Errorf("body = %q", body)
+	}
+}
+
+// One role listed in nine cities is one role. Elastic's vector-search opening
+// is stored nine times for that reason.
+func TestSummarizeJoinsTheCitiesOfOnePosting(t *testing.T) {
+	_, body := Summarize([]Announcement{{
+		Job:       providers.Job{Title: "Senior Software Engineer", Company: "Elastic"},
+		Locations: []string{"Dubai", "Bengaluru", "Remote"},
+		Searches:  []string{"Backend"},
+	}})
+	if body != "Dubai, Bengaluru and Remote — caught by Backend" {
+		t.Errorf("body = %q", body)
+	}
+}
+
+func TestSummarizeSeveralPostingsCountsThem(t *testing.T) {
+	at := func(company string) Announcement {
+		return Announcement{
+			Job:      providers.Job{Company: company, Title: "Engineer"},
+			Searches: []string{"Backend"},
+		}
+	}
+	title, body := Summarize([]Announcement{at("Stripe"), at("Tawantech"), at("Aldar")})
+	if title != "3 new roles" {
+		t.Errorf("title = %q", title)
+	}
+	if body != "Stripe, Tawantech, Aldar" {
+		t.Errorf("body = %q", body)
+	}
+}
+
+func TestSummarizeCapsALongCompanyList(t *testing.T) {
+	var many []Announcement
+	for _, c := range []string{"A", "B", "C", "D", "E", "F"} {
+		many = append(many, Announcement{Job: providers.Job{Company: c, Title: "Engineer"}})
+	}
+	title, body := Summarize(many)
+	if title != "6 new roles" {
+		t.Errorf("title = %q", title)
+	}
+	if body != "A, B, C and 3 more" {
+		t.Errorf("body = %q", body)
+	}
+}
+
+func TestSummarizeSurvivesAPostingWithNothingToSay(t *testing.T) {
+	title, body := Summarize([]Announcement{{Job: providers.Job{Title: "Engineer"}}})
+	if title == "" || body == "" {
+		t.Errorf("title = %q, body = %q; both must say something", title, body)
+	}
+}
+
 func TestNotifierWithoutCredentialsIsUsable(t *testing.T) {
 	notifier := New(t.Context(), nil, "")
 	if notifier.client != nil {
 		t.Error("there should be no HTTP client without credentials")
 	}
-	notifier.Notify(t.Context(), "device-1", "Backend Go", []providers.Job{{Company: "Stripe"}})
+	notifier.Notify(t.Context(), "device-1", []Announcement{{
+		Job:      providers.Job{Company: "Stripe", Title: "Engineer"},
+		Searches: []string{"Backend Go"},
+	}})
 }
 
 // Bad credentials must degrade to logging rather than stop the process.
@@ -111,7 +124,10 @@ func TestNotifierWithUnusableCredentials(t *testing.T) {
 			if notifier.client != nil {
 				t.Error("unusable credentials should leave push disabled")
 			}
-			notifier.Notify(t.Context(), "device-1", "Backend Go", []providers.Job{{Company: "Stripe"}})
+			notifier.Notify(t.Context(), "device-1", []Announcement{{
+				Job:      providers.Job{Company: "Stripe", Title: "Engineer"},
+				Searches: []string{"Backend Go"},
+			}})
 		})
 	}
 }
