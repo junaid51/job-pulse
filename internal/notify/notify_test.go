@@ -266,3 +266,18 @@ func TestQuietHoursWindows(t *testing.T) {
 		t.Error("13:30 is outside 14-15")
 	}
 }
+
+// Booting a server before its push credentials are in place must not eat the
+// announcements. It is the exact shape of a host migration: the process starts,
+// polls, finds matches, and marks them announced to nobody.
+func TestAnnouncementsAreHeldWhenPushIsUnconfiguredButADeviceExists(t *testing.T) {
+	if !heldForMissingPush(false, 1) {
+		t.Error("a registered device with push unconfigured should hold the announcement")
+	}
+	if heldForMissingPush(false, 0) {
+		t.Error("with nobody to tell, there is nothing to hold")
+	}
+	if heldForMissingPush(true, 1) {
+		t.Error("push is configured; the announcement should go out")
+	}
+}
