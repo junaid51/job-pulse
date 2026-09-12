@@ -7,7 +7,7 @@ import (
 )
 
 // workableAccount is the shape of
-// https://apply.workable.com/api/v1/widget/accounts/{slug}?details=true
+// https://apply.workable.com/api/v1/widget/accounts/{slug}
 //
 // published_on is a date with no time, so postings made on the same day cannot
 // be ordered against each other.
@@ -29,7 +29,12 @@ const workableDateLayout = "2006-01-02"
 
 func fetchWorkable(ctx context.Context, slug string) ([]Job, error) {
 	var account workableAccount
-	url := "https://apply.workable.com/api/v1/widget/accounts/" + slug + "?details=true"
+	// Without details=true. That parameter inlines every job description, and
+	// this app stores none of them: one board went from 15.5 MB a fetch to
+	// 1.2 MB, and Workable sends no ETag, so every one of those fetches was
+	// paid for in full every five minutes. The light response still carries
+	// every field below.
+	url := "https://apply.workable.com/api/v1/widget/accounts/" + slug
 	if err := getJSON(ctx, url, &account); err != nil {
 		return nil, err
 	}
