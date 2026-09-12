@@ -309,3 +309,34 @@ func TestALargeBoardIsPolledHourlyWithoutBeingListed(t *testing.T) {
 		t.Errorf("careerjet interval = %v", interval)
 	}
 }
+
+// A provider that cannot say whether it changed is asked less often, and all of
+// its boards still go in the same cycle — the one-board-per-cycle rule belongs
+// to key-metered providers, and applying it to Workable's 73 boards would take
+// six hours to work through them.
+func TestBlindProvidersAreSlowedButNotSerialised(t *testing.T) {
+	now := time.Date(2026, 9, 12, 12, 0, 0, 0, time.UTC)
+	recent := now.Add(-5 * time.Minute)
+	stale := now.Add(-20 * time.Minute)
+
+	if interval, limited := boardInterval(Company{Provider: "workable", Slug: "a"}); !limited || interval != 15*time.Minute {
+		t.Errorf("workable interval = %v, limited = %v", interval, limited)
+	}
+	if _, limited := boardInterval(Company{Provider: "greenhouse", Slug: "a"}); limited {
+		t.Error("greenhouse answers 304 and should not be throttled")
+	}
+
+	boards := []Company{
+		{Provider: "workable", Slug: "one", LastPolledAt: &stale},
+		{Provider: "workable", Slug: "two", LastPolledAt: &stale},
+		{Provider: "workable", Slug: "three", LastPolledAt: &recent},
+	}
+	due := dueNow(boards, now)
+	if len(due) != 2 {
+		got := make([]string, len(due))
+		for i, c := range due {
+			got[i] = c.Slug
+		}
+		t.Fatalf("due = %v, want both stale boards and not the fresh one", got)
+	}
+}

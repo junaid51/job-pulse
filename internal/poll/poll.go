@@ -190,6 +190,26 @@ var heavyBoards = map[string]time.Duration{
 // been healthy the whole time.
 var retryAfterFailure = map[string]time.Duration{"jobspipe": time.Hour}
 
+// blindProviders cannot tell us whether anything changed, so asking them costs
+// the full payload every time. Greenhouse, Lever, SmartRecruiters, Teamtailor
+// and Ashby all answer 304 to If-None-Match and are therefore free to poll
+// every cycle; these three answer in full or not at all.
+//
+// Workable is the expensive one: 73 boards averaging 131 KB even with
+// descriptions dropped, which is 79 GB a month at five-minute polling and 26 GB
+// at fifteen. Fifteen minutes is the compromise — three times cheaper, and a
+// posting is still found within a quarter of an hour of appearing.
+//
+// This does not use minPollInterval, which would be wrong twice over: that map
+// shortens a provider's age window and gates deleteAbsent, and it also limits a
+// provider to one board per cycle, which would take six hours to work through
+// Workable's boards instead of fifteen minutes.
+var blindProviders = map[string]time.Duration{
+	"workable":  15 * time.Minute,
+	"recruitee": 15 * time.Minute,
+	"workday":   15 * time.Minute,
+}
+
 // largeBoard is where a board stops being one employer's hiring desk. Beyond
 // it, five-minute freshness is not worth the fetch: Ashby and Workable send no
 // usable ETag, so every poll of a big board there is megabytes on the wire —
@@ -206,6 +226,11 @@ func boardInterval(c Company) (time.Duration, bool) {
 		// has to notice they need to update, and the board that emptied a
 		// month of bandwidth in four hours was added by a scout at 3am.
 		interval, metered = time.Hour, true
+	}
+	if !metered {
+		if blind, ok := blindProviders[c.Provider]; ok {
+			interval, metered = blind, true
+		}
 	}
 	if !metered {
 		interval, metered = minPollInterval[c.Provider]
