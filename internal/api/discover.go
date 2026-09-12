@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"sort"
@@ -35,6 +36,14 @@ import (
 // aggregator, or a board being briefly unreachable has resolved itself; short
 // enough that a renamed slug is chased while its postings are still fresh.
 const ailingFor = 6 * time.Hour
+
+// platformSized is where a "board" stops being an employer's and starts being a
+// job platform's. Jobgether appears in aggregator results as a company name, so
+// it reached the scout's warm list as an employer; its Lever board carries four
+// thousand postings and weighs 39 MB, and polling it every five minutes spent a
+// month of the host's bandwidth in four hours. The gate asked whether the
+// postings were reachable. It did not ask how many there were.
+const platformSized = 1500
 
 // maxDiscoveredBoards caps what discovery may add. Cycle time is the real
 // constraint: production polls 202 boards in 26 seconds against a five-minute
@@ -323,10 +332,15 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 		// turns on reachable postings — the board is genuine, and probation is
 		// what decides whether it delivers — but the record has to say which.
 		storable := poll.WouldStore(in.Provider, found)
-		if err != nil || len(found) == 0 || reachable == 0 {
+		if err != nil || len(found) == 0 || reachable == 0 || len(found) > platformSized {
 			why := "the board answered with no postings this hunt can reach"
 			if err != nil {
 				why = "the board could not be read: " + err.Error()
+			}
+			if err == nil && len(found) > platformSized {
+				why = fmt.Sprintf("%d postings is a job platform rather than an employer, "+
+					"and polling one costs more bandwidth than this deployment has",
+					len(found))
 			}
 			if _, dberr := pool.Exec(r.Context(), `
 				insert into board_candidates (provider, slug, employer, verdict, reason, postings, reachable)

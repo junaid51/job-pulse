@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -61,6 +62,32 @@ const userAgent = "jobpulse/0.1 (+https://github.com/junaid51/job-pulse)"
 
 var client = &http.Client{Timeout: 30 * time.Second}
 
+// ErrNotModified is a board saying nothing has changed since we last asked.
+//
+// It exists because polling was re-downloading the same bytes every five
+// minutes: 230 boards at an average 430 KB is 97 MB a cycle, 27 GB a day, and
+// one board — a job platform with four thousand postings — was 39 MB of that
+// on its own. The host's monthly bandwidth went in four hours.
+//
+// Greenhouse, Lever and SmartRecruiters all answer 304 to If-None-Match, which
+// costs a few hundred bytes instead of megabytes. Ashby sends an ETag and
+// ignores the condition; Workable sends none. Those are handled by cadence
+// instead.
+var ErrNotModified = errors.New("not modified since the last poll")
+
+// conditionalRefresh bounds how long a board may be trusted to tell us it has
+// not changed. A provider that paginates is only asked about its first page, so
+// a posting added to page three could hide behind an unchanged page one; an
+// hourly full fetch is the ceiling on how long that can last.
+const conditionalRefresh = time.Hour
+
+type cachedTag struct {
+	tag     string
+	fetched time.Time
+}
+
+var etags sync.Map // url -> cachedTag
+
 // getJSON fetches url and decodes the body into v, retrying once on a 5xx or a
 // network error: boards blip, and the next poll is fifteen minutes away.
 func getJSON(ctx context.Context, url string, v any) error {
@@ -92,14 +119,27 @@ func get(ctx context.Context, url string, v any) error {
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 
+	cached, known := etags.Load(url)
+	if known {
+		if entry := cached.(cachedTag); time.Since(entry.fetched) < conditionalRefresh {
+			req.Header.Set("If-None-Match", entry.tag)
+		}
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotModified {
+		return ErrNotModified
+	}
 	if resp.StatusCode != http.StatusOK {
 		return statusError{code: resp.StatusCode, url: url}
+	}
+	if tag := resp.Header.Get("ETag"); tag != "" {
+		etags.Store(url, cachedTag{tag: tag, fetched: time.Now()})
 	}
 	return decodeJSON(resp, v)
 }
@@ -114,6 +154,9 @@ func (e statusError) Error() string {
 }
 
 func retryable(err error) bool {
+	if errors.Is(err, ErrNotModified) {
+		return false
+	}
 	var se statusError
 	if errors.As(err, &se) {
 		return se.code >= 500

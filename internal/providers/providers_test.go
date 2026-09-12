@@ -341,3 +341,14 @@ func TestHimalayasSalaryHandlesFractionalRates(t *testing.T) {
 		t.Errorf("annual band = %q, want no decimals", got)
 	}
 }
+
+// "Nothing has changed" is an answer, not a failure, and retrying it would
+// throw away the saving it exists for.
+func TestNotModifiedIsNotRetried(t *testing.T) {
+	if retryable(ErrNotModified) {
+		t.Error("a 304 was treated as retryable")
+	}
+	if !retryable(statusError{code: 503, url: "x"}) {
+		t.Error("a 503 should still be retried")
+	}
+}
