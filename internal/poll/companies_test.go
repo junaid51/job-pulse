@@ -287,3 +287,25 @@ func TestDueNowRetriesAFailedMeteredBoardSooner(t *testing.T) {
 		t.Error("a board that succeeded was polled again inside its interval")
 	}
 }
+
+// A board large enough to be expensive is throttled without anybody adding it
+// to a list. heavyBoards was hand-maintained, and the board that spent a month
+// of bandwidth in four hours was added by a scout at three in the morning.
+func TestALargeBoardIsPolledHourlyWithoutBeingListed(t *testing.T) {
+	small := Company{Provider: "greenhouse", Slug: "tamara", Postings: 12}
+	if _, metered := boardInterval(small); metered {
+		t.Error("a small board was throttled")
+	}
+
+	huge := Company{Provider: "lever", Slug: "jobgether", Postings: 4047}
+	interval, metered := boardInterval(huge)
+	if !metered || interval != time.Hour {
+		t.Errorf("boardInterval(4047 postings) = %v, metered=%v; want an hour", interval, metered)
+	}
+
+	// A provider that already has a longer limit keeps it.
+	careerjet := Company{Provider: "careerjet", Slug: "devops|dubai|en_AE", Postings: 3}
+	if interval, _ := boardInterval(careerjet); interval != time.Hour {
+		t.Errorf("careerjet interval = %v", interval)
+	}
+}

@@ -190,10 +190,23 @@ var heavyBoards = map[string]time.Duration{
 // been healthy the whole time.
 var retryAfterFailure = map[string]time.Duration{"jobspipe": time.Hour}
 
+// largeBoard is where a board stops being one employer's hiring desk. Beyond
+// it, five-minute freshness is not worth the fetch: Ashby and Workable send no
+// usable ETag, so every poll of a big board there is megabytes on the wire —
+// one Workable board is 15.5 MB a fetch, which is 4.4 GB a day on its own.
+const largeBoard = 600
+
 // boardInterval is the minimum gap between polls of one board: the provider's
-// own limit, or a longer one for a board too expensive to fetch every cycle.
+// own limit, a longer one for a board too expensive to fetch every cycle, or an
+// hour for any board large enough to be expensive by definition.
 func boardInterval(c Company) (time.Duration, bool) {
 	interval, metered := heavyBoards[c.Provider+":"+c.Slug]
+	if !metered && c.Postings > largeBoard {
+		// Measured rather than listed by hand. heavyBoards is a list somebody
+		// has to notice they need to update, and the board that emptied a
+		// month of bandwidth in four hours was added by a scout at 3am.
+		interval, metered = time.Hour, true
+	}
 	if !metered {
 		interval, metered = minPollInterval[c.Provider]
 	}
@@ -737,6 +750,14 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 	}
 
 	jobs, err := fetch(ctx, c.Slug)
+	if errors.Is(err, providers.ErrNotModified) {
+		// The board says nothing has changed, which is a successful poll and
+		// the cheapest kind: a few hundred bytes instead of megabytes. Nothing
+		// else may run — in particular deleteAbsent, which would read an empty
+		// result as "every posting closed" and delete the board's whole corpus.
+		recordResult(ctx, pool, c, nil)
+		return 0, nil, nil
+	}
 	if err != nil {
 		slog.Warn("board fetch failed", "provider", c.Provider, "slug", c.Slug, "error", err)
 		recordResult(ctx, pool, c, err)
