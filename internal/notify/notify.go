@@ -105,19 +105,28 @@ func (n *Notifier) Notify(ctx context.Context, owner string, announcements []Ann
 	}
 	title, body := Summarize(announcements)
 
-	if n.client == nil {
-		slog.Info("notification (not sent: push disabled)", "title", title, "body", body)
+	if n.pool == nil {
+		// No database to look devices up in, which is local development. There
+		// is nobody to tell and nothing to keep queued.
+		slog.Info("notification (not sent: no database)", "title", title, "body", body)
 		return true
 	}
-
 	tokens, err := n.tokens(ctx, owner)
 	if err != nil {
 		slog.Error("reading device tokens", "error", err)
 		return false
 	}
 	if len(tokens) == 0 {
+		// Nobody to tell. Counting it as delivered is right: otherwise the
+		// queue grows for ever on a deployment nobody has installed the app on.
 		slog.Info("notification (no devices registered)", "title", title, "body", body)
 		return true
+	}
+
+	if heldForMissingPush(n.client != nil, len(tokens)) {
+		slog.Warn("push is not configured and a device is registered; holding the announcement",
+			"title", title, "devices", len(tokens))
+		return false
 	}
 
 	// One user with one or two devices, so a loop is clearer than a batch API and
@@ -430,4 +439,15 @@ func joinAnd(items []string) string {
 	default:
 		return strings.Join(kept[:len(kept)-1], ", ") + " and " + kept[len(kept)-1]
 	}
+}
+
+// heldForMissingPush reports whether an announcement has to stay queued rather
+// than be counted as delivered.
+//
+// A phone is registered and push is not configured: saying "delivered" there
+// marks the match announced and loses it in silence, which is precisely what a
+// server booted before its credentials are in place would do — and moving hosts
+// is when that happens. The day-old sweep stops the queue building up for ever.
+func heldForMissingPush(pushConfigured bool, devices int) bool {
+	return !pushConfigured && devices > 0
 }
