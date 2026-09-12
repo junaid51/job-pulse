@@ -1,0 +1,15 @@
+# One host, one upstream. Caddy handles the certificate, the redirect from
+# http, and compression.
+{$JOBPULSE_HOST} {
+	encode zstd gzip
+	reverse_proxy jobpulse:8080
+
+	# The phone is the only client, so this log is for diagnosis rather than
+	# analytics: which requests arrived, and what was answered.
+	log {
+		output file /data/access.log {
+			roll_size 10MiB
+			roll_keep 3
+		}
+	}
+}

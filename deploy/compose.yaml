@@ -1,0 +1,56 @@
+# The whole deployment: the app, and Caddy in front of it for TLS. Run it from
+# this directory — the sibling docker-compose.yml at the repo root is a
+# Postgres for local development and deliberately not a deploy unit.
+#
+# Caddy is here because the web app is served over HTTPS from Firebase, and a
+# browser will not let an HTTPS page call a plain-HTTP API. Caddy gets a
+# certificate from Let's Encrypt on its own and renews it without being asked.
+services:
+  jobpulse:
+    build:
+      context: ..
+    restart: always
+    environment:
+      PORT: 8080
+      DATABASE_URL: ${DATABASE_URL:?set it in .env}
+      POLL_INTERVAL: ${POLL_INTERVAL:-5m}
+      POLL_TOKEN: ${POLL_TOKEN:?set it in .env}
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase.json
+      # Where a notification's tap should land. Without it a banner opens
+      # nothing, which defeats the point of the whole app.
+      APP_URL: ${APP_URL:?the web app's URL}
+      # Keyed providers. Each one is optional: a provider with no key simply
+      # reports that it needs one and is skipped, so an empty value is safe.
+      # Careerjet's key is tied to an IP allow-list — the host's address has to
+      # be registered with them, which is why the address is reserved.
+      CAREERJET_API_KEY: ${CAREERJET_API_KEY:-}
+      CAREERJET_SITE: ${CAREERJET_SITE:-}
+      JOBSPIPE_API_KEY: ${JOBSPIPE_API_KEY:-}
+      JOBVEN_API_KEY: ${JOBVEN_API_KEY:-}
+      TZ: UTC
+    volumes:
+      # The Firebase service account, read-only. It is the one real secret here
+      # and it never belongs in the image or in git.
+      - ./firebase-service-account.json:/run/secrets/firebase.json:ro
+    # Not published to the host: only Caddy may reach it.
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      JOBPULSE_HOST: ${JOBPULSE_HOST:?the hostname the certificate is for}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data       # certificates live here; losing them means re-issuing
+      - caddy-config:/config
+    depends_on:
+      - jobpulse
+
+volumes:
+  caddy-data:
+  caddy-config:

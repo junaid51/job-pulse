@@ -14,3 +14,7 @@ web/dist/
 
 # Playwright MCP scratch output
 .playwright-mcp/
+
+# Server-side secrets for the Oracle deployment
+.env
+firebase-service-account.json
