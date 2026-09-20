@@ -44,13 +44,18 @@ type Notifier struct {
 
 // New builds a Notifier. Bad or missing credentials are not fatal: polling and
 // the API are useful without push, and refusing to start would be a worse trade.
-func New(ctx context.Context, pool *pgxpool.Pool, credentialsFile string) *Notifier {
-	if credentialsFile == "" {
+//
+// credentials is either a path to the service account JSON or the JSON itself.
+// Both, because hosts disagree: a machine with a disk takes a file, and a
+// platform that only hands the process environment variables has nowhere to put
+// one. Having both means moving hosts does not mean changing the app.
+func New(ctx context.Context, pool *pgxpool.Pool, credentials string) *Notifier {
+	if credentials == "" {
 		slog.Info("push disabled; set GOOGLE_APPLICATION_CREDENTIALS to enable it")
 		return &Notifier{pool: pool}
 	}
 
-	raw, err := os.ReadFile(credentialsFile)
+	raw, err := credentialsJSON(credentials)
 	if err != nil {
 		slog.Error("reading firebase credentials; push disabled", "error", err)
 		return &Notifier{pool: pool}
@@ -64,7 +69,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentialsFile string) *Notif
 		slog.Error("firebase credentials have no project_id; push disabled", "error", err)
 		return &Notifier{pool: pool}
 	}
-	credentials, err := google.CredentialsFromJSON(ctx, raw, messagingScope)
+	creds, err := google.CredentialsFromJSON(ctx, raw, messagingScope)
 	if err != nil {
 		slog.Error("firebase credentials rejected; push disabled", "error", err)
 		return &Notifier{pool: pool}
@@ -72,7 +77,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentialsFile string) *Notif
 
 	// The token source refreshes itself, so this client is good for the lifetime
 	// of the process.
-	client := oauth2.NewClient(ctx, credentials.TokenSource)
+	client := oauth2.NewClient(ctx, creds.TokenSource)
 	client.Timeout = 20 * time.Second
 
 	slog.Info("push enabled", "project", account.ProjectID)
@@ -450,4 +455,15 @@ func joinAnd(items []string) string {
 // is when that happens. The day-old sweep stops the queue building up for ever.
 func heldForMissingPush(pushConfigured bool, devices int) bool {
 	return !pushConfigured && devices > 0
+}
+
+// credentialsJSON resolves the configured value to the service account's bytes,
+// whether it arrived as a path or as the document itself. A service account is
+// a JSON object, and no filesystem path starts with a brace, so the two cannot
+// be confused for one another.
+func credentialsJSON(credentials string) ([]byte, error) {
+	if strings.HasPrefix(credentials, "{") {
+		return []byte(credentials), nil
+	}
+	return os.ReadFile(credentials)
 }
