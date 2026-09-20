@@ -61,7 +61,26 @@ rather than next to you.
 
 Finish sign-up, sign in, and stop. Do not accept any offer to upgrade.
 
-## 2. Make an SSH key
+## 2. Enrol MFA into something that outlives a phone
+
+Do this the moment the console first offers it, not later.
+
+Oracle pushes you towards **Oracle Mobile Authenticator**, whose codes live only
+on that one handset and do not come back when the app is deleted. That is how
+the previous `job-pulse` account became unreachable: the password still worked,
+the second factor did not, and the only way back was a support queue.
+
+Instead, when Oracle shows the enrolment QR code, scan it with something that
+syncs and backs up:
+
+- **Apple Passwords** (iPhone: Passwords → the entry → Set Up Verification Code)
+- or 1Password / Bitwarden / Authy
+
+Then **generate a bypass code** — My Profile → Security → Bypass Codes →
+Generate — and paste it somewhere you will still have in a year. It is the only
+self-service way back in if the authenticator is ever lost.
+
+## 2b. Make an SSH key
 
 On the Mac:
 
