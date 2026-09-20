@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -279,5 +280,36 @@ func TestAnnouncementsAreHeldWhenPushIsUnconfiguredButADeviceExists(t *testing.T
 	}
 	if heldForMissingPush(true, 1) {
 		t.Error("push is configured; the announcement should go out")
+	}
+}
+
+// Hosts that hand a process nothing but environment variables have nowhere to
+// put a file, so the credentials have to be accepted inline as well.
+func TestCredentialsAreReadFromAPathOrFromTheJSONItself(t *testing.T) {
+	const doc = `{"project_id":"jobpulse-junaid"}`
+
+	path := filepath.Join(t.TempDir(), "firebase.json")
+	if err := os.WriteFile(path, []byte(doc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fromPath, err := credentialsJSON(path)
+	if err != nil {
+		t.Fatalf("reading from a path: %v", err)
+	}
+	if string(fromPath) != doc {
+		t.Errorf("from a path = %q, want %q", fromPath, doc)
+	}
+
+	fromInline, err := credentialsJSON(doc)
+	if err != nil {
+		t.Fatalf("reading inline JSON: %v", err)
+	}
+	if string(fromInline) != doc {
+		t.Errorf("inline = %q, want %q", fromInline, doc)
+	}
+
+	if _, err := credentialsJSON("/no/such/file.json"); err == nil {
+		t.Error("a missing file should report an error, not an empty document")
 	}
 }
