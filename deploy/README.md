@@ -77,10 +77,17 @@ Once `https://<service>.code.run/healthz` answers with `database: ok` and
 ## Known gap: Careerjet
 
 Careerjet's key is locked to declared IPs, and a free Northflank service has no
-fixed outbound address: it sends from a rotating pool, and one cycle on
-2026-09-29 reached Careerjet from four different addresses. Each refusal names
-the one it came from — `careerjet 403: Unauthorized access from IP <address>`,
-recorded in `companies.last_error` — and the publisher dashboard accepts
-several, so add each as it appears. Static egress IPs exist, through Northflank
-support, but not on the free tier. It is one source out of more than two
-hundred; the rest do not care where requests come from.
+fixed outbound address: it sends from Google Cloud's us-central1 pool, which is
+107 ranges and about five million addresses. On 2026-09-29 six requests arrived
+from six addresses in six different ranges, so declaring addresses one at a
+time never catches up. Declare the **range** instead — the dashboard accepts
+CIDRs — using the block each refusal names:
+
+    careerjet 403: Unauthorized access from IP <address>   (companies.last_error)
+
+Look the address up in <https://www.gstatic.com/ipranges/cloud.json> (scope
+`us-central1`) and add its prefix. Declared so far: `34.41.0.0/16`,
+`136.112.0.0/14`, `34.55.0.0/16`, `35.253.0.0/16`, `35.222.0.0/15`,
+`34.9.0.0/16`. The key stays secret either way; the IP lock is only a second
+fence. Worth the trouble: measured on 2026-09-03, 94% of Careerjet's postings
+were on none of the other boards.
