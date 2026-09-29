@@ -118,11 +118,19 @@ func run() error {
 		if err != nil {
 			// One employer failing is not the run failing: the next name may
 			// well work, and a scout that stops at the first 429 finds nothing.
+			// Not a miss either — the search never finished.
 			slog.Warn("gave up on an employer", "employer", t.Employer, "error", err)
 			continue
 		}
 		added += outcome.added
 		refused += outcome.refused
+		if outcome.added == 0 {
+			reason := "no board found"
+			if outcome.refused > 0 {
+				reason = "every board proposed was refused"
+			}
+			recordMiss(ctx, cfg, t.Employer, reason)
+		}
 	}
 	slog.Info("scout finished", "boards added", added, "proposals refused", refused)
 	return nil
@@ -193,6 +201,32 @@ func fetchWork(ctx context.Context, cfg config) (workList, error) {
 		return out, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	return out, json.NewDecoder(resp.Body).Decode(&out)
+}
+
+// recordMiss tells the server an employer was searched and not placed, so
+// tomorrow's list starts with somebody else. A failure here costs one repeat
+// search, not the run, so it is logged and dropped.
+func recordMiss(ctx context.Context, cfg config, employer, reason string) {
+	body, _ := json.Marshal(map[string]string{"employer": employer, "reason": reason})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		cfg.api+"/api/discovery/misses", bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("recording a miss", "employer", employer, "error", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if cfg.token != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		slog.Warn("recording a miss", "employer", employer, "error", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		slog.Warn("recording a miss", "employer", employer, "status", resp.Status)
+	}
 }
 
 // --- the tools -------------------------------------------------------------

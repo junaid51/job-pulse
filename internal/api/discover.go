@@ -37,6 +37,11 @@ import (
 // enough that a renamed slug is chased while its postings are still fresh.
 const ailingFor = 6 * time.Hour
 
+// missRest is how long an employer the scout could not place stays off the
+// work list. Long enough for the rest of the list to get a turn; short enough
+// that an employer who opens a board is looked at again within a fortnight.
+const missRest = 14 * 24 * time.Hour
+
 // platformSized is where a "board" stops being an employer's and starts being a
 // job platform's. Jobgether appears in aggregator results as a company name, so
 // it reached the scout's warm list as an employer; its Lever board carried four
@@ -92,9 +97,21 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 			  -- board would only deliver the same reposted listings sooner. The
 			  -- point of discovery is the employer behind the posting.
 			  and j.company !~* '(staffing|recruit|manpower|placement|executive search|talent solutions|hr solutions|outsourc|\yhire\y|\yhiring\y)'
+			  -- Not a name at all: what an aggregator prints when the
+			  -- advertiser is hidden. There is nobody to look for.
+			  and j.company !~* '^\s*(confidential|undisclosed|anonymous|not disclosed|private company|company confidential)\s*$'
+			  -- Not an employer already settled. A board that was added or
+			  -- retired has had its answer; a refused one was one wrong guess,
+			  -- so that employer stays eligible.
+			  and lower(j.company) not in (
+				select lower(employer) from board_candidates
+				where verdict in ('added', 'retired') and employer <> '')
+			  -- Not an employer searched lately with nothing found.
+			  and lower(j.company) not in (
+				select employer from scout_misses where tried_at > now() - $3::interval)
 			group by j.company
 			order by matches desc, j.company
-			limit $2`, aggregators, limit)
+			limit $2`, aggregators, limit, missRest.String())
 		if err != nil {
 			serverError(w, "listing discovery targets", err)
 			return
@@ -261,6 +278,38 @@ func isDiscoverable(provider string) bool {
 }
 
 // addBoard verifies a proposal and, if it holds up, starts polling it.
+// recordMiss is the scout saying it searched for an employer and could not
+// place a board, so the work list can rest them and move on. Idempotent: a
+// repeat refreshes the date.
+func recordMiss(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !tokenGuard(w, r) {
+			return
+		}
+		var in struct {
+			Employer string `json:"employer"`
+			Reason   string `json:"reason"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON body")
+			return
+		}
+		employer := strings.ToLower(strings.TrimSpace(in.Employer))
+		if employer == "" {
+			writeError(w, http.StatusBadRequest, "employer is required")
+			return
+		}
+		if _, err := pool.Exec(r.Context(), `
+			insert into scout_misses (employer, reason) values ($1, $2)
+			on conflict (employer) do update set tried_at = now(), reason = excluded.reason`,
+			employer, strings.TrimSpace(in.Reason)); err != nil {
+			serverError(w, "recording a scout miss", err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !tokenGuard(w, r) {

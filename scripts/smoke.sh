@@ -149,6 +149,11 @@ print('yes' if sweep and not bad else 'no ' + str(bad))")"
   check "a board that answers with nothing is refused" 422 \
     "$(req POST /api/boards '{"provider":"greenhouse","slug":"jobpulse-smoke-no-such-board","employer":"Nobody"}')"
   check "  and the refusal is remembered" refused "$(field "['status']")"
+  check "a scout miss needs an employer" 400 "$(req POST /api/discovery/misses '{"employer":" "}')"
+  # Leaves one row that expires from the work list in a fortnight, for a name
+  # no posting will ever carry.
+  check "a scout miss is recorded" 204 \
+    "$(req POST /api/discovery/misses '{"employer":"jobpulse-smoke-nobody","reason":"smoke"}')"
 fi
 
 echo "polling"

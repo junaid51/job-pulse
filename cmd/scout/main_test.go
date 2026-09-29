@@ -243,3 +243,25 @@ func TestAnUnprobedProposalNeverReachesTheServer(t *testing.T) {
 		t.Errorf("an unprobed guess reached the server (called=%v, added=%d)", called, got.added)
 	}
 }
+
+// An employer searched and not placed is reported, so the work list can rest
+// them: before this, the same unfindable names topped the list every day.
+func TestAMissIsReportedToTheServer(t *testing.T) {
+	var got struct{ path, auth, employer, reason string }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		got.path, got.auth = r.URL.Path, r.Header.Get("Authorization")
+		got.employer, got.reason = in["employer"], in["reason"]
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	recordMiss(t.Context(), config{api: srv.URL, token: "t0k"}, "Amazon", "no board found")
+	if got.path != "/api/discovery/misses" || got.auth != "Bearer t0k" {
+		t.Errorf("posted to %q with %q", got.path, got.auth)
+	}
+	if got.employer != "Amazon" || got.reason != "no board found" {
+		t.Errorf("sent employer=%q reason=%q", got.employer, got.reason)
+	}
+}
