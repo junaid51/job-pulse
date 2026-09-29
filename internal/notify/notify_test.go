@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -311,5 +312,61 @@ func TestCredentialsAreReadFromAPathOrFromTheJSONItself(t *testing.T) {
 
 	if _, err := credentialsJSON("/no/such/file.json"); err == nil {
 		t.Error("a missing file should report an error, not an empty document")
+	}
+}
+
+// The failure that took push dark after a host move: an environment editor
+// turned the key's \n escapes into real line breaks, and a JSON string may
+// not contain one.
+func TestCredentialsSurviveAnEditorThatUnescapesTheKey(t *testing.T) {
+	const want = `{"project_id":"p","private_key":"-----BEGIN-----\nAAA\n-----END-----\n"}`
+	mangled := "{\n  \"project_id\": \"p\",\n  \"private_key\": \"-----BEGIN-----\nAAA\n-----END-----\n\"\n}"
+
+	got, err := credentialsJSON(mangled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc, ref map[string]string
+	if err := json.Unmarshal(got, &doc); err != nil {
+		t.Fatalf("still not JSON after repair: %v\n%s", err, got)
+	}
+	if err := json.Unmarshal([]byte(want), &ref); err != nil {
+		t.Fatal(err)
+	}
+	if doc["private_key"] != ref["private_key"] || doc["project_id"] != "p" {
+		t.Errorf("repaired to %q, want %q", doc["private_key"], ref["private_key"])
+	}
+
+	// Escapes that were already right are not doubled.
+	intact, _ := credentialsJSON(want)
+	if string(intact) != want {
+		t.Errorf("an intact document was altered:\n got %s\nwant %s", intact, want)
+	}
+}
+
+// Base64 is the form with nothing in it for an editor to damage.
+func TestCredentialsAreAcceptedAsBase64(t *testing.T) {
+	const doc = `{"project_id":"jobpulse-junaid"}`
+	got, err := credentialsJSON(base64.StdEncoding.EncodeToString([]byte(doc)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != doc {
+		t.Errorf("base64 decoded to %q, want %q", got, doc)
+	}
+}
+
+// /healthz names the reason, because "push is not configured" in the app says
+// nothing about which thing went wrong.
+func TestPushStateNamesWhyItIsOff(t *testing.T) {
+	cases := map[string]string{
+		"":                   PushNotConfigured,
+		"/no/such/file":      PushUnreadable,
+		`{"type":"nothing"}`: PushInvalid,
+	}
+	for credentials, want := range cases {
+		if got := New(t.Context(), nil, credentials).State(); got != want {
+			t.Errorf("New(%q).State() = %q, want %q", credentials, got, want)
+		}
 	}
 }

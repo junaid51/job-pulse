@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/junaid51/job-pulse/internal/notify"
 	"github.com/junaid51/job-pulse/internal/poll"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,9 +18,12 @@ const staleAfter = 15 * time.Minute
 // healthz reports whether the process can reach its database. It is what a
 // free-tier host's health check and `make health` both call, so it does real
 // work instead of returning a constant.
-func healthz(pool *pgxpool.Pool) http.HandlerFunc {
+func healthz(pool *pgxpool.Pool, notifier *notify.Notifier) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		body := map[string]any{"status": "ok", "database": "ok"}
+		// push is reported, not judged: a server with no credentials is still
+		// polling and still useful, so it stays a 200. But it is the one
+		// failure that is invisible from the app until a job is missed.
+		body := map[string]any{"status": "ok", "database": "ok", "push": notifier.State()}
 		status := http.StatusOK
 
 		if err := pool.Ping(r.Context()); err != nil {
