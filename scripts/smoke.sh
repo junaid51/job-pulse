@@ -160,6 +160,12 @@ code=$(req POST /api/poll)
 check "POST /api/poll answers at once" yes "$([ "$code" = 202 ] || [ "$code" = 401 ] && echo yes || echo no)"
 
 echo "cleanup"
+# Undo every mark this run made. Deleting the profile does not reach job_state,
+# which belongs to the device, so against production each run used to leave a
+# hidden job and an applied one behind — and those counted as applications.
+check "unmark the applied job" 200 "$(req POST "/api/jobs/$MATCHED/applied")"
+[ -n "$UNMATCHED" ] && check "unhide the unmatched job" 204 "$(req POST "/api/jobs/$UNMATCHED/unhide")"
+check "  this device has applied to nothing" 0 "$(req GET '/api/jobs?sort=applied&limit=50' >/dev/null; count)"
 check "DELETE /api/profiles/:id" 204 "$(req DELETE "/api/profiles/$PID")"
 check "  and its feed is empty" 0 "$(req GET "/api/jobs?profile_id=$PID" >/dev/null; count)"
 
