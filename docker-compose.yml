@@ -1,5 +1,5 @@
-# PostgreSQL only. The Go binary and the Flutter app run on the host, so this
-# file stays useful on any Docker-compatible machine and is never a deploy unit.
+# PostgreSQL only, for local work. The Go binary and the web app run on the
+# host, so this file is never a deploy unit — production is the Dockerfile.
 services:
   postgres:
     image: postgres:17-alpine

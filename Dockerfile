@@ -1,6 +1,6 @@
 # Two stages so the thing that ships is a binary and a text file, nothing else.
-# Built inside the image rather than cross-compiled, because the host this runs
-# on is ARM (Oracle's Ampere) and a laptop is not.
+# Built inside the image rather than cross-compiled, so the same file builds on
+# whatever architecture the host happens to be.
 FROM golang:1.26-alpine AS build
 WORKDIR /src
 # Dependencies first: they change far less often than the code, so this layer

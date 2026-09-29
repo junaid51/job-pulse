@@ -8,10 +8,10 @@ with three screens. The design and its deliberate omissions are in
 
 ## Status
 
-**Live.** The backend polls 220 boards across fourteen providers, stores what is new,
-matches it against search profiles, and pushes one summary per profile to the
-phone; the app is an installable PWA with search, sorting and push. A full cycle
-takes a few seconds; the deployment runs entirely on free tiers.
+**Live.** The backend polls 220 boards across thirteen providers every five
+minutes, stores what is new, matches it against search profiles, and pushes one
+alert per posting to the phone; the app is an installable PWA with search,
+sorting and push. It runs entirely on free tiers — see [Deployment](#deployment).
 
 ## The scout
 
@@ -109,31 +109,28 @@ lever              spotify      Spotify
 ```
 
 The database stores only live, applyable listings: a job removed from its board
-disappears on the next poll, and nothing older than 45 days is kept or ingested
-at all.
+disappears on the next poll, and nothing first published more than fourteen days
+ago is kept or ingested at all — seven for the aggregators, whose postings cannot
+be checked for removal. A job you marked applied is kept regardless.
 
 The slug is whatever identifies the company on that provider, usually the last
 part of its careers URL. The file is the source of truth and is re-read on every
 start, so removing a line stops that board being polled. Supported providers:
-`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`, `himalayas`, `jobicy`,
+`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`,
 `teamtailor`, `phenom`, `oracle`, `workday`, plus the metered aggregators
-`jobven` and `jobspipe`, whose "slug" is a saved search rather than a company.
+`jobven`, `jobspipe` and `careerjet`, whose "slug" is a saved search rather than
+a company.
 
-Three adapters were deleted on 2026-08-27 rather than left in the registry:
-`manatal` and `remotive` had already been dropped from `companies.txt` for
-posting dead and irrelevant jobs, and `careerjet` had been parked for eight days
-waiting for an IP allowlist that free hosting cannot satisfy anyway. They are in
-the git history if any of them ever earns its way back.
+Adapters that stop earning their place are deleted rather than left in the
+registry: `manatal` and `remotive` on 2026-08-27 for posting dead and irrelevant
+jobs, and the remote feeds `himalayas` and `jobicy` on 2026-09-29, when neither
+held a single posting open to this market. They are in the git history if any
+of them ever earns its way back.
 
 A `workday` slug is the careers host and site plus the location facet that
 narrows a global board to this market — `kbr.wd5.myworkdayjobs.com/KBR_Careers?locationHierarchy1=…`.
 Both the facet's name and its ids are per-tenant; read them off the board's own
 response (`jq .facets`) rather than copying another board's.
-
-Remote feeds (`himalayas`, `jobicy`) are filtered by reachability — a posting
-restricted to a country this hunt cannot work in is dropped at ingest. The list
-lives in `reachableRegions` in [internal/poll](internal/poll/poll.go); widen it
-there to accept, say, US-remote roles.
 
 ## API
 
@@ -217,8 +214,8 @@ Everything has a working default, so a fresh clone needs no setup.
 | `PORT`           | `8080`                                                                 |                                |
 | `POLL_INTERVAL`  | `5m`                                                                   | Go duration; cannot be disabled, and is raised to 1m if shorter |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
-| `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | service account JSON; unset = log instead of push |
-| `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site; unset = careerjet lines error quietly |
+| `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | the service account as a path, the JSON itself, or base64; unset = log instead of push |
+| `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site, locked to declared IPs; unset = careerjet lines error quietly |
 | `JOBVEN_API_KEY` | *(unset)*                                                              | metered aggregator key; unset = jobven lines error quietly |
 | `JOBSPIPE_API_KEY` | *(unset)*                                                            | metered aggregator key; unset = jobspipe lines error quietly |
 | `APP_URL`        | `https://jobpulse-junaid.web.app`                                      | where a tapped notification opens |
@@ -233,10 +230,15 @@ internal/config/    environment variables
 internal/db/        pgx pool and migration runner
 internal/match/     does a job satisfy a profile
 internal/poll/      the poll cycle and companies.txt
+internal/notify/    push to the phone over FCM
 internal/providers/ one file per job board
+cmd/scout/          the daily discovery agent
 migrations/         numbered .sql files, embedded into the binary
-web/src/            api.ts, query.ts, push.ts, toast.tsx, App.tsx, styles.css
-web/src/screens/    jobs, settings
+web/src/            api.ts, query.ts, push.ts, feed.ts, App.tsx, styles.css
+web/src/screens/    Jobs, Settings
+e2e/                the Playwright suite CI runs against a real backend
+scripts/smoke.sh    every API route against a running server
+deploy/             how production is set up
 ```
 
 Adding a migration means dropping `0002_thing.up.sql` and `0002_thing.down.sql`
@@ -244,78 +246,44 @@ into `migrations/`. Nothing else needs changing.
 
 ## Deployment
 
-`go build ./cmd/jobpulse` produces a binary that needs only a `DATABASE_URL`. It
-runs on any host with any PostgreSQL; Compose exists purely to hand you a local
-database. Nothing in the code knows about a cloud provider.
+`go build ./cmd/jobpulse` produces a binary that needs only a `DATABASE_URL`,
+and the [Dockerfile](Dockerfile) wraps it in a 33 MB image. Nothing in the code
+knows about a cloud provider.
 
-Two shapes cover every host:
+**Production** is the backend on Northflank's free sandbox, the database on
+Supabase's free tier, and the web app on Firebase Hosting. How it is set up, and
+what is and is not billed, is in [deploy/README.md](deploy/README.md). A push to
+`main` rebuilds and redeploys the backend.
 
-**Always-on machine** (a VM, a Raspberry Pi): run the binary, done. The internal
-poller ticks every `POLL_INTERVAL`.
+**What watches it.** `GET /healthz` reports `database`, `poller` (`ok`, `stale`,
+`failing`, `never ran`), `poll_age_seconds` and `push` — the last because a
+server that cannot reach the phone looks exactly like a quiet job market. The
+hourly `poll` workflow fails when the boards have not been read for half an hour
+or push is anything but `ok`, which makes GitHub send mail. A `pg_cron` job in
+the database (`jobpulse-wake`) also pings `/healthz` every five minutes, and any
+inbound request revives a poller that has fallen behind, so a stall mends itself
+before anyone is emailed about it.
 
-**Scale-to-zero container** (the usual free tier): these give no persistent disk
-and no always-on process, so point `DATABASE_URL` at a free hosted Postgres, set
-`POLL_INTERVAL=0`, and have an external scheduler hit the service every five
-minutes. Any URL will do — `GET /healthz` is enough — because **any inbound
-request revives a poller that has not run in five minutes**, and the cycle runs
-detached from the request that started it. Use a real scheduler, not GitHub
-Actions: a `*/5` cron there is best effort and measured out at a 25-minute
-median, which defeats the point. The ping also keeps the host awake, so the cold
-start disappears — watch its free-hours allowance if it has one.
+Lessons from earlier hosts, all paid for with outages:
 
-**Two things keep the boards being read.** The process polls on its own timer,
-and a `pg_cron` job in the database keeps the process alive — it never sleeps,
-and `pg_net` gives it a 60-second timeout, which is the one combination that can
-start a spun-down instance:
-
-```sql
-create extension if not exists pg_net with schema extensions;
-create extension if not exists pg_cron;
-select cron.schedule('jobpulse-wake', '*/5 * * * *', $$
-  select net.http_get(url := 'https://<backend>/healthz', timeout_milliseconds := 60000)
-$$);
--- select * from cron.job_run_details order by start_time desc limit 5;
-```
-
-The GitHub workflow is the alarm, not a mechanism: it runs hourly and *fails* if
-the boards have not been read for half an hour, which makes GitHub send mail. A
-poller that stops silently is the failure this app exists to prevent.
-
-That is the whole arrangement, and it is smaller than what it replaced. Polling
-used to be a side effect of inbound traffic, with a self-ping to generate that
-traffic and two external schedulers to wake the host; between them they produced
-three outages. Free schedulers cannot reliably wake a spun-down instance —
-cron-job.org abandons a request after 30 seconds and the instance then never
-boots at all, and GitHub's cron fired a `*/10` schedule every one to five hours
-— but a database cron can, and while the process lives it needs no help to poll.
-Watch the host's free-hours allowance: always-on is about 730 hours a month
-against a 750-hour free tier.
-
-That decoupling is not decoration. Polling used to run *inside* the request, on
-the request's context, and it cost nineteen hours of silence: a cycle over two
-hundred boards takes longer than a scheduler's 30-second timeout, so every run
-was killed halfway through — the boards it had reached looked fresh, the rest
-went stale, and the scheduler counted each aborted call as a success until the
-host started answering 503 and it disabled itself. `GET /healthz` now reports
-`poller` and `poll_age_seconds`, and the app says so on the feed, because a
-poller that has stopped otherwise looks exactly like a quiet job market.
-
-Two things that bite when picking the database, both learned the hard way:
-
-- **Metered compute and frequent polling do not mix.** A host that bills for
-  the time the database is awake, and suspends it after five idle minutes,
-  charges for the whole month once something knocks every five minutes. Prefer
-  a plan metered on storage and transfer.
-- **Put the database in the host's own region.** Every cycle makes hundreds of
-  round trips across a hundred boards, so a cross-continent database turns a
-  two-second cycle into a minute of waiting.
+- **Check what the host meters, not just what it offers.** Render billed
+  *downloads* as bandwidth, and a job-board watcher does almost nothing else:
+  it suspended the whole workspace at 5 GB for seventeen days. Most hosts meter
+  only what they send; this app sends a phone a few kilobytes.
+- **Metered compute and frequent polling do not mix.** A database billed for the
+  time it is awake is awake all month once something knocks every five minutes.
+  Prefer a plan metered on storage.
+- **Never poll inside a request.** A cycle outlives a scheduler's 30-second
+  timeout, so every run was killed halfway and each aborted call was logged as a
+  success. `POST /api/poll` answers 202 and the cycle runs detached.
+- **Free schedulers cannot wake a sleeping host.** cron-job.org gives up at 30
+  seconds and GitHub's cron drifts to hours; a database's `pg_cron` with a
+  60-second `pg_net` timeout is the only free clock that could. An always-on
+  host makes the question moot.
+- **Put the server near the database.** A cycle makes hundreds of round trips,
+  so a cross-continent database turns seconds into minutes.
 
 There are no backups, on purpose. The corpus is rebuilt from the boards within
 one cycle, and the only irreplaceable rows — profiles and their applied history
-— are a few dozen. Losing them costs a minute of retyping, which is cheaper
-than any backup worth maintaining. The request wakes the container, runs a full cycle, sends the
-notifications and returns its stats — the app was built around that endpoint
-being synchronous.
-
-The database is about a megabyte for thousands of jobs, so any free Postgres
-tier is two orders of magnitude more than enough.
+— are a few dozen, a minute of retyping. The database is a few megabytes, two
+orders of magnitude inside any free Postgres tier.
