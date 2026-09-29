@@ -91,28 +91,6 @@ func excludedPatterns() []string {
 	return patterns
 }
 
-// remoteFeedProviders publish worldwide remote jobs, but most of those jobs
-// carry a country restriction — measured on a live Himalayas page, eighteen of
-// twenty were open only to the United States, the UK, Canada, China, Namibia,
-// Macao or Luxembourg. A restriction the reader cannot satisfy is not a job
-// offer, it is a row to scroll past, so these feeds are filtered on the way in.
-//
-// Company boards are exempt: those are in companies.txt because someone chose
-// that employer, and their locations mean where the office is.
-var remoteFeedProviders = map[string]bool{"himalayas": true, "jobicy": true}
-
-// reachable reports whether a posting is open to this hunt. The region list
-// lives in match, because the search bar filters on the same definition and two
-// copies would drift.
-func reachable(location string) bool {
-	return match.Reachable(location)
-}
-
-// reachablePatterns is the same list as SQL ilike patterns, for the sweep.
-func reachablePatterns() []string {
-	return match.ReachablePatterns()
-}
-
 // minPollInterval slows selected providers down below the cycle cadence.
 // Aggregator APIs meter requests, and a search index refreshes far slower than
 // a company's own board; a cycle skips their boards until the interval passes.
@@ -122,18 +100,13 @@ var minPollInterval = map[string]time.Duration{
 	// Hourly, three pages of twenty per search — the newest sixty, which is far
 	// more than arrives in an hour.
 	"careerjet": time.Hour,
-	// The remote-feed aggregators show only their newest window, so absence
-	// proves nothing (this map also gates deleteAbsent) — and a window that
-	// deep does not need five-minute polling.
-	"himalayas": time.Hour,
-	"jobicy":    time.Hour,
 	// Metered at ~700 calls/month free, and worth spending down: measured
 	// against production, jobven supplies most of the Gulf postings we detect
 	// and does it with a five-hour median lag, the slowest thing feeding the
 	// market this app is actually for. Dropping its "remote" search — remote
-	// work arrives through himalayas, jobicy and a hundred direct boards
-	// anyway — pays for the remaining three to run every four hours instead of
-	// six: 3 searches x 6 polls x 30 days = 540 of 700.
+	// work arrives through a hundred direct boards anyway — pays for the
+	// remaining three to run every four hours instead of six:
+	// 3 searches x 6 polls x 30 days = 540 of 700.
 	"jobven": 4 * time.Hour,
 	// Metered in jobs returned, a thousand a month on the free tier. Four
 	// searches hold roughly 220 fresh postings between them and a two-day
@@ -190,48 +163,15 @@ var heavyBoards = map[string]time.Duration{
 // been healthy the whole time.
 var retryAfterFailure = map[string]time.Duration{"jobspipe": time.Hour}
 
-// blindProviders cannot tell us whether anything changed, so asking them costs
-// the full payload every time. Greenhouse, Lever, SmartRecruiters, Teamtailor
-// and Ashby all answer 304 to If-None-Match and are therefore free to poll
-// every cycle; these three answer in full or not at all.
+// boardInterval is the minimum gap between polls of one board: a limit listed
+// for that board, or its provider's own. Everything else is read every cycle.
 //
-// Workable is the expensive one: 73 boards averaging 131 KB even with
-// descriptions dropped, which is 79 GB a month at five-minute polling and 26 GB
-// at fifteen. Fifteen minutes is the compromise — three times cheaper, and a
-// posting is still found within a quarter of an hour of appearing.
-//
-// This does not use minPollInterval, which would be wrong twice over: that map
-// shortens a provider's age window and gates deleteAbsent, and it also limits a
-// provider to one board per cycle, which would take six hours to work through
-// Workable's boards instead of fifteen minutes.
-var blindProviders = map[string]time.Duration{
-	"workable":  15 * time.Minute,
-	"recruitee": 15 * time.Minute,
-	"workday":   15 * time.Minute,
-}
-
-// largeBoard is where a board stops being one employer's hiring desk. Beyond
-// it, five-minute freshness is not worth the fetch: Ashby and Workable send no
-// usable ETag, so every poll of a big board there is megabytes on the wire —
-// one Workable board is 15.5 MB a fetch, which is 4.4 GB a day on its own.
-const largeBoard = 600
-
-// boardInterval is the minimum gap between polls of one board: the provider's
-// own limit, a longer one for a board too expensive to fetch every cycle, or an
-// hour for any board large enough to be expensive by definition.
+// Workable, Recruitee, Workday and any board over six hundred postings were
+// once slowed to fifteen minutes or an hour. That was the price of a host that
+// billed downloads; the current one does not, and the throttle was costing up
+// to ten minutes on exactly the Gulf postings this app exists to be first to.
 func boardInterval(c Company) (time.Duration, bool) {
 	interval, metered := heavyBoards[c.Provider+":"+c.Slug]
-	if !metered && c.Postings > largeBoard {
-		// Measured rather than listed by hand. heavyBoards is a list somebody
-		// has to notice they need to update, and the board that emptied a
-		// month of bandwidth in four hours was added by a scout at 3am.
-		interval, metered = time.Hour, true
-	}
-	if !metered {
-		if blind, ok := blindProviders[c.Provider]; ok {
-			interval, metered = blind, true
-		}
-	}
 	if !metered {
 		interval, metered = minPollInterval[c.Provider]
 	}
@@ -480,17 +420,6 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	}
 	stats.Removed += orphans.RowsAffected()
 
-	// The reachability sweep, paired with the remote-feed filter at ingest.
-	unreachable, err := pool.Exec(ctx, `
-		delete from jobs
-		where provider = any($1) and location <> ''
-		  and not (location ilike any($2))`+keptForApplication,
-		[]string{"himalayas", "jobicy"}, reachablePatterns())
-	if err != nil {
-		return stats, err
-	}
-	stats.Removed += unreachable.RowsAffected()
-
 	// The exclusion sweep, paired with the ingest filter above.
 	excluded, err := pool.Exec(ctx,
 		`delete from jobs where location ilike any($1)`+keptForApplication,
@@ -508,24 +437,31 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 	// "Never delivered", not "holds nothing today": postings age out after a
 	// fortnight, so the second question retires the small employer who posts one
 	// role every couple of months alongside the board that was always empty.
-	retired, err := pool.Exec(ctx, `
-		update companies set active = false
-		where origin = 'agent' and active
-		  and added_at < now() - $1::interval
-		  and produced_at is null`,
-		ProbationPeriod.String())
+	//
+	// The verdict is rewritten only for the boards this statement retired. It
+	// once relabelled every inactive discovered board, so retiring one empty
+	// board also stamped "produced nothing" on a board switched off for another
+	// reason entirely, and that had produced.
+	var n int64
+	err = pool.QueryRow(ctx, `
+		with retired as (
+			update companies set active = false
+			where origin = 'agent' and active
+			  and added_at < now() - $1::interval
+			  and produced_at is null
+			returning provider, slug
+		), labelled as (
+			update board_candidates c set verdict = 'retired',
+			       reason = 'produced no postings during probation', decided_at = now()
+			from retired r
+			where r.provider = c.provider and r.slug = c.slug
+		)
+		select count(*) from retired`,
+		ProbationPeriod.String()).Scan(&n)
 	if err != nil {
 		return stats, err
 	}
-	if n := retired.RowsAffected(); n > 0 {
-		if _, err := pool.Exec(ctx, `
-			update board_candidates c set verdict = 'retired',
-			       reason = 'produced no postings during probation', decided_at = now()
-			from companies co
-			where co.provider = c.provider and co.slug = c.slug
-			  and co.origin = 'agent' and not co.active`); err != nil {
-			return stats, err
-		}
+	if n > 0 {
 		slog.Info("discovered boards retired", "count", n,
 			"after", ProbationPeriod.String())
 		stats.Retired += n
@@ -789,15 +725,6 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 		return 0, nil, err
 	}
 	jobs = youngEnough(jobs, time.Now(), ageLimit(c.Provider))
-	if remoteFeedProviders[c.Provider] {
-		open := jobs[:0]
-		for _, j := range jobs {
-			if reachable(j.Location) {
-				open = append(open, j)
-			}
-		}
-		jobs = open
-	}
 
 	newJobs, err := insertJobs(ctx, pool, c, jobs)
 	if err != nil {
@@ -912,17 +839,7 @@ func AggregatorProviders() []string {
 // publication is all more than a fortnight old, so it polled cleanly and
 // delivered nothing.
 func WouldStore(provider string, jobs []providers.Job) int {
-	kept := youngEnough(jobs, time.Now(), ageLimit(provider))
-	if !remoteFeedProviders[provider] {
-		return len(kept)
-	}
-	n := 0
-	for _, j := range kept {
-		if reachable(j.Location) {
-			n++
-		}
-	}
-	return n
+	return len(youngEnough(jobs, time.Now(), ageLimit(provider)))
 }
 
 // ProbationPeriod is how long a board discovered at runtime has to produce
@@ -935,7 +852,6 @@ const ProbationPeriod = 14 * 24 * time.Hour
 // rather than one employer's own board.
 var aggregator = map[string]bool{
 	"careerjet": true, "jobven": true, "jobspipe": true,
-	"himalayas": true, "jobicy": true,
 }
 
 // insertJobs writes every posting and returns only the ones that did not exist

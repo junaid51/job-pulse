@@ -8,7 +8,7 @@
 # works.
 #
 #   scripts/smoke.sh                          # against localhost:8091
-#   scripts/smoke.sh https://…onrender.com    # against production
+#   scripts/smoke.sh https://…code.run        # against production (deploy/northflank.md)
 set -uo pipefail
 
 API="${1:-http://localhost:8091}"
@@ -133,17 +133,19 @@ else
   check "  no aggregator may be proposed" yes "$(python3 -c "
 import json
 offered = json.load(open('/tmp/smoke.out'))['providers']
-bad = [p for p in offered if p in ['careerjet','jobven','jobspipe','himalayas','jobicy']]
+bad = [p for p in offered if p in ['careerjet','jobven','jobspipe']]
 print('yes' if offered and not bad else 'no ' + str(bad))")"
   check "  and the name sweep excludes tenant-addressed systems" yes "$(python3 -c "
 import json
 sweep = json.load(open('/tmp/smoke.out'))['name_addressable']
-bad = [p for p in sweep if p in ['careerjet','jobven','jobspipe','himalayas','jobicy','workday','oracle','phenom']]
+bad = [p for p in sweep if p in ['careerjet','jobven','jobspipe','workday','oracle','phenom']]
 print('yes' if sweep and not bad else 'no ' + str(bad))")"
-  # Both of these are refusals, so they change nothing — which is what makes
-  # them safe to run against production.
+  # Both of these are refusals, so neither adds a board — which is what makes
+  # them safe to run against production. The second does leave one remembered
+  # refusal behind, for a slug that cannot belong to anyone; remembering it is
+  # the behaviour under test.
   check "an aggregator cannot be added as an employer board" 400 \
-    "$(req POST /api/boards '{"provider":"himalayas","slug":"whoever","employer":"Whoever"}')"
+    "$(req POST /api/boards '{"provider":"jobven","slug":"whoever","employer":"Whoever"}')"
   check "a board that answers with nothing is refused" 422 \
     "$(req POST /api/boards '{"provider":"greenhouse","slug":"jobpulse-smoke-no-such-board","employer":"Nobody"}')"
   check "  and the refusal is remembered" refused "$(field "['status']")"

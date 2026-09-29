@@ -52,8 +52,6 @@ var All = map[string]Provider{
 	"careerjet":       fetchCareerjet,
 	"workday":         fetchWorkday,
 	"oracle":          fetchOracle,
-	"himalayas":       fetchHimalayas,
-	"jobicy":          fetchJobicy,
 	"jobven":          fetchJobven,
 	"jobspipe":        fetchJobsPipe,
 }
@@ -65,14 +63,12 @@ var client = &http.Client{Timeout: 30 * time.Second}
 // ErrNotModified is a board saying nothing has changed since we last asked.
 //
 // It exists because polling was re-downloading the same bytes every five
-// minutes: 230 boards at an average 430 KB is 97 MB a cycle, 27 GB a day, and
-// one board — a job platform with four thousand postings — was 39 MB of that
-// on its own. The host's monthly bandwidth went in four hours.
+// minutes: 230 boards at an average 430 KB is 97 MB a cycle, 27 GB a day — and
+// on a tenth of a CPU, every one of those bytes is also JSON to parse.
 //
 // Greenhouse, Lever and SmartRecruiters all answer 304 to If-None-Match, which
-// costs a few hundred bytes instead of megabytes. Ashby sends an ETag and
-// ignores the condition; Workable sends none. Those are handled by cadence
-// instead.
+// costs a few hundred bytes and no parsing at all. Ashby sends an ETag and
+// ignores the condition; Workable sends none; those are simply read in full.
 var ErrNotModified = errors.New("not modified since the last poll")
 
 // conditionalRefresh bounds how long a board may be trusted to tell us it has

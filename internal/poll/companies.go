@@ -28,10 +28,6 @@ type Company struct {
 	// Origin is "file" for a board listed in companies.txt and "agent" for one
 	// discovered at runtime. It decides who may delete the row.
 	Origin string
-	// Postings is how many of this board's listings are stored, which stands in
-	// for how expensive it is to fetch. A board with thousands is not one
-	// employer's hiring desk.
-	Postings int
 }
 
 // displayName is what jobs from this board are labelled with when the provider
@@ -130,9 +126,7 @@ func SyncCompanies(ctx context.Context, pool *pgxpool.Pool, path string) (int, e
 func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	rows, err := pool.Query(ctx,
 		`select c.provider, c.slug, c.name, c.last_polled_at,
-		        coalesce(c.last_error, '') <> '', c.origin,
-		        (select count(*) from jobs j
-		         where j.provider = c.provider and j.slug = c.slug)
+		        coalesce(c.last_error, '') <> '', c.origin
 		 from companies c where c.active order by c.provider, c.slug`)
 	if err != nil {
 		return nil, err
@@ -143,7 +137,7 @@ func loadCompanies(ctx context.Context, pool *pgxpool.Pool) ([]Company, error) {
 	for rows.Next() {
 		var c Company
 		if err := rows.Scan(&c.Provider, &c.Slug, &c.Name, &c.LastPolledAt,
-			&c.LastFailed, &c.Origin, &c.Postings); err != nil {
+			&c.LastFailed, &c.Origin); err != nil {
 			return nil, err
 		}
 		companies = append(companies, c)

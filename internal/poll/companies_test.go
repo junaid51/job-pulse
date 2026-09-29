@@ -55,14 +55,14 @@ func TestParseCompaniesRejectsBadLines(t *testing.T) {
 // else is always due, including boards never polled before.
 func TestDueNow(t *testing.T) {
 	now := time.Now()
-	// Ten minutes is inside jobicy's hourly window and seven hours is well past
+	// Ten minutes is inside careerjet's hourly window and seven hours is well past
 	// it, so "fresh" is skipped and "stale" is the first of that provider due.
 	recent, stale := now.Add(-10*time.Minute), now.Add(-7*time.Hour)
 	companies := []Company{
 		{Provider: "greenhouse", Slug: "always", LastPolledAt: &recent},
-		{Provider: "jobicy", Slug: "fresh", LastPolledAt: &recent},
-		{Provider: "jobicy", Slug: "stale", LastPolledAt: &stale},
-		{Provider: "jobicy", Slug: "never"},
+		{Provider: "careerjet", Slug: "fresh", LastPolledAt: &recent},
+		{Provider: "careerjet", Slug: "stale", LastPolledAt: &stale},
+		{Provider: "careerjet", Slug: "never"},
 	}
 
 	var slugs []string
@@ -138,32 +138,6 @@ func TestExcludedLocations(t *testing.T) {
 	}
 }
 
-// A remote job restricted to a country the reader cannot work in is noise, and
-// on the live Himalayas feed that was nine listings in ten.
-func TestReachable(t *testing.T) {
-	for _, location := range []string{
-		"Worldwide", "Anywhere", "EMEA", "India", "United Arab Emirates",
-		"Saudi Arabia", "Global", "", "United States, India", "Middle East",
-	} {
-		if !reachable(location) {
-			t.Errorf("reachable(%q) = false, want true", location)
-		}
-	}
-	for _, location := range []string{
-		"United States", "Canada", "United Kingdom", "China", "Macao",
-		"Luxembourg", "Philippines", "Remote - US",
-	} {
-		if reachable(location) {
-			t.Errorf("reachable(%q) = true, want false", location)
-		}
-	}
-	// The ingest filter and the sweep patterns come from one list in match, so
-	// they cannot drift apart.
-	if len(reachablePatterns()) == 0 {
-		t.Error("the sweep must have patterns to match on")
-	}
-}
-
 // A board too expensive to fetch every cycle gets its own interval, without
 // being treated as a metered provider (whose limit is per key, not per board).
 func TestBoardInterval(t *testing.T) {
@@ -203,11 +177,11 @@ func TestDueNowRotatesPastAFailingBoard(t *testing.T) {
 	now := time.Now()
 	justTried, longAgo := now.Add(-time.Minute), now.Add(-4*time.Hour)
 	companies := []Company{
-		// jobicy is metered, hourly. The first has just been attempted —
+		// careerjet is metered, hourly. The first has just been attempted —
 		// whether it succeeded or not — so the next one is the one due.
-		{Provider: "jobicy", Slug: "first", LastPolledAt: &justTried},
-		{Provider: "jobicy", Slug: "second", LastPolledAt: &longAgo},
-		{Provider: "jobicy", Slug: "third", LastPolledAt: &longAgo},
+		{Provider: "careerjet", Slug: "first", LastPolledAt: &justTried},
+		{Provider: "careerjet", Slug: "second", LastPolledAt: &longAgo},
+		{Provider: "careerjet", Slug: "third", LastPolledAt: &longAgo},
 	}
 	var kept []string
 	for _, c := range dueNow(companies, now) {
@@ -288,55 +262,18 @@ func TestDueNowRetriesAFailedMeteredBoardSooner(t *testing.T) {
 	}
 }
 
-// A board large enough to be expensive is throttled without anybody adding it
-// to a list. heavyBoards was hand-maintained, and the board that spent a month
-// of bandwidth in four hours was added by a scout at three in the morning.
-func TestALargeBoardIsPolledHourlyWithoutBeingListed(t *testing.T) {
-	small := Company{Provider: "greenhouse", Slug: "tamara", Postings: 12}
-	if _, metered := boardInterval(small); metered {
-		t.Error("a small board was throttled")
-	}
-
-	huge := Company{Provider: "lever", Slug: "jobgether", Postings: 4047}
-	interval, metered := boardInterval(huge)
-	if !metered || interval != time.Hour {
-		t.Errorf("boardInterval(4047 postings) = %v, metered=%v; want an hour", interval, metered)
-	}
-
-	// A provider that already has a longer limit keeps it.
-	careerjet := Company{Provider: "careerjet", Slug: "devops|dubai|en_AE", Postings: 3}
-	if interval, _ := boardInterval(careerjet); interval != time.Hour {
-		t.Errorf("careerjet interval = %v", interval)
-	}
-}
-
-// A provider that cannot say whether it changed is asked less often, and all of
-// its boards still go in the same cycle — the one-board-per-cycle rule belongs
-// to key-metered providers, and applying it to Workable's 73 boards would take
-// six hours to work through them.
-func TestBlindProvidersAreSlowedButNotSerialised(t *testing.T) {
-	now := time.Date(2026, 9, 12, 12, 0, 0, 0, time.UTC)
-	recent := now.Add(-5 * time.Minute)
-	stale := now.Add(-20 * time.Minute)
-
-	if interval, limited := boardInterval(Company{Provider: "workable", Slug: "a"}); !limited || interval != 15*time.Minute {
-		t.Errorf("workable interval = %v, limited = %v", interval, limited)
-	}
-	if _, limited := boardInterval(Company{Provider: "greenhouse", Slug: "a"}); limited {
-		t.Error("greenhouse answers 304 and should not be throttled")
-	}
-
-	boards := []Company{
-		{Provider: "workable", Slug: "one", LastPolledAt: &stale},
-		{Provider: "workable", Slug: "two", LastPolledAt: &stale},
-		{Provider: "workable", Slug: "three", LastPolledAt: &recent},
-	}
-	due := dueNow(boards, now)
-	if len(due) != 2 {
-		got := make([]string, len(due))
-		for i, c := range due {
-			got[i] = c.Slug
+// Only metered providers and hand-listed boards wait between polls. Workable
+// was once slowed to fifteen minutes to save a host's bandwidth; that cost the
+// Gulf postings this app exists to be first to, and the host no longer bills it.
+func TestOnlyMeteredBoardsWaitBetweenPolls(t *testing.T) {
+	for _, provider := range []string{"workable", "recruitee", "workday", "greenhouse", "lever"} {
+		if interval, limited := boardInterval(Company{Provider: provider, Slug: "a"}); limited {
+			t.Errorf("%s is limited to one poll per %v; it should be read every cycle", provider, interval)
 		}
-		t.Fatalf("due = %v, want both stale boards and not the fresh one", got)
+	}
+	// A provider that meters calls keeps its limit.
+	careerjet := Company{Provider: "careerjet", Slug: "devops|dubai|en_AE"}
+	if interval, limited := boardInterval(careerjet); !limited || interval != time.Hour {
+		t.Errorf("careerjet interval = %v, limited = %v; want an hour", interval, limited)
 	}
 }

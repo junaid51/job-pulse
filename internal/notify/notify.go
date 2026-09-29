@@ -87,7 +87,9 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentials string) *Notifier 
 		slog.Error("firebase credentials have no project_id; push disabled", "error", err)
 		return &Notifier{pool: pool, state: PushInvalid}
 	}
-	creds, err := google.CredentialsFromJSON(ctx, raw, messagingScope)
+	// WithType, not the bare constructor: it refuses anything that is not a
+	// service account, rather than trusting whatever the document says it is.
+	creds, err := google.CredentialsFromJSONWithType(ctx, raw, google.ServiceAccount, messagingScope)
 	if err != nil {
 		slog.Error("firebase credentials rejected; push disabled", "error", err)
 		return &Notifier{pool: pool, state: PushRejected}

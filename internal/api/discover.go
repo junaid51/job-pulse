@@ -39,10 +39,10 @@ const ailingFor = 6 * time.Hour
 
 // platformSized is where a "board" stops being an employer's and starts being a
 // job platform's. Jobgether appears in aggregator results as a company name, so
-// it reached the scout's warm list as an employer; its Lever board carries four
-// thousand postings and weighs 39 MB, and polling it every five minutes spent a
-// month of the host's bandwidth in four hours. The gate asked whether the
-// postings were reachable. It did not ask how many there were.
+// it reached the scout's warm list as an employer; its Lever board carried four
+// thousand postings, 39 MB a fetch, every one of them some other company's
+// role reposted. The gate asked whether the postings were reachable. It did not
+// ask how many there were.
 const platformSized = 1500
 
 // maxDiscoveredBoards caps what discovery may add. Cycle time is the real
@@ -338,8 +338,7 @@ func addBoard(pool *pgxpool.Pool) http.HandlerFunc {
 				why = "the board could not be read: " + err.Error()
 			}
 			if err == nil && len(found) > platformSized {
-				why = fmt.Sprintf("%d postings is a job platform rather than an employer, "+
-					"and polling one costs more bandwidth than this deployment has",
+				why = fmt.Sprintf("%d postings is a job platform rather than an employer",
 					len(found))
 			}
 			if _, dberr := pool.Exec(r.Context(), `

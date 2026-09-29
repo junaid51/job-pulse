@@ -95,25 +95,11 @@ func keywordMatches(title string, wanted []string, cmp func(haystack, needle str
 	return false
 }
 
-// KeywordTerms expands one keyword into every string worth substring-matching —
-// the term itself plus its role-dictionary entry. The search bar reuses it so
-// typing "frontend" finds the jobs a profile keyed on "frontend" matched,
-// instead of the strict subset whose title spells the word out.
-func KeywordTerms(raw string) []string {
-	needle := strings.ToLower(strings.TrimSpace(raw))
-	if needle == "" {
-		return nil
-	}
-	// The word itself always counts now that it is compared on word edges: "qa"
-	// finds "QA Engineer" instead of being dropped in favour of its aliases.
-	return append([]string{needle}, keywordAliases[needle]...)
-}
-
 // SearchTerms expands one typed word for the search bar: the word plus its role
-// aliases, and the word plus its place aliases. Unlike KeywordTerms it always
-// keeps the literal, even for a two-letter one — the search bar matches on word
-// boundaries, so "qa" can no longer hide inside "Qatar", and dropping short
-// literals there would only lose real hits.
+// aliases, and the word plus its place aliases. It always keeps the literal,
+// even for a two-letter one — the search bar matches on word boundaries, so
+// "qa" can no longer hide inside "Qatar", and dropping short literals there
+// would only lose real hits.
 func SearchTerms(raw string) (roles, places []string) {
 	needle := strings.ToLower(strings.TrimSpace(raw))
 	if needle == "" {
