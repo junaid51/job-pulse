@@ -17,7 +17,7 @@ func NewRouter(pool *pgxpool.Pool, notifier *notify.Notifier) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, cors, requestLogger)
 
-	r.Get("/healthz", healthz(pool))
+	r.Get("/healthz", healthz(pool, notifier))
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/jobs", listJobs(pool))

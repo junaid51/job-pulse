@@ -12,6 +12,7 @@ package notify
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,7 +41,24 @@ type Notifier struct {
 	// client and projectID are empty when there are no credentials.
 	client    *http.Client
 	projectID string
+
+	// state says in a word why push is or is not working. It is reported by
+	// /healthz because a host's logs are not always to hand, and "push is not
+	// configured" in the app says nothing about which of four things went wrong.
+	state string
 }
+
+// Push states, as /healthz reports them.
+const (
+	PushOK            = "ok"
+	PushNotConfigured = "not configured"
+	PushUnreadable    = "credentials unreadable"
+	PushInvalid       = "credentials are not a service account"
+	PushRejected      = "credentials rejected"
+)
+
+// State is why push is or is not working, for /healthz.
+func (n *Notifier) State() string { return n.state }
 
 // New builds a Notifier. Bad or missing credentials are not fatal: polling and
 // the API are useful without push, and refusing to start would be a worse trade.
@@ -52,13 +70,13 @@ type Notifier struct {
 func New(ctx context.Context, pool *pgxpool.Pool, credentials string) *Notifier {
 	if credentials == "" {
 		slog.Info("push disabled; set GOOGLE_APPLICATION_CREDENTIALS to enable it")
-		return &Notifier{pool: pool}
+		return &Notifier{pool: pool, state: PushNotConfigured}
 	}
 
 	raw, err := credentialsJSON(credentials)
 	if err != nil {
 		slog.Error("reading firebase credentials; push disabled", "error", err)
-		return &Notifier{pool: pool}
+		return &Notifier{pool: pool, state: PushUnreadable}
 	}
 	// The service account file names its own project, so there is nothing else
 	// to configure.
@@ -67,12 +85,12 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentials string) *Notifier 
 	}
 	if err := json.Unmarshal(raw, &account); err != nil || account.ProjectID == "" {
 		slog.Error("firebase credentials have no project_id; push disabled", "error", err)
-		return &Notifier{pool: pool}
+		return &Notifier{pool: pool, state: PushInvalid}
 	}
 	creds, err := google.CredentialsFromJSON(ctx, raw, messagingScope)
 	if err != nil {
 		slog.Error("firebase credentials rejected; push disabled", "error", err)
-		return &Notifier{pool: pool}
+		return &Notifier{pool: pool, state: PushRejected}
 	}
 
 	// The token source refreshes itself, so this client is good for the lifetime
@@ -81,7 +99,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, credentials string) *Notifier 
 	client.Timeout = 20 * time.Second
 
 	slog.Info("push enabled", "project", account.ProjectID)
-	return &Notifier{pool: pool, projectID: account.ProjectID, client: client}
+	return &Notifier{pool: pool, projectID: account.ProjectID, client: client, state: PushOK}
 }
 
 // Notify sends one summary for one profile, to the device that owns it —
@@ -458,12 +476,49 @@ func heldForMissingPush(pushConfigured bool, devices int) bool {
 }
 
 // credentialsJSON resolves the configured value to the service account's bytes,
-// whether it arrived as a path or as the document itself. A service account is
-// a JSON object, and no filesystem path starts with a brace, so the two cannot
-// be confused for one another.
+// whether it arrived as a path, as the document itself, or as the document in
+// base64. A service account is a JSON object, and no filesystem path starts
+// with a brace or decodes from base64 into one, so the three cannot be confused.
+//
+// Base64 is there because a JSON document is the thing environment-variable
+// editors most like to damage, and base64 has nothing in it to damage.
 func credentialsJSON(credentials string) ([]byte, error) {
 	if strings.HasPrefix(credentials, "{") {
-		return []byte(credentials), nil
+		return unbreakStrings([]byte(credentials)), nil
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(credentials); err == nil &&
+		strings.HasPrefix(strings.TrimSpace(string(decoded)), "{") {
+		return unbreakStrings(decoded), nil
 	}
 	return os.ReadFile(credentials)
+}
+
+// unbreakStrings re-escapes line breaks that appear inside JSON strings.
+//
+// A service account's private key is a PEM block whose lines are joined with
+// the two characters \n. Paste the document into an environment editor that
+// "helpfully" interprets escapes and those become real line breaks — which JSON
+// forbids inside a string, so the whole document stops parsing and push goes
+// quietly dark. Restoring the escape gives back exactly the key that was meant.
+// Line breaks between tokens are whitespace and are left alone.
+func unbreakStrings(doc []byte) []byte {
+	out := make([]byte, 0, len(doc))
+	inString, escaped := false, false
+	for _, c := range doc {
+		switch {
+		case escaped:
+			escaped = false
+		case inString && c == '\\':
+			escaped = true
+		case c == '"':
+			inString = !inString
+		case inString && c == '\n':
+			out = append(out, '\\', 'n')
+			continue
+		case inString && c == '\r':
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
 }
