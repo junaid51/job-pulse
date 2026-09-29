@@ -1,17 +1,11 @@
-# The loud check, and the backup waker.
+# The alarm. GitHub emails a failed scheduled run, which turns a silent
+# failure into a message — and the failures that matter here are all silent:
+# a feed that stops refreshing, and a server that cannot reach your phone, both
+# look like a quiet day from the app.
 #
-# The primary waker is a pg_cron job in the Supabase database: every five
-# minutes it asks the backend for /healthz through pg_net with a 60-second
-# timeout. That combination is what nothing else here could manage — a database
-# that never sleeps, and a client patient enough for a 50-second cold start.
-# cron-job.org gives up at 30 seconds (and an abandoned request does not even
-# start the instance, so it answered 503 and disabled itself twice), and this
-# very workflow, when it was the primary, fired a */10 schedule six times in
-# nineteen hours.
-#
-# So this is no longer the mechanism. It is the alarm: GitHub emails a failed
-# scheduled run, which turns a silently dead poller into a message. It wakes the
-# instance on the way past, which is a useful side effect rather than the plan.
+# The backend runs always-on, so any hour is a fair hour to be stale. The
+# Supabase pg_cron job `jobpulse-wake` pings /healthz every five minutes as a
+# second pair of hands; this is the one that complains.
 name: poll
 on:
   schedule:
@@ -27,42 +21,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - name: wake it, however long that takes
+      - name: fail if the boards are not being read or push is off
+        shell: bash
         run: |
-          curl -fsS "${{ secrets.JOBPULSE_URL }}/healthz" \
-            --retry 10 --retry-delay 10 --retry-all-errors --max-time 120 \
-            -o /tmp/first.json
-          cat /tmp/first.json
-
-      - name: give any cycle it started time to finish
-        run: sleep 90
-
-      - name: fail if the boards are not being read
-        run: |
-          curl -fsS "${{ secrets.JOBPULSE_URL }}/healthz" --max-time 60 -o /tmp/health.json
-          cat /tmp/health.json
+          check() {
+            curl -fsS "${{ secrets.JOBPULSE_URL }}/healthz" \
+              --retry 5 --retry-delay 10 --retry-all-errors --max-time 60 -o /tmp/health.json
+            cat /tmp/health.json; echo
+          }
+          check
+          # A deploy restarts the process, and the first cycle takes a minute
+          # or two on a tenth of a CPU. Give it one chance to finish.
+          if grep -q '"never ran"' /tmp/health.json; then sleep 150; check; fi
           python3 - <<'PY'
           import json, sys
           h = json.load(open('/tmp/health.json'))
-          age, state = h.get('poll_age_seconds'), h.get('poller')
-          print(f"poller={state} age={age}s db={h.get('database')}")
+          age, state, push = h.get('poll_age_seconds'), h.get('poller'), h.get('push')
+          print(f"poller={state} age={age}s db={h.get('database')} push={push}")
           if h.get('database') != 'ok':
               sys.exit("the database is unreachable")
           if state == 'never ran' or age is None:
-              sys.exit("the instance is up but has never polled — the reviver is not firing")
-          # Half an hour is six missed cycles: past that something is wrong with
-          # the pg_cron waker or the keepalive, and a silent feed is the failure
-          # this whole app is supposed to prevent.
-          # The waker deliberately stops between 01:00 and 05:00 UTC — those four
-          # hours carry 2% of a week's postings, and letting the host sleep
-          # through them keeps always-on inside the 750-hour free allowance.
-          # Complaining about a planned sleep would train us to ignore this.
-          from datetime import datetime, timezone
-          hour = datetime.now(timezone.utc).hour
-          if 1 <= hour < 6:
-              print(f"quiet window (UTC hour {hour}); a stale poller is expected here")
-          elif age > 1800:
+              sys.exit("the server is up but has not completed a poll")
+          if state == 'failing':
+              sys.exit(f"the last poll failed: {h.get('poll_error')}")
+          # Half an hour is six missed cycles.
+          if age > 1800:
               sys.exit(f"the boards have not been read for {age // 60} minutes")
-          else:
-              print("fresh enough")
+          if push != 'ok':
+              sys.exit(f"push is {push!r}: matches are being found and nobody is told")
+          print("fresh, and able to reach the phone")
           PY

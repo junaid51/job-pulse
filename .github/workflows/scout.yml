@@ -1,11 +1,11 @@
-# The scout: once a week, look for direct job boards belonging to employers
+# The scout: once a day, look for direct job boards belonging to employers
 # whose postings already match a saved search but only ever arrive through an
 # aggregator. Those jobs are reaching this reader hours late — jobspipe's median
 # lag measured twenty-one hours — and a direct board turns that into minutes.
 #
 # It runs here rather than on the backend for two reasons: this repository is
 # public, so GitHub's standard runners are free and have four cores against
-# Render's tenth of one; and a weekly agent has no business sharing a process
+# the backend's tenth of one; and an agent has no business sharing a process
 # with the poller that has to survive.
 #
 # The model runs on the runner and costs nothing. If GROQ_API_KEY is set as a
@@ -40,8 +40,15 @@ jobs:
       # Ask what there is to do before spending four minutes downloading a
       # model. Most days there will be something; on the days there is not, this
       # run costs seconds.
+      #
+      # `shell: bash` is load-bearing. The default shell has no pipefail, so
+      # the pipe took tee's exit status: for seventeen days the server was
+      # down, this step failed to reach it, reported success, left no output —
+      # and a missing output compares equal to '0', so every day was quietly
+      # "nothing to do". Now an unreachable server is a red run and an email.
       - name: what is worth looking for
         id: work
+        shell: bash
         env:
           JOBPULSE_API: ${{ secrets.JOBPULSE_URL }}
           POLL_TOKEN: ${{ secrets.JOBPULSE_POLL_TOKEN }}
