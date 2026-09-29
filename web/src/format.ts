@@ -22,11 +22,10 @@ const PROVIDERS: Record<string, string> = {
   teamtailor: 'Teamtailor',
   phenom: 'Phenom',
   oracle: 'Oracle',
-  himalayas: 'Himalayas',
-  jobicy: 'Jobicy',
   jobven: 'Jobven',
   jobspipe: 'JobsPipe',
   workday: 'Workday',
+  careerjet: 'Careerjet',
 }
 
 export const providerLabel = (provider: string) => PROVIDERS[provider] ?? provider

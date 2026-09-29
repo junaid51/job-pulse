@@ -34,9 +34,10 @@ ashby              buffer       Buffer
 # Careerjet — market-wide searches, not company boards. The slug is
 # "keywords|location|locale" with '+' for spaces. Needs CAREERJET_API_KEY and
 # CAREERJET_SITE, and the calling IP must be declared in the publisher
-# dashboard (Access API -> Server IP addresses, which accepts ranges — Render's
-# outbound CIDRs from Connect -> Outbound go there). That declaration, not the
-# code, is why this sat dark for a fortnight.
+# dashboard (Access API -> Server IP addresses, which accepts several). The
+# host sends from a rotating pool, so a refusal names the address it came from
+# — "careerjet 403: Unauthorized access from IP …" — and that address is the
+# one to add. That declaration, not the code, is why this sat dark twice.
 #
 # Live-measured 2026-09-03, 230 postings across eight searches: every one
 # in-market (the search is location-scoped), all dated, and only 7 of 119
@@ -69,17 +70,10 @@ smartrecruiters    freshworks   Freshworks
 # ("Gulf second wave" lived here: careem, tamara, ziina, foodics and salla,
 # every one of them already listed forty lines above. Removed 2026-08-27.)
 
-# Remote feeds: keyless aggregator APIs, newest-window only (hourly, no
-# absence-deletion). Their postings are filtered by reachability — see
-# reachableRegions in internal/poll: a remote job restricted to one country is
-# not a remote job for someone in another one.
-#
-# Dropped after measuring: remotive (19 jobs, a capped public window, US-heavy
-# and redundant with jobicy) and manatal (9 jobs across two recruiters, all
-# sales and content roles, and no posting dates at all — undated listings
-# cannot be told apart from dead ones).
-himalayas          all           Himalayas
-jobicy             dev           Jobicy
+# Remote feeds (himalayas, jobicy) were dropped 2026-09-29 after contributing
+# nothing: once postings restricted to countries the reader cannot work in were
+# filtered out, neither held a single job. Remotive and manatal were measured
+# and dropped earlier for the same reason.
 
 # Jobven: metered aggregator (JOBVEN_API_KEY), slug is a location search or "remote"
 jobven             dubai            Jobven
@@ -92,11 +86,6 @@ jobspipe           ae,sa|frontend,front+end,backend,back+end,full+stack,fullstac
 # Broad-function employers and feeds: the corpus was engineering-only, so every
 # non-engineering search came back nearly empty
 lever              aldar        Aldar
-jobicy             business     Jobicy
-jobicy             marketing    Jobicy
-jobicy             hr           Jobicy
-jobicy             management   Jobicy
-jobicy             supporting   Jobicy
 jobspipe           ae,sa|business+analyst,data+analyst,business+intelligence,product+owner,systems+analyst,reporting+analyst,functional+consultant  JobsPipe
 jobspipe           ae,sa|product+manager,product+owner,technical+product+manager,technical+program+manager,program+manager,delivery+manager,scrum+master,agile+coach,engineering+manager,-civil,-construction,-mechanical,-fmcg,-food  JobsPipe
 

@@ -136,17 +136,25 @@ jobs:
       # produced anything".
       - name: probation keeps a board that has delivered
         run: |
-          psql "$DATABASE_URL" -q -c "delete from companies where origin='agent';
+          psql "$DATABASE_URL" -q -c "delete from companies where origin='agent'; delete from board_candidates;
             insert into companies (provider, slug, name, origin, added_at, produced_at)
             values ('greenhouse','ci-delivered','Delivered','agent', now() - interval '21 days', now() - interval '18 days');
             insert into companies (provider, slug, name, origin, added_at)
-            values ('greenhouse','ci-never','Never','agent', now() - interval '21 days');"
+            values ('greenhouse','ci-never','Never','agent', now() - interval '21 days');
+            insert into companies (provider, slug, name, origin, added_at, produced_at, active)
+            values ('greenhouse','ci-off','Switched off','agent', now() - interval '21 days', now() - interval '18 days', false);
+            insert into board_candidates (provider, slug, verdict) values
+              ('greenhouse','ci-never','added'), ('greenhouse','ci-off','added');"
           curl -sf -X POST "$API/api/poll" > /dev/null
           sleep 10
           delivered=$(psql "$DATABASE_URL" -t -A -c "select active from companies where slug='ci-delivered';")
           never=$(psql "$DATABASE_URL" -t -A -c "select active from companies where slug='ci-never';")
+          never_verdict=$(psql "$DATABASE_URL" -t -A -c "select verdict from board_candidates where slug='ci-never';")
+          off_verdict=$(psql "$DATABASE_URL" -t -A -c "select verdict from board_candidates where slug='ci-off';")
           echo "delivered board active: $delivered (want t); never-delivered: $never (want f)"
-          [ "$delivered" = "t" ] && [ "$never" = "f" ]
+          # Retiring one board must not relabel another that was already off.
+          echo "never-delivered verdict: $never_verdict (want retired); already-off: $off_verdict (want added)"
+          [ "$delivered" = "t" ] && [ "$never" = "f" ] && [ "$never_verdict" = "retired" ] && [ "$off_verdict" = "added" ]
 
       - name: keep the evidence
         if: failure()

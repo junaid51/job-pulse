@@ -24,5 +24,5 @@ insert into jobs (provider, external_id, company, title, location, remote, url, 
   -- Plural, which must still match "platform".
   ('greenhouse', 'e2e-11', 'Elastic',    'Engineer, Cloud Platforms',    'Dubai',                       false, 'https://example.test/11', now() - interval '11 hours', now() - interval '11 hours', 'elastic'),
   -- Remote-anywhere, and a job no keyword in these tests will ever catch.
-  ('himalayas',  'e2e-12', 'Buffer',     'Platform Engineer',            'Remote, Worldwide',           true,  'https://example.test/12', now() - interval '12 hours', now() - interval '12 hours', 'buffer'),
+  ('greenhouse', 'e2e-12', 'Buffer',     'Platform Engineer',            'Remote, Worldwide',           true,  'https://example.test/12', now() - interval '12 hours', now() - interval '12 hours', 'buffer'),
   ('workable',   'e2e-13', 'Pavago',     'Warehouse Associate',          'Dubai',                       false, 'https://example.test/13', now() - interval '13 hours', now() - interval '13 hours', 'pavago');

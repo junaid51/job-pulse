@@ -274,15 +274,15 @@ func TestNegativeKeywords(t *testing.T) {
 	}
 }
 
-// The search bar reuses this: typing a role must reach the same jobs a profile
-// keyed on that role matched, or the two disagree about what "frontend" means.
-func TestKeywordTerms(t *testing.T) {
-	terms := KeywordTerms(" Frontend ")
-	if len(terms) < 2 || terms[0] != "frontend" {
-		t.Fatalf("KeywordTerms = %v, want the term itself first", terms)
+// The search bar must reach the same jobs a profile keyed on that role
+// matched, or the two disagree about what "frontend" means.
+func TestSearchTermsExpandRolesLikeProfilesDo(t *testing.T) {
+	roles, _ := SearchTerms(" Frontend ")
+	if len(roles) < 2 || roles[0] != "frontend" {
+		t.Fatalf("SearchTerms roles = %v, want the term itself first", roles)
 	}
 	var sawReact, sawGeneric bool
-	for _, term := range terms {
+	for _, term := range roles {
 		switch term {
 		case "react":
 			sawReact = true
@@ -296,11 +296,11 @@ func TestKeywordTerms(t *testing.T) {
 	if sawGeneric {
 		t.Error("frontend must not expand to a generic title")
 	}
-	if KeywordTerms("  ") != nil {
+	if roles, places := SearchTerms("  "); roles != nil || places != nil {
 		t.Error("a blank term expands to nothing")
 	}
-	if got := KeywordTerms("kubernetes engineer"); len(got) != 1 {
-		t.Errorf("an unknown phrase stays literal, got %v", got)
+	if roles, _ := SearchTerms("kubernetes engineer"); len(roles) != 1 {
+		t.Errorf("an unknown phrase stays literal, got %v", roles)
 	}
 }
 
