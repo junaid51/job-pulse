@@ -27,9 +27,10 @@ memory under a hard 256 MB limit.
 
 1. Sign up at <https://app.northflank.com/signup> with GitHub, so repository
    access comes with the account.
-2. New project `jobpulse`, region **US West** — the database is Supabase in
-   Oregon, and a request that makes several queries pays the round trip each
-   time.
+2. New project `jobpulse`, region **US - Central** (Council Bluffs). The
+   sandbox offers only US - Central and London; US - West needs Pay as you go.
+   The database is Supabase in Oregon, about 40 ms from Iowa and 140 ms from
+   London, and a request that makes several queries pays that each time.
 3. Create → Service → **Combined service**:
    - repository `junaid51/job-pulse`, branch `main`
    - build with **Dockerfile**, path `/Dockerfile`, context `/`
@@ -73,7 +74,8 @@ Once `https://<service>.code.run/healthz` answers with `database: ok`:
 
 Careerjet's key is locked to a declared IP, and a free Northflank service has no
 fixed outbound address (static egress IPs are arranged through their support).
-If Careerjet starts failing, find the current address from the service's shell
+It fails as `careerjet 403: Unauthorized access from IP <address>` — the
+error names the address to declare. Otherwise find the current address from the service's shell
 (`wget -qO- https://api.ipify.org`) and declare it in the Careerjet publisher
 dashboard. It is one source out of more than two hundred; the rest do not care
 where requests come from.
