@@ -45,7 +45,7 @@ Everything below follows from this.
 │                                                      │
 │   ┌────────────────┐          ┌──────────────────┐   │
 │   │ poller         │          │ HTTP API (chi)   │   │
-│   │ ticker, 15 min │          │ :8080            │   │
+│   │ ticker, 5 min  │          │ :8080            │   │
 │   └───────┬────────┘          └────────┬─────────┘   │
 │           │                            │             │
 │           └──────────┬─────────────────┘             │
@@ -58,13 +58,13 @@ Everything below follows from this.
                    ▼
         ┌──────────────────────┐
         │ Web app (PWA)        │
-        │ Jobs · Notifs · Set. │
+        │ Jobs · Settings      │
         └──────────────────────┘
 ```
 
 Two goroutines in one process, not two services. `go run ./cmd/jobpulse`
 starts both. There is no queue, no worker, no scheduler daemon — a
-`time.Ticker` is enough for something that runs every 15 minutes.
+`time.Ticker` is enough for something that runs every five minutes.
 
 ### Request/poll flow
 
@@ -500,34 +500,35 @@ provider and refetches. Never trust a notification body as data you then store.
 ```
 job-pulse/
   cmd/jobpulse/main.go          flags, wiring, ticker + server
-  internal/api/                 router.go, handlers.go
+  cmd/scout/                    the daily discovery agent
+  internal/api/                 router.go + one file per area
   internal/db/                  pgx pool + migration runner
   internal/providers/           providers.go + one file per provider
-  internal/match/match.go
-  internal/notify/fcm.go
-  internal/poll/poll.go
-  migrations/                   0001_init.up.sql / .down.sql
-  companies.txt                 seed list: "greenhouse stripe"
-  docker-compose.yml            postgres only
-  Makefile                      up, run, test, seed
+  internal/match/               matching, aliases, reachable regions
+  internal/notify/notify.go     FCM HTTP v1
+  internal/poll/                the cycle, companies.txt sync
+  migrations/                   numbered .up.sql / .down.sql, embedded
+  companies.txt                 the boards: "greenhouse stripe"
+  docker-compose.yml            postgres only, for local work
+  Dockerfile                    the production image
   web/                          the React PWA
 ```
 
 ```bash
 git clone … && cd job-pulse
 docker compose up -d          # postgres
-make seed                     # load companies.txt
-go run ./cmd/jobpulse         # migrates, serves :8080, polls every 15m
+go run ./cmd/jobpulse         # migrates, loads companies.txt, serves :8080, polls every 5m
 cd web && npm run dev
 ```
 
-Configuration is five environment variables with working defaults:
-`DATABASE_URL`, `PORT`, `POLL_INTERVAL`, `GOOGLE_APPLICATION_CREDENTIALS`,
-`COMPANIES_FILE`.
+Configuration is environment variables with working defaults — the table is in
+the README. The core five are `DATABASE_URL`, `PORT`, `POLL_INTERVAL`,
+`GOOGLE_APPLICATION_CREDENTIALS` and `COMPANIES_FILE`; the rest are keys for the
+metered aggregators.
 
-Deployment is "run the binary next to a Postgres". It works on a free VM, a
-Fly-style container, a Raspberry Pi, or a laptop with cron. Nothing in the code
-knows or cares.
+Deployment is "run the binary next to a Postgres", always on. It works on any
+host that keeps a process running; production is described in
+[deploy/README.md](deploy/README.md).
 
 ---
 
@@ -593,9 +594,9 @@ poller take the `pgx` pool and run their own SQL, so every query is visible wher
 it is used. Wrapping that in interfaces so I can swap Postgres for a database I
 will never use is pure ceremony.
 
-**A separate worker process, queue, or scheduler.** Six providers × ~100
-companies every 15 minutes is a few hundred HTTP requests an hour. A goroutine
-with a ticker does this. Redis, Kafka, RabbitMQ, Temporal, cron containers — all
+**A separate worker process, queue, or scheduler.** Thirteen providers × ~220
+boards every five minutes is a few thousand HTTP requests an hour, most of them
+answered 304. A goroutine with a ticker does this. Redis, Kafka, RabbitMQ, Temporal, cron containers — all
 solving a load problem I do not have.
 
 **Elasticsearch / full-text search / relevance ranking.** Matching is
@@ -628,7 +629,7 @@ Fifteen matches should not be fifteen buzzes.
 tells me what happened. Prometheus and OpenTelemetry are for systems with users.
 
 **Retry queues, dead-letter tables, circuit breakers.** A board that fails gets
-one retry, records `last_error`, and is tried again in 15 minutes. Polling is
+one retry, records `last_error`, and is tried again next cycle. Polling is
 naturally self-healing — that is the main reason to prefer it over webhooks here.
 
 **Scrapers for bot-walled boards.** Still refused: the Gulf-specific tenants
