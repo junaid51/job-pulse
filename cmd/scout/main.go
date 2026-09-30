@@ -97,10 +97,16 @@ func run() error {
 
 	// The broken ones first. A board that has stopped answering is losing
 	// alerts now, where a warm-list employer is only ever an improvement.
-	for i, a := range work.Ailing {
-		if i >= cfg.maxTargets {
+	// One budget for the whole run, broken boards first. Each list used to
+	// get its own, so a day with eight broken boards and eight employers was
+	// sixteen hunts at three minutes each — past the job's time limit by
+	// construction, and killed before it could say what it had found.
+	budget := cfg.maxTargets
+	for _, a := range work.Ailing {
+		if budget == 0 {
 			break
 		}
+		budget--
 		outcome, err := chase(ctx, cfg, work, a)
 		if err != nil {
 			slog.Warn("gave up on an ailing board", "board", a.Provider+":"+a.Slug, "error", err)
@@ -110,10 +116,11 @@ func run() error {
 		refused += outcome.refused
 	}
 
-	for i, t := range work.Targets {
-		if i >= cfg.maxTargets {
+	for _, t := range work.Targets {
+		if budget == 0 {
 			break
 		}
+		budget--
 		outcome, err := hunt(ctx, cfg, work, t)
 		if err != nil {
 			// One employer failing is not the run failing: the next name may

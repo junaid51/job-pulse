@@ -77,6 +77,19 @@ var ErrNotModified = errors.New("not modified since the last poll")
 // hourly full fetch is the ceiling on how long that can last.
 const conditionalRefresh = time.Hour
 
+type conditionalKey struct{}
+
+// Conditional marks a fetch as a poll, which may be answered ErrNotModified.
+// Only the poller asks this way. Anything else — the scout, or the server
+// probing a proposed board — needs the postings themselves: when the cache was
+// shared, the scout's name sweep stored a board's ETag, its follow-up probe of
+// the same board came back "not modified", and it reported the board empty.
+// The gate's probe did the same to the poller, whose first read of a newly
+// added board stored nothing for an hour.
+func Conditional(ctx context.Context) context.Context {
+	return context.WithValue(ctx, conditionalKey{}, true)
+}
+
 type cachedTag struct {
 	tag     string
 	fetched time.Time
@@ -115,10 +128,12 @@ func get(ctx context.Context, url string, v any) error {
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "application/json")
 
-	cached, known := etags.Load(url)
-	if known {
-		if entry := cached.(cachedTag); time.Since(entry.fetched) < conditionalRefresh {
-			req.Header.Set("If-None-Match", entry.tag)
+	conditional, _ := ctx.Value(conditionalKey{}).(bool)
+	if conditional {
+		if cached, known := etags.Load(url); known {
+			if entry := cached.(cachedTag); time.Since(entry.fetched) < conditionalRefresh {
+				req.Header.Set("If-None-Match", entry.tag)
+			}
 		}
 	}
 
@@ -134,7 +149,7 @@ func get(ctx context.Context, url string, v any) error {
 	if resp.StatusCode != http.StatusOK {
 		return statusError{code: resp.StatusCode, url: url}
 	}
-	if tag := resp.Header.Get("ETag"); tag != "" {
+	if tag := resp.Header.Get("ETag"); tag != "" && conditional {
 		etags.Store(url, cachedTag{tag: tag, fetched: time.Now()})
 	}
 	return decodeJSON(resp, v)
