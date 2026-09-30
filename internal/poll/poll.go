@@ -710,7 +710,7 @@ func pollCompany(ctx context.Context, pool *pgxpool.Pool, c Company, profiles []
 		return 0, nil, errors.New("unknown provider " + c.Provider)
 	}
 
-	jobs, err := fetch(ctx, c.Slug)
+	jobs, err := fetch(providers.Conditional(ctx), c.Slug)
 	if errors.Is(err, providers.ErrNotModified) {
 		// The board says nothing has changed, which is a successful poll and
 		// the cheapest kind: a few hundred bytes instead of megabytes. Nothing

@@ -181,9 +181,14 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 			where c.active
 			  and c.failing_since is not null
 			  and c.failing_since < now() - $1::interval
+			  -- An aggregator's slug is a saved search, not an employer's
+			  -- board, and its failure is a key or an allow-list, never a
+			  -- company that moved hiring systems. Handed over, the scout went
+			  -- looking for employers called "fullstack" and "Kubernetes".
+			  and not (c.provider = any($3))
 			group by c.provider, c.slug, c.name, c.last_error, c.failing_since
 			order by count(j.id) desc, c.failing_since
-			limit $2`, ailingFor.String(), limit)
+			limit $2`, ailingFor.String(), limit, poll.AggregatorProviders())
 		if err != nil {
 			serverError(w, "listing ailing boards", err)
 			return

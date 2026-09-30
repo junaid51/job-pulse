@@ -2,6 +2,9 @@ package providers
 
 import (
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -321,5 +324,45 @@ func TestNotModifiedIsNotRetried(t *testing.T) {
 	}
 	if !retryable(statusError{code: 503, url: "x"}) {
 		t.Error("a 503 should still be retried")
+	}
+}
+
+// Only a poll may be answered "not modified". A probe of a board already
+// fetched once must see its postings again, or it reports the board empty.
+func TestOnlyAPollIsConditional(t *testing.T) {
+	var sawCondition []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawCondition = append(sawCondition, r.Header.Get("If-None-Match") != "")
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	var v map[string]any
+
+	// Two probes: both full answers, and neither leaves a tag behind.
+	for i := 0; i < 2; i++ {
+		if err := get(t.Context(), srv.URL+"/board", &v); err != nil {
+			t.Fatalf("probe %d: %v", i+1, err)
+		}
+	}
+	// So the first poll after them is a full read too, and only the second
+	// may be told nothing changed.
+	polled := Conditional(t.Context())
+	if err := get(polled, srv.URL+"/board", &v); err != nil {
+		t.Fatalf("first poll after a probe: %v", err)
+	}
+	if err := get(polled, srv.URL+"/board", &v); !errors.Is(err, ErrNotModified) {
+		t.Fatalf("second poll = %v, want ErrNotModified", err)
+	}
+	want := []bool{false, false, false, true}
+	for i := range want {
+		if i >= len(sawCondition) || sawCondition[i] != want[i] {
+			t.Fatalf("If-None-Match sent per request = %v, want %v", sawCondition, want)
+		}
 	}
 }
