@@ -77,17 +77,13 @@ Once `https://<service>.code.run/healthz` answers with `database: ok` and
 ## Known gap: Careerjet
 
 Careerjet's key is locked to declared IPs, and a free Northflank service has no
-fixed outbound address: it sends from Google Cloud's us-central1 pool, which is
-107 ranges and about five million addresses. On 2026-09-29 six requests arrived
-from six addresses in six different ranges, so declaring addresses one at a
-time never catches up. Declare the **range** instead — the dashboard accepts
-CIDRs — using the block each refusal names:
+fixed outbound address: it sends from Google Cloud's us-central1 pool, so each
+search succeeds only when it happens to leave from an address already declared.
+The dashboard takes single addresses, not ranges. Each refusal names the address
+it came from:
 
     careerjet 403: Unauthorized access from IP <address>   (companies.last_error)
 
-Look the address up in <https://www.gstatic.com/ipranges/cloud.json> (scope
-`us-central1`) and add its prefix. Declared so far: `34.41.0.0/16`,
-`136.112.0.0/14`, `34.55.0.0/16`, `35.253.0.0/16`, `35.222.0.0/15`,
-`34.9.0.0/16`. The key stays secret either way; the IP lock is only a second
-fence. Worth the trouble: measured on 2026-09-03, 94% of Careerjet's postings
-were on none of the other boards.
+Declaring the ones that recur is the most that can be done on this tier. It is
+partial by nature, and still worth it: on 2026-09-03, 94% of Careerjet's
+postings were on none of the other boards, and its jobs do reach the phone.
