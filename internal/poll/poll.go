@@ -100,14 +100,14 @@ var minPollInterval = map[string]time.Duration{
 	// Hourly, three pages of twenty per search — the newest sixty, which is far
 	// more than arrives in an hour.
 	"careerjet": time.Hour,
-	// Metered at ~700 calls/month free, and worth spending down: measured
-	// against production, jobven supplies most of the Gulf postings we detect
-	// and does it with a five-hour median lag, the slowest thing feeding the
-	// market this app is actually for. Dropping its "remote" search — remote
-	// work arrives through a hundred direct boards anyway — pays for the
-	// remaining three to run every four hours instead of six:
-	// 3 searches x 6 polls x 30 days = 540 of 700.
-	"jobven": 4 * time.Hour,
+	// Metered per call on a monthly budget, and worth spending: measured
+	// against production, jobven supplies most of the Gulf postings we detect,
+	// with a five-hour median lag of its own. Four-hourly polling planned for
+	// 540 of ~700 calls and the budget still ran out on 2026-09-30, leaving it
+	// dark for the rest of the cycle — worse than any cadence. Six-hourly is
+	// 3 searches x 4 polls x 30 days = 360, half the allowance, and a six-hour
+	// gap is close to the lag the source carries anyway.
+	"jobven": 6 * time.Hour,
 	// Metered in jobs returned, a thousand a month on the free tier. Four
 	// searches hold roughly 220 fresh postings between them and a two-day
 	// window re-fetches each about four times at this cadence, so twice-daily
