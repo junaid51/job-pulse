@@ -76,14 +76,39 @@ Once `https://<service>.code.run/healthz` answers with `database: ok` and
 
 ## Known gap: Careerjet
 
-Careerjet's key is locked to declared IPs, and a free Northflank service has no
-fixed outbound address: it sends from Google Cloud's us-central1 pool, so each
-search succeeds only when it happens to leave from an address already declared.
-The dashboard takes single addresses, not ranges. Each refusal names the address
-it came from:
+Careerjet's key works only from declared addresses, the dashboard holds eight,
+and it takes single addresses, not ranges. A free Northflank service has no
+fixed outbound IP — but it does not rotate per request either. Measured on
+2026-10-05: sixty fresh connections, to two different echo services, all left
+from one address; and every Careerjet refusal on record lines up with a deploy.
+**The address is fixed for the life of a deployment and changes when the
+service is redeployed**, which by default is every push to `main`. One
+deployment ran from `136.111.77.112` for five days; ten pushes in an hour on
+2026-09-29 produced ten addresses. Northflank does sometimes place a new
+deployment on a machine it used before.
 
-    careerjet 403: Unauthorized access from IP <address>   (companies.last_error)
+So:
 
-Declaring the ones that recur is the most that can be done on this tier. It is
-partial by nature, and still worth it: on 2026-09-03, 94% of Careerjet's
-postings were on none of the other boards, and its jobs do reach the phone.
+- **Redeploy only for backend changes.** Service → Build options → Advanced
+  build settings → path rules, as an allow-list:
+
+      cmd/
+      internal/
+      migrations/
+      go.mod
+      go.sum
+      Dockerfile
+      companies.txt
+
+  Web, docs and workflow commits then leave the running deployment — and its
+  address — alone.
+- **After a backend deploy, ask the server where it now sends from:**
+
+      curl -H "Authorization: Bearer $POLL_TOKEN" https://<service>.code.run/api/egress
+
+  and if that address is not declared, replace the oldest of the eight with it.
+  A refusal names the address too — `careerjet 403: Unauthorized access from
+  IP <address>` in `companies.last_error` — but only after a search has failed.
+
+Worth the trouble: on 2026-09-03, 94% of Careerjet's postings were on none of
+the other boards, and its jobs do reach the phone.
