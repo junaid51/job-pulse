@@ -1,24 +1,114 @@
 # JobPulse
 
-Watches public company job boards and tells me when a new matching job appears.
+Watches public company job boards and pushes a new matching job to your phone
+within minutes of it appearing.
 
-One Go binary (REST API + poller), one PostgreSQL database, one web app (a PWA)
-with three screens. The design and its deliberate omissions are in
-[ARCHITECTURE.md](ARCHITECTURE.md) — read that before adding anything.
+Live at [jobpulse-junaid.web.app](https://jobpulse-junaid.web.app). One Go
+binary (poller plus REST API), one PostgreSQL database, one React PWA. The
+backend polls about 220 boards across thirteen hiring providers every five
+minutes, stores what is new, matches it against saved searches, and sends one
+push per search per cycle. It runs entirely on free tiers.
 
-## Status
+The design, and every decision not to build something, is in
+[ARCHITECTURE.md](ARCHITECTURE.md). Read that before adding anything.
 
-**Live.** The backend polls 220 boards across thirteen providers every five
-minutes, stores what is new, matches it against search profiles, and pushes one
-alert per posting to the phone; the app is an installable PWA with search,
-sorting and push. It runs entirely on free tiers — see [Deployment](#deployment).
+## Why it exists
+
+Greenhouse, Lever, Ashby, Workday and the rest expose public APIs scoped to a
+single company's board. None of them offer search across companies; that
+product is built on crawlers and commercial feeds. So JobPulse polls a curated
+list of boards instead, which is more accurate than scraping, never breaks, and
+matches how a job hunt actually works: there are about a hundred employers you
+care about, not the whole internet.
+
+The whole product is the gap between a posting appearing and the phone buzzing.
+Aggregators deliver the same posting about a day late (one of them measured a
+median lag of twenty-one hours); a direct board delivers it inside a cycle.
+
+## What is in it
+
+**The poller.** A `time.Ticker` and a goroutine in the same process as the
+API, at most four boards in flight, one retry on failure, a failing board
+recorded and skipped so one dead company never stalls a cycle. New-job
+detection is one SQL clause: `INSERT ... ON CONFLICT DO NOTHING RETURNING id`,
+and the returned rows are the new jobs. Production polls 202 boards in about
+26 seconds; a cold cycle peaked at 47 MB of memory on a 0.1 vCPU, 256 MB host.
+
+**Thirteen providers, one interface.** Each adapter is a file of roughly sixty
+lines mapping one board API onto a `Job`. Adding a provider is one file and one
+map entry. The gotchas per provider (Lever's epoch milliseconds, Ashby's 12 MB
+payloads, Workday's per-tenant location facets) are documented in the
+architecture file because every one of them was found by probing the API
+rather than reading about it.
+
+**Matching that agrees with itself.** A saved search and a typed query expand
+through the same small role dictionary, so "frontend" finds React and Angular
+titles in both places and never bare "Software Engineer". Matches are
+re-derived every cycle, so editing the dictionary fixes what is already stored.
+Two of the rows in the end-to-end fixture exist because they were bugs: a
+posting in Indianapolis, Indiana must never answer a search for India.
+
+**Push that degrades.** Firebase Cloud Messaging over its HTTP v1 API, one
+authenticated POST per device, batched per search so fifteen matches are one
+buzz. With no Firebase credentials it logs to stdout instead, so a fresh clone
+runs with `docker compose up` and nothing else.
+
+**A PWA instead of an app.** The React build is about 80 KB gzipped and
+replaced a working Flutter implementation: once web push proved out on a real
+iPhone, Flutter was paying a multi-megabyte CanvasKit tax to draw three list
+screens. Add to Home Screen gives an icon, full screen and push on iOS without
+an Apple Developer account.
+
+**A scout that proposes and never decides.** See below.
+
+**Tests that press the button.** Unit tests cover the matcher, the poller, the
+query building and every provider parser against saved fixtures (97 Go test
+functions). The browser suite runs the real backend against a real Postgres in
+CI, seeded with a known corpus, and drives the whole app through a phone
+browser. Two further checks are plain SQL and `curl` against that backend: that
+a housekeeping sweep never deletes a job you applied to, and that board
+probation retires a board that never delivered without retiring one that did.
+The browser half exists because the unit tests were green on a day when the
+dismiss button on every job row answered 404 and the frontend swallowed it.
+
+**Production that complains.** `GET /healthz` reports the database, the
+poller's state and age, and whether push can reach the phone, because a server
+that cannot reach the phone looks exactly like a quiet job market. An hourly
+GitHub workflow fails, and therefore emails, when the boards have not been read
+for half an hour or push is anything but `ok`. A `pg_cron` job in the database
+pings the same endpoint every five minutes, and any inbound request revives a
+poller that has fallen behind.
 
 ## The scout
 
 Once a day, `cmd/scout` looks for direct boards belonging to employers whose
 postings already match a saved search but only ever arrive through an
-aggregator — jobs that are reaching you hours late when a direct board would
-deliver them in minutes.
+aggregator. Those are the jobs reaching you a day late.
+
+It is an LLM with four tools (search the name-addressed hiring systems, read
+an employer's careers pages for the system they name, open one specific page,
+propose a board) and a hard rule: **it proposes, it never decides.**
+`POST /api/boards` probes every proposal with the same provider code the poller
+uses and refuses anything that does not independently answer with postings
+this hunt can reach. A 3B model once proposed a board it had itself just found
+empty, reasoning that the company was large and probably had openings; the
+gate refused it on the numbers. A confident wrong answer costs nothing.
+
+What the model is for turned out to be narrow, and it took measuring to find
+out. Turning "Lean Technologies" into the slug `leantech` is a string
+transformation, and both a 3B and a 7B model failed it identically, so the
+spelling sweep is code. What the model does well is read an employer name like
+"Halian | Managed Services, Recruitment Agency & Contract Staffing", know the
+employer is Halian, and look at what a probe returned to judge whether it is
+really them. When the sweep answers plainly, the replacement is proposed
+without a model turn at all, in about two seconds.
+
+It runs in GitHub Actions on a free public-repository runner, with a model on
+the runner (or Groq's free tier if a key is set), and touches nothing the
+poller depends on. If it is broken, rate-limited or hallucinating, the app
+behaves exactly as it does without it. Daily rather than weekly because the
+work list has a half-life: aggregator postings age out after seven days and
+take their matches with them.
 
 ```bash
 # against a local backend, with a model on your own machine and no keys at all
@@ -27,52 +117,56 @@ docker exec ollama ollama pull qwen2.5:7b
 go run ./cmd/scout -targets 3
 ```
 
-Daily rather than weekly because the work list has a half-life: eight to
-eighteen new such employers turn up a day, and aggregator postings age out after
-seven days, taking their matches with them. `scout -list` answers "is there
-anything to do" without needing a model at all, so a quiet day costs seconds.
+`scout -list` answers "is there anything to do" without a model, so a quiet
+day costs seconds.
 
-It proposes; it never decides. `POST /api/boards` probes each offer itself and
-refuses anything that does not answer with reachable postings, so a confident
-wrong answer costs nothing. In CI it runs on GitHub's free public-repository
-runners with the model on the runner — or on Groq's free tier if `GROQ_API_KEY`
-is set as a secret.
+## Decisions worth reading
 
-## Tests
+[ARCHITECTURE.md](ARCHITECTURE.md) section 11 lists everything deliberately
+not built and why. A few of them:
 
-```bash
-go test ./...                     # the matcher, the poller, the API's query building
-cd web && npx vitest run          # the feed's pure logic
-scripts/smoke.sh                  # every route, against a running backend
-cd e2e && npx playwright test     # the whole app, driven through a phone browser
-```
+- **No model anywhere near the notification path.** The product is a latency
+  gap; the model lives on the far side of a gate, on someone else's compute.
+- **No authentication.** Every device mints an anonymous id and sees only its
+  own searches. A user table, sessions and password reset for one person is
+  ceremony; anyone who wants multi-user runs their own copy.
+- **No provider plugin system, no repository layer, no queue.** Thirteen
+  adapters are a map. Handlers run their own SQL on a `pgx` pool so every
+  query is visible where it is used. A few thousand requests an hour is a
+  ticker, not a scheduler.
+- **No stored job descriptions.** Thirty times the storage to render a worse
+  version of the page the Apply button already opens. The price is paid at the
+  search bar, and the empty state says so.
+- **Workday was refused, then measured, then built.** The first version of
+  that section said Workday tenants held no Gulf inventory. That was a claim
+  about a measurement that had never been made properly: applying each board's
+  own location facet turned global career sites into small local boards and
+  added 1,709 in-market postings to a corpus of 5,600.
 
-The browser suite runs the real backend against a real Postgres with
-`COMPANIES_FILE=e2e/fixtures/companies.txt` — deliberately empty, so a poll
-cycle reaches nothing and the corpus is exactly the thirteen rows in
-`e2e/fixtures/seed.sql`. Two of those rows are there because they were bugs:
-a posting in "Indianapolis, Indiana" must never answer a search for India, and
-one in Romania must never answer a search for the Gulf. Seed *after* the
-backend starts: its first cycle removes every job whose board is not in the
-file.
+## Lessons from production
 
-One trap when running the browser suite by hand: the backend URL is baked into
-the bundle, so `dist` has to be built against whichever backend the tests will
-talk to. A `dist` left over from a production build sends the suite at
-production, where the seeded corpus does not exist — sixty-eight failures that
-say nothing about the app.
+All paid for with outages.
 
-Both suites run on every push (`.github/workflows/ci.yml`). They exist because
-the unit tests were green on a day when the X on a job row answered 404 for
-every search result, and the frontend swallowed it, so the button just looked
-dead.
+- **Check what the host meters, not what it offers.** A job-board watcher does
+  almost nothing but download. One host billed downloads as bandwidth and
+  suspended the workspace at 5 GB for seventeen days.
+- **Never poll inside a request.** A cycle outlives a scheduler's 30-second
+  timeout, so every run was killed halfway and each aborted call logged as a
+  success. `POST /api/poll` answers 202 and the cycle runs detached.
+- **`shell: bash` is load-bearing in GitHub Actions.** The default shell has no
+  `pipefail`, so a pipe into `tee` took `tee`'s exit status. For seventeen days
+  the scout failed to reach a down server, reported success, and a missing
+  output compared equal to zero, so every day was quietly "nothing to do".
+- **Put the server near the database.** A cycle makes hundreds of round trips;
+  a cross-continent database turns seconds into minutes.
+- **There are no backups, on purpose.** The corpus rebuilds from the boards in
+  one cycle; the only irreplaceable rows are a few dozen saved searches.
 
 ## Stack
 
-Go · chi · pgx · golang-migrate · PostgreSQL · React · Vite · TypeScript
-
+Go, chi, pgx, golang-migrate, PostgreSQL, React, Vite, TypeScript, Playwright.
 SQL is written by hand. There is no ORM, no code generation and no repository
-layer: handlers and the poller take a `*pgxpool.Pool` and run their own queries.
+layer.
 
 ## Run it locally
 
@@ -82,25 +176,44 @@ go run ./cmd/jobpulse         # migrates, polls, serves on :8080
 cd web && npm install && VITE_JOBPULSE_API=http://localhost:8080 npm run dev
 ```
 
-Migrations run automatically on startup, so there is no separate migrate step
-and no `migrate` CLI to install.
+Migrations run automatically on startup. To use the dev build from a phone,
+`localhost` is the phone, not your computer: set `VITE_JOBPULSE_API` to your
+machine's address on the network. The URL in use is shown under Settings,
+Backend.
 
-To use the dev build from a phone, `localhost` is the phone, not your computer —
-set `VITE_JOBPULSE_API` to your machine's address on the network. The URL in use
-is shown under Settings → Backend.
-
-If port 5432 or 8080 is already taken on your machine:
+If port 5432 or 8080 is taken:
 
 ```bash
 POSTGRES_PORT=5434 docker compose up -d
 PORT=8091 DATABASE_URL='postgres://jobpulse:jobpulse@localhost:5434/jobpulse?sslmode=disable' go run ./cmd/jobpulse
 ```
 
+## Tests
+
+```bash
+go test ./...                     # the matcher, the poller, the API's query building, every parser
+cd web && npx vitest run          # the feed's pure logic
+scripts/smoke.sh                  # every route, against a running backend
+cd e2e && npx playwright test     # the whole app, driven through a phone browser
+```
+
+The browser suite runs the real backend against a real Postgres with
+`COMPANIES_FILE=e2e/fixtures/companies.txt`, which is deliberately empty, so a
+poll cycle reaches nothing and the corpus is exactly the rows in
+`e2e/fixtures/seed.sql`. Seed after the backend starts: its first cycle removes
+every job whose board is not in the file.
+
+One trap when running the browser suite by hand: the backend URL is baked into
+the bundle, so `dist` has to be built against whichever backend the tests will
+talk to. A `dist` left over from a production build sends the suite at
+production, where the seeded corpus does not exist.
+
+Both suites run on every push (`.github/workflows/ci.yml`).
+
 ## Boards to watch
 
-None of these providers offer search across companies — every public API is
-scoped to one company's board — so JobPulse polls the list in
-[companies.txt](companies.txt):
+None of the providers offer search across companies, so JobPulse polls the
+list in [companies.txt](companies.txt):
 
 ```
 # provider         slug         display name
@@ -108,42 +221,39 @@ greenhouse         stripe       Stripe
 lever              spotify      Spotify
 ```
 
-The database stores only live, applyable listings: a job removed from its board
-disappears on the next poll, and nothing first published more than fourteen days
-ago is kept or ingested at all — seven for the aggregators, whose postings cannot
-be checked for removal. A job you marked applied is kept regardless.
-
 The slug is whatever identifies the company on that provider, usually the last
-part of its careers URL. The file is the source of truth and is re-read on every
-start, so removing a line stops that board being polled. Supported providers:
-`greenhouse`, `lever`, `ashby`, `smartrecruiters`, `workable`, `recruitee`,
-`teamtailor`, `phenom`, `oracle`, `workday`, plus the metered aggregators
-`jobven`, `jobspipe` and `careerjet`, whose "slug" is a saved search rather than
-a company.
-
-Adapters that stop earning their place are deleted rather than left in the
-registry: `manatal` and `remotive` on 2026-08-27 for posting dead and irrelevant
-jobs, and the remote feeds `himalayas` and `jobicy` on 2026-09-29, when neither
-held a single posting open to this market. They are in the git history if any
-of them ever earns its way back.
+part of its careers URL. The file is the source of truth for its own rows and
+is re-read on every start; boards the scout discovered carry a different origin
+and are managed through the API. Supported providers: `greenhouse`, `lever`,
+`ashby`, `smartrecruiters`, `workable`, `recruitee`, `teamtailor`, `phenom`,
+`oracle`, `workday`, plus the metered aggregators `jobven`, `jobspipe` and
+`careerjet`, whose "slug" is a saved search rather than a company.
 
 A `workday` slug is the careers host and site plus the location facet that
-narrows a global board to this market — `kbr.wd5.myworkdayjobs.com/KBR_Careers?locationHierarchy1=…`.
-Both the facet's name and its ids are per-tenant; read them off the board's own
-response (`jq .facets`) rather than copying another board's.
+narrows a global board to this market. Both the facet's name and its ids are
+per-tenant; read them off the board's own response (`jq .facets`) rather than
+copying another board's.
+
+The database stores only live, applyable listings: a job removed from its
+board disappears on the next poll, and nothing first published more than
+fourteen days ago is kept or ingested at all (seven for the aggregators, whose
+postings cannot be checked for removal). A job you marked applied is kept
+regardless.
+
+Adapters that stop earning their place are deleted rather than left in the
+registry. They are in the git history if any of them ever earns its way back.
 
 ## API
 
 ```
-GET    /healthz                                    pings the database
+GET    /healthz                                    database, poller state and age, push state
 
 GET    /api/profiles
 POST   /api/profiles          {name, keywords[], locations[], remote_only}
 PUT    /api/profiles/{id}
 DELETE /api/profiles/{id}
 
-GET    /api/jobs?profile_id=1&limit=50&cursor=…    sort=posted|matched|applied; q= and location= search/filter
-                                                   q= matches every word independently, on word boundaries
+GET    /api/jobs?profile_id=1&limit=50&cursor=...  sort=posted|matched|applied; q= and location= search/filter
 GET    /api/jobs?mine=1                            every saved search's matches, newest arrival first
 GET    /api/boards                                 every board's health
 POST   /api/jobs/{id}/hide                         hide from this device's feeds
@@ -152,57 +262,27 @@ POST   /api/jobs/{id}/applied                      toggle applied; answers the n
 
 POST   /api/notifications/seen                     mark the arrivals seen
 
-POST   /api/devices                                {token, platform, timezone} — FCM registration
+POST   /api/devices                                {token, platform, timezone}, FCM registration
 GET    /api/devices/status                         does the server hold a token, and when did a push last land
 POST   /api/devices/test                           prove the push chain in one request
 PUT    /api/devices/quiet-hours                    {from, to} in the device's timezone; equal hours = off
 POST   /api/poll                                   start a cycle; answers 202 at once, polls in the background
+
+GET    /api/discovery                              employers worth looking for, boards that stopped answering
+POST   /api/boards                                 offer a board; the server probes it and decides
 ```
 
-Profile keywords match case-insensitive substrings, expanded through a small
-role dictionary ("frontend" also finds React and Angular titles, but not bare
-"Software Engineer" — an alias has to name the same job, not a wider one); a
-`-` prefix excludes (`designer, -senior`). The search bar expands the same way,
-so a profile and a typed query agree about what a role means. Matches are
-re-derived every cycle, so editing [aliases.go](internal/match/aliases.go) or a
-profile fixes what is already stored, not just what arrives next. Salaries are shown when a
-board publishes them. Creating or editing a profile backfills it against every
-job already stored, so it is never mysteriously empty. `/api/jobs` returns `next_cursor` when another
-page exists; pass it back as `cursor` and treat it as opaque.
+Profile keywords match case-insensitive substrings, expanded through the role
+dictionary in [aliases.go](internal/match/aliases.go); a `-` prefix excludes
+(`designer, -senior`). `q=` matches every word independently, on word
+boundaries. Creating or editing a profile backfills it against every job
+already stored. `/api/jobs` returns `next_cursor` when another page exists;
+pass it back as `cursor` and treat it as opaque.
 
-Every device mints an anonymous id (X-Device header) and sees only its own
+Every device mints an anonymous id (`X-Device` header) and sees only its own
 profiles, matches and notifications; the job corpus is shared. Push follows the
-profile's owner, so a match only buzzes the device that created the search.
-
-There is no authentication, by design. Bind it to `127.0.0.1` or reach it over a
-private tunnel — do not put this on a public IP.
-
-## Verify it works
-
-```bash
-curl localhost:8080/healthz                  # {"database":"ok","status":"ok"}
-go test ./...
-cd web && npm test
-```
-
-End to end, against real boards:
-
-```bash
-curl -X POST localhost:8080/api/profiles -H 'Content-Type: application/json' \
-  -d '{"name":"Backend Go","keywords":["go","backend"],"locations":[],"remote_only":true}'
-
-curl 'localhost:8080/api/jobs?profile_id=1&limit=5'
-make psql   # then: select provider, count(*) from jobs group by provider;
-```
-
-The poll log line is the quickest check that a cycle worked:
-
-```
-msg="poll cycle" companies=30 failed=0 new_jobs=77 new_matches=6 removed=0 duration=17.2s
-```
-
-`new_jobs=0` on the second cycle is the point: it means new-job detection is
-working rather than re-alerting on everything.
+profile's owner. There is no authentication, by design: bind it to
+`127.0.0.1` or reach it over a private tunnel.
 
 ## Configuration
 
@@ -215,7 +295,7 @@ Everything has a working default, so a fresh clone needs no setup.
 | `POLL_INTERVAL`  | `5m`                                                                   | Go duration; cannot be disabled, and is raised to 1m if shorter |
 | `COMPANIES_FILE` | `companies.txt`                                                        |                                |
 | `GOOGLE_APPLICATION_CREDENTIALS` | *(unset)*                                              | the service account as a path, the JSON itself, or base64; unset = log instead of push |
-| `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key + site, locked to declared IPs; unset = careerjet lines error quietly |
+| `CAREERJET_API_KEY` / `CAREERJET_SITE` | *(unset)*                                        | publisher key and site, locked to declared IPs; unset = careerjet lines error quietly |
 | `JOBVEN_API_KEY` | *(unset)*                                                              | metered aggregator key; unset = jobven lines error quietly |
 | `JOBSPIPE_API_KEY` | *(unset)*                                                            | metered aggregator key; unset = jobspipe lines error quietly |
 | `APP_URL`        | `https://jobpulse-junaid.web.app`                                      | where a tapped notification opens |
@@ -225,14 +305,14 @@ Everything has a working default, so a fresh clone needs no setup.
 
 ```
 cmd/jobpulse/       main: config, migrate, poller, HTTP server, graceful shutdown
+cmd/scout/          the daily discovery agent
 internal/api/       chi router and handlers
 internal/config/    environment variables
 internal/db/        pgx pool and migration runner
-internal/match/     does a job satisfy a profile
+internal/match/     does a job satisfy a profile; the role dictionary
 internal/poll/      the poll cycle and companies.txt
 internal/notify/    push to the phone over FCM
 internal/providers/ one file per job board
-cmd/scout/          the daily discovery agent
 migrations/         numbered .sql files, embedded into the binary
 web/src/            api.ts, query.ts, push.ts, feed.ts, App.tsx, styles.css
 web/src/screens/    Jobs, Settings
@@ -250,40 +330,7 @@ into `migrations/`. Nothing else needs changing.
 and the [Dockerfile](Dockerfile) wraps it in a 33 MB image. Nothing in the code
 knows about a cloud provider.
 
-**Production** is the backend on Northflank's free sandbox, the database on
-Supabase's free tier, and the web app on Firebase Hosting. How it is set up, and
-what is and is not billed, is in [deploy/README.md](deploy/README.md). A push to
-`main` rebuilds and redeploys the backend.
-
-**What watches it.** `GET /healthz` reports `database`, `poller` (`ok`, `stale`,
-`failing`, `never ran`), `poll_age_seconds` and `push` — the last because a
-server that cannot reach the phone looks exactly like a quiet job market. The
-hourly `poll` workflow fails when the boards have not been read for half an hour
-or push is anything but `ok`, which makes GitHub send mail. A `pg_cron` job in
-the database (`jobpulse-wake`) also pings `/healthz` every five minutes, and any
-inbound request revives a poller that has fallen behind, so a stall mends itself
-before anyone is emailed about it.
-
-Lessons from earlier hosts, all paid for with outages:
-
-- **Check what the host meters, not just what it offers.** Render billed
-  *downloads* as bandwidth, and a job-board watcher does almost nothing else:
-  it suspended the whole workspace at 5 GB for seventeen days. Most hosts meter
-  only what they send; this app sends a phone a few kilobytes.
-- **Metered compute and frequent polling do not mix.** A database billed for the
-  time it is awake is awake all month once something knocks every five minutes.
-  Prefer a plan metered on storage.
-- **Never poll inside a request.** A cycle outlives a scheduler's 30-second
-  timeout, so every run was killed halfway and each aborted call was logged as a
-  success. `POST /api/poll` answers 202 and the cycle runs detached.
-- **Free schedulers cannot wake a sleeping host.** cron-job.org gives up at 30
-  seconds and GitHub's cron drifts to hours; a database's `pg_cron` with a
-  60-second `pg_net` timeout is the only free clock that could. An always-on
-  host makes the question moot.
-- **Put the server near the database.** A cycle makes hundreds of round trips,
-  so a cross-continent database turns seconds into minutes.
-
-There are no backups, on purpose. The corpus is rebuilt from the boards within
-one cycle, and the only irreplaceable rows — profiles and their applied history
-— are a few dozen, a minute of retyping. The database is a few megabytes, two
-orders of magnitude inside any free Postgres tier.
+Production is the backend on Northflank's free sandbox, the database on
+Supabase's free tier, and the web app on Firebase Hosting. How it is set up,
+and what is and is not billed, is in [deploy/README.md](deploy/README.md). A
+push to `main` rebuilds and redeploys the backend.
