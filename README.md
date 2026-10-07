@@ -334,3 +334,7 @@ Production is the backend on Northflank's free sandbox, the database on
 Supabase's free tier, and the web app on Firebase Hosting. How it is set up,
 and what is and is not billed, is in [deploy/README.md](deploy/README.md). A
 push to `main` rebuilds and redeploys the backend.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
