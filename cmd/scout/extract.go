@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -159,7 +160,36 @@ func isPrivateHost(host string) bool {
 
 // fetchPage is a plain GET with a browser's user agent, because a careers page
 // served to something that looks like a crawler is often a different page.
+// pageClient fetches careers pages, and only from the public internet. The
+// pages it opens come from guessed addresses and from links on other pages,
+// so a hostile or careless page can point anywhere — a cloud runner's
+// metadata service at 169.254.169.254 included. The check is on the address
+// each connection actually dials, after DNS and after every redirect, which a
+// check on the URL's text cannot be.
+var pageClient = &http.Client{
+	Timeout: 30 * time.Second,
+	Transport: &http.Transport{
+		Proxy: nil,
+		DialContext: (&net.Dialer{
+			Timeout: 10 * time.Second,
+			Control: func(_, address string, _ syscall.RawConn) error {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil {
+					return err
+				}
+				if isPrivateHost(host) {
+					return fmt.Errorf("refusing %s: not a public address", host)
+				}
+				return nil
+			},
+		}).DialContext,
+	},
+}
+
 func fetchPage(ctx context.Context, target string) (string, int, error) {
+	if u, err := url.Parse(target); err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", 0, fmt.Errorf("refusing %q: only http and https pages are read", target)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
 		return "", 0, err
@@ -168,8 +198,7 @@ func fetchPage(ctx context.Context, target string) (string, int, error) {
 		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "+
 			"(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8")
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := pageClient.Do(req)
 	if err != nil {
 		return "", 0, err
 	}

@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 // Every fixture here is a real fragment from a real careers page, and each one
 // is a slug that name-guessing failed to produce.
@@ -145,5 +149,21 @@ func TestOtherCompaniesBoardsAreNotThisEmployers(t *testing.T) {
 	}
 	if !resemblesEmployer("workday", "kbr.wd5.myworkdayjobs.com/KBR_Careers", "Anything") {
 		t.Error("a Workday tenant was rejected")
+	}
+}
+
+// The guard is on the address a connection dials, so it holds for a link a
+// page hands over, not only for addresses the scout writes itself. A test
+// server listens on loopback, which is exactly what must be refused.
+func TestPagesAreOnlyFetchedFromThePublicInternet(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("internal"))
+	}))
+	defer srv.Close()
+	if _, _, err := fetchPage(t.Context(), srv.URL); err == nil {
+		t.Error("a page on a loopback address was fetched")
+	}
+	if _, _, err := fetchPage(t.Context(), "file:///etc/passwd"); err == nil {
+		t.Error("a file: URL was read")
 	}
 }
