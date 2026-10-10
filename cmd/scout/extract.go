@@ -24,9 +24,10 @@ import (
 // either.
 //
 // Extraction is regex over the page source, because that is what it is: a
-// string in an attribute. What the model does is decide which pages to open —
-// careers.x.com, x.com/careers, the "view all jobs" link — and judge whether
-// what came back is really the employer.
+// string in an attribute. Which pages to open is code too: the likely careers
+// addresses, then the links those pages actually carry ("view all jobs"), one
+// hop deep. A model used to choose the pages, and four in five of the ones it
+// chose were addresses it had made up.
 
 type candidate struct {
 	Provider string `json:"provider"`
@@ -144,41 +145,6 @@ func careerLinks(page, pageURL string) []string {
 		out = append(out, clean)
 	}
 	return out
-}
-
-// readCareersPage fetches one page and reports what hiring system it points at.
-// It filters by employer for the same reason findHiringSystem does: the model
-// followed this tool to careers.clickhouse.com, took Langfuse's board off it,
-// and offered it as ClickHouse's.
-func readCareersPage(ctx context.Context, rawURL, employer string) map[string]any {
-	target, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil || (target.Scheme != "http" && target.Scheme != "https") {
-		return map[string]any{"error": "give me an http or https address"}
-	}
-	if isPrivateHost(target.Hostname()) {
-		return map[string]any{"error": "that address is not on the public internet"}
-	}
-	page, status, err := fetchPage(ctx, target.String())
-	if err != nil {
-		return map[string]any{"fetched": false, "why": err.Error()}
-	}
-	if status != http.StatusOK {
-		return map[string]any{"fetched": false, "http_status": status}
-	}
-	mine, others := []candidate{}, 0
-	for _, c := range atsCandidates(page, target.String()) {
-		if employer == "" || resemblesEmployer(c.Provider, c.Slug, employer) {
-			mine = append(mine, c)
-			continue
-		}
-		others++
-	}
-	return map[string]any{
-		"fetched":                        true,
-		"hiring_systems":                 mine,
-		"other_companies_boards_ignored": others,
-		"pages_worth_next":               careerLinks(page, target.String()),
-	}
 }
 
 func isPrivateHost(host string) bool {
@@ -308,57 +274,66 @@ func resemblesEmployer(provider, slug, employer string) bool {
 	return false
 }
 
-// findHiringSystem opens every plausible careers page for an employer at once
-// and reports every hiring system any of them names.
-func findHiringSystem(ctx context.Context, employer string) map[string]any {
-	urls := careersURLs(employer)
-	type reading struct {
-		URL        string      `json:"page"`
-		Candidates []candidate `json:"hiring_systems"`
-	}
+// findHiringSystem reads the employer's likely careers pages, and the careers
+// links those pages carry, for the hiring systems they name. Only systems that
+// resemble the employer come back: a careers page is full of other companies'
+// boards — partners, portfolio firms, the agency that built the site — and the
+// agent once took Langfuse's board off ClickHouse's page and offered it as
+// ClickHouse's.
+func findHiringSystem(ctx context.Context, employer string) []candidate {
 	var (
-		mu       sync.Mutex
-		readings []reading
-		opened   []string
-		ignored  int
-		wg       sync.WaitGroup
+		mu    sync.Mutex
+		found []candidate
+		next  []string
+		seen  = map[string]bool{}
+		wg    sync.WaitGroup
 	)
 	gate := make(chan struct{}, 6)
-	for _, target := range urls {
-		wg.Add(1)
-		go func(target string) {
-			defer wg.Done()
-			gate <- struct{}{}
-			defer func() { <-gate }()
-			page, status, err := fetchPage(ctx, target)
-			if err != nil || status != http.StatusOK {
-				return
+	read := func(pages []string, follow bool) {
+		for _, target := range pages {
+			if seen[target] {
+				continue
 			}
-			mine, others := []candidate{}, 0
-			for _, c := range atsCandidates(page, target) {
-				if resemblesEmployer(c.Provider, c.Slug, employer) {
-					mine = append(mine, c)
-					continue
+			seen[target] = true
+			wg.Add(1)
+			go func(target string) {
+				defer wg.Done()
+				gate <- struct{}{}
+				defer func() { <-gate }()
+				page, status, err := fetchPage(ctx, target)
+				if err != nil || status != http.StatusOK {
+					return
 				}
-				others++
-			}
-			mu.Lock()
-			opened = append(opened, target)
-			ignored += others
-			if len(mine) > 0 {
-				readings = append(readings, reading{target, mine})
-			}
-			mu.Unlock()
-		}(target)
+				mu.Lock()
+				defer mu.Unlock()
+				for _, c := range atsCandidates(page, target) {
+					if resemblesEmployer(c.Provider, c.Slug, employer) {
+						found = append(found, c)
+					}
+				}
+				if follow {
+					next = append(next, careerLinks(page, target)...)
+				}
+			}(target)
+		}
+		wg.Wait()
 	}
-	wg.Wait()
-	sort.Strings(opened)
-	return map[string]any{
-		"pages_tried":  urls,
-		"pages_opened": opened,
-		"found":        readings,
-		// Said out loud rather than dropped in silence: these were other
-		// companies' boards mentioned on the page, not this employer's.
-		"other_companies_boards_ignored": ignored,
+	read(careersURLs(employer), true)
+	if len(found) == 0 && len(next) > 0 {
+		if len(next) > 8 {
+			next = next[:8]
+		}
+		read(next, false)
 	}
+
+	// One candidate per board, in the order found.
+	var out []candidate
+	dup := map[string]bool{}
+	for _, c := range found {
+		if !dup[c.Provider+":"+c.Slug] {
+			dup[c.Provider+":"+c.Slug] = true
+			out = append(out, c)
+		}
+	}
+	return out
 }

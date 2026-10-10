@@ -1,19 +1,26 @@
 // Command scout looks for job boards JobPulse is not watching yet.
 //
-// It is deliberately a small thing wrapped around two ideas. The model is good
-// at knowing that Majid Al Futtaim might be "majidalfuttaim" or "maf", and at
-// giving up on a name after a few tries; it is not good at telling the truth
-// about what it found. Asked about Air Arabia, a 3B model proposed a Greenhouse
-// board it had itself just probed and found empty, reasoning that "Air Arabia
-// is a major company and may have Gulf postings".
+// Code finds, a model judges, the server decides.
 //
-// So the scout may propose and may not decide. Proposing means POSTing to
-// /api/boards, where the server probes the board itself and answers "watching"
-// or "refused" — and that answer goes straight back into the conversation, so
-// the model learns the outcome of its own guess in the same loop.
+// It began as an agent: a model with tools, left to find each employer's board
+// itself. Measured over 89 hunts in October 2026, every board it ever added had
+// come from the name sweep — plain code trying spellings against the hiring
+// systems addressed by a company's name — and the model's own exploration had
+// produced none: 79% of the careers pages it opened were addresses it had
+// invented. It also took two and a half minutes an employer, so the daily run
+// reached eight of a pool of 170. The same sweep without the model covered a
+// hundred employers in three minutes.
 //
-// It runs against any OpenAI-compatible chat endpoint, which means the free
-// ones: ollama on a laptop or a CI runner, or Groq's free tier with a key.
+// What the sweep cannot do is tell a company from its namesake. "Future Data"
+// swept straight to greenhouse:future, a fitness app hiring health coaches.
+// That is a judgment — does this board belong to this employer? — and it is the
+// one job here a model is good at. So each candidate board goes to the model as
+// a single question, with what the board posts and what the employer is known
+// to post, and only a yes is proposed. The server then probes the board itself
+// and decides, as it always has.
+//
+// It runs against any OpenAI-compatible chat endpoint: ollama on a laptop or a
+// CI runner, or a free hosted tier with a key.
 package main
 
 import (
@@ -43,31 +50,39 @@ func main() {
 }
 
 type config struct {
-	api        string
-	token      string
-	modelURL   string
-	model      string
-	modelKey   string
+	api      string
+	token    string
+	modelURL string
+	model    string
+	modelKey string
+	// reasoning is sent as reasoning_effort when set. "none" matters on a CPU
+	// runner: a reasoning model left to think took over five minutes a
+	// question there, and the judgment is one sentence long.
+	reasoning  string
 	maxTargets int
-	maxTurns   int
+	maxPages   int
 }
 
 func run() error {
 	cfg := config{
-		api:      env("JOBPULSE_API", "http://localhost:8091"),
-		token:    os.Getenv("POLL_TOKEN"),
-		modelURL: env("SCOUT_MODEL_URL", "http://localhost:11434/v1/chat/completions"),
-		model:    env("SCOUT_MODEL", "qwen2.5:3b"),
-		modelKey: os.Getenv("SCOUT_MODEL_KEY"),
+		api:       env("JOBPULSE_API", "http://localhost:8091"),
+		token:     os.Getenv("POLL_TOKEN"),
+		modelURL:  env("SCOUT_MODEL_URL", "http://localhost:11434/v1/chat/completions"),
+		model:     env("SCOUT_MODEL", "gemma4:12b"),
+		modelKey:  os.Getenv("SCOUT_MODEL_KEY"),
+		reasoning: os.Getenv("SCOUT_MODEL_REASONING"),
 	}
-	flag.IntVar(&cfg.maxTargets, "targets", 5, "how many employers to look for")
-	flag.IntVar(&cfg.maxTurns, "turns", 10, "how many model turns to allow per employer")
+	flag.IntVar(&cfg.maxTargets, "targets", 100, "how many employers to sweep")
+	// Careers pages are the slow route — a dozen fetches an employer — and the
+	// one that reaches tenant-addressed systems no spelling produces. Budgeted
+	// separately so a big sweep stays a few minutes.
+	flag.IntVar(&cfg.maxPages, "pages", 20, "how many employers to read careers pages for when the sweep misses")
 	// -list needs no model at all, so a scheduled run can find out whether
-	// there is anything to do before spending four minutes downloading one.
+	// there is anything to do before spending minutes downloading one.
 	listOnly := flag.Bool("list", false, "print what there is to look for, and stop")
 	flag.Parse()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 55*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Minute)
 	defer cancel()
 
 	work, err := fetchWork(ctx, cfg)
@@ -86,61 +101,153 @@ func run() error {
 		fmt.Printf("targets=%d\n", len(work.Targets)+len(work.Ailing))
 		return nil
 	}
-	if len(work.Targets) == 0 && len(work.Ailing) == 0 {
-		slog.Info("nothing to do: every matched employer has a board and every board answers")
-		return nil
+
+	s := scout{cfg: cfg, work: work, skip: map[string]bool{}, pages: cfg.maxPages}
+	for _, j := range work.Skip {
+		s.skip[j.Provider+":"+j.Slug] = true
 	}
-	slog.Info("scouting", "targets", len(work.Targets), "already judged", len(work.Skip),
-		"model", cfg.model)
+	slog.Info("scouting", "employers", len(work.Targets), "ailing boards", len(work.Ailing),
+		"already judged", len(work.Skip), "model", cfg.model)
 
-	added, refused := 0, 0
-
-	// The broken ones first. A board that has stopped answering is losing
-	// alerts now, where a warm-list employer is only ever an improvement.
-	// One budget for the whole run, broken boards first. Each list used to
-	// get its own, so a day with eight broken boards and eight employers was
-	// sixteen hunts at three minutes each — past the job's time limit by
-	// construction, and killed before it could say what it had found.
-	budget := cfg.maxTargets
+	// The broken ones first: a board that has stopped answering is losing
+	// alerts now, where a new employer is only ever an improvement.
 	for _, a := range work.Ailing {
-		if budget == 0 {
+		employer := a.Employer
+		if employer == "" {
+			employer = a.Slug
+		}
+		s.place(ctx, target{Employer: employer}, a.Provider+":"+a.Slug)
+	}
+	for i, t := range work.Targets {
+		if i >= cfg.maxTargets {
 			break
 		}
-		budget--
-		outcome, err := chase(ctx, cfg, work, a)
-		if err != nil {
-			slog.Warn("gave up on an ailing board", "board", a.Provider+":"+a.Slug, "error", err)
-			continue
-		}
-		added += outcome.added
-		refused += outcome.refused
+		s.place(ctx, t, "")
+	}
+	slog.Info("scout finished", "boards added", s.added, "proposals refused", s.refused,
+		"candidates judged", s.judged, "rejected by the judge", s.rejected)
+	writeSummary(s, work)
+	return nil
+}
+
+// scout carries one run's state: what has been judged before, the careers-page
+// budget, and the tally.
+type scout struct {
+	cfg   config
+	work  workList
+	skip  map[string]bool
+	pages int
+
+	added, refused, judged, rejected int
+	log                              []string // one line per employer, for the run summary
+}
+
+// place looks for one employer's board and proposes it if the judge agrees.
+// replaces is set when the employer's previous board has stopped answering.
+func (s *scout) place(ctx context.Context, t target, replaces string) {
+	candidates := s.sweep(ctx, t.Employer)
+	route := "name sweep"
+	if len(candidates) == 0 && s.pages > 0 {
+		s.pages--
+		candidates = s.careersPages(ctx, t.Employer)
+		route = "careers pages"
+	}
+	if len(candidates) == 0 {
+		s.note(t, replaces, "no board found")
+		return
 	}
 
-	for _, t := range work.Targets {
-		if budget == 0 {
-			break
-		}
-		budget--
-		outcome, err := hunt(ctx, cfg, work, t)
+	var rejected []string
+	for _, c := range candidates {
+		v, err := judge(ctx, s.cfg, evidence{
+			Employer: t.Employer, Known: t.Known, Replaces: replaces, Board: c,
+		})
+		s.judged++
 		if err != nil {
-			// One employer failing is not the run failing: the next name may
-			// well work, and a scout that stops at the first 429 finds nothing.
-			// Not a miss either — the search never finished.
-			slog.Warn("gave up on an employer", "employer", t.Employer, "error", err)
+			// A judge that cannot answer is not a yes. Not a miss either: the
+			// question was never settled, so the employer stays on the list.
+			slog.Warn("the judge could not answer", "employer", t.Employer,
+				"board", c.key(), "error", err)
+			s.log = append(s.log, fmt.Sprintf("%s: judge failed on %s", t.Employer, c.key()))
+			return
+		}
+		slog.Info("judged", "employer", t.Employer, "board", c.key(), "same company", v.Same,
+			"reason", truncate(v.Reason, 160), "route", route)
+		if !v.Same {
+			s.rejected++
+			rejected = append(rejected, c.key())
 			continue
 		}
-		added += outcome.added
-		refused += outcome.refused
-		if outcome.added == 0 {
-			reason := "no board found"
-			if outcome.refused > 0 {
-				reason = "every board proposed was refused"
-			}
-			recordMiss(ctx, cfg, t.Employer, reason)
+		reason := fmt.Sprintf("%d reachable of %d postings; judge: %s", c.Reachable, c.Postings, v.Reason)
+		answer := proposeBoard(ctx, s.cfg, c.Provider, c.Slug, t.Employer, truncate(reason, 300), replaces)
+		s.skip[c.key()] = true
+		switch answer["status"] {
+		case "watching":
+			s.added++
+			s.log = append(s.log, fmt.Sprintf("%s: added %s (%d reachable postings, via %s)",
+				t.Employer, c.key(), c.Reachable, route))
+			return
+		case "refused":
+			s.refused++
+			rejected = append(rejected, c.key()+" (refused by the server)")
+		default:
+			slog.Warn("unexpected answer to a proposal", "board", c.key(), "answer", answer)
 		}
 	}
-	slog.Info("scout finished", "boards added", added, "proposals refused", refused)
-	return nil
+	s.note(t, replaces, "judged not theirs: "+strings.Join(rejected, ", "))
+}
+
+// note records an employer that was searched and not placed. Only employers
+// rest; a broken board is retried while it stays broken.
+func (s *scout) note(t target, replaces, why string) {
+	s.log = append(s.log, t.Employer+": "+why)
+	if replaces == "" {
+		recordMiss(context.Background(), s.cfg, t.Employer, why)
+	}
+}
+
+// sweep tries the employer's spellings on every name-addressed system and
+// returns the boards worth judging: reachable postings, a slug that resembles
+// the name, not judged before. Largest first, at most three.
+func (s *scout) sweep(ctx context.Context, employer string) []board {
+	var out []board
+	for _, b := range findBoards(ctx, s.work.sweep(), employer) {
+		if b.Reachable > 0 && resemblesEmployer(b.Provider, b.Slug, employer) && !s.skip[b.key()] {
+			out = append(out, b)
+		}
+	}
+	if len(out) > 3 {
+		out = out[:3]
+	}
+	return out
+}
+
+// careersPages reads the employer's careers pages for a hiring system the
+// sweep cannot reach, and probes what they name.
+func (s *scout) careersPages(ctx context.Context, employer string) []board {
+	var out []board
+	for _, c := range findHiringSystem(ctx, employer) {
+		if s.skip[c.Provider+":"+c.Slug] || !isProposable(s.work.Providers, c.Provider) {
+			continue
+		}
+		p := probe(ctx, c.Provider, c.Slug)
+		if p.Found && p.Reachable > 0 {
+			out = append(out, board{Provider: c.Provider, Slug: c.Slug, probeResult: p})
+		}
+		if len(out) == 3 {
+			break
+		}
+	}
+	return out
+}
+
+func isProposable(providers []string, provider string) bool {
+	for _, p := range providers {
+		if p == provider {
+			return true
+		}
+	}
+	return false
 }
 
 // --- what the server knows ------------------------------------------------
@@ -148,6 +255,9 @@ func run() error {
 type target struct {
 	Employer string `json:"employer"`
 	Matches  int    `json:"matches"`
+	// Known is a few of the employer's postings as the aggregator carried
+	// them, "title — location": the judge's picture of who this employer is.
+	Known []string `json:"known"`
 }
 
 type judged struct {
@@ -158,14 +268,27 @@ type judged struct {
 
 // ailing is a board that has stopped answering. Worth chasing because the
 // failure is silent: it 404s once a cycle, its postings age out over a
-// fortnight, and the alerts it would have sent never arrive. ClickHouse and
-// PhonePe both died this week and only a human reading poll logs noticed.
+// fortnight, and the alerts it would have sent never arrive.
 type ailing struct {
 	Provider     string `json:"provider"`
 	Slug         string `json:"slug"`
 	Employer     string `json:"employer"`
 	Error        string `json:"error"`
 	PostingsHeld int    `json:"postings_still_held"`
+}
+
+// scoutBoard is a board discovery added and what it has delivered since, for
+// the run summary.
+type scoutBoard struct {
+	Board     string    `json:"board"`
+	Employer  string    `json:"employer"`
+	AddedAt   time.Time `json:"added_at"`
+	Active    bool      `json:"active"`
+	Postings  int       `json:"postings"`
+	InMarket  int       `json:"in_market"`
+	Matched   int       `json:"matched"`
+	Verdict   string    `json:"verdict"`
+	Rationale string    `json:"reason"`
 }
 
 type workList struct {
@@ -175,17 +298,9 @@ type workList struct {
 	// Providers is everything that may be proposed; Sweepable is the narrower
 	// set a spelling sweep can reach. A tenant on Workday or Oracle only ever
 	// arrives by reading it off a careers page.
-	Providers []string `json:"providers"`
-	Sweepable []string `json:"name_addressable"`
-}
-
-// sweep is the list to try spellings against, falling back to everything the
-// server will accept if an older deployment does not send one.
-func (w workList) sweep() []string {
-	if len(w.Sweepable) > 0 {
-		return w.Sweepable
-	}
-	return w.Providers
+	Providers []string     `json:"providers"`
+	Sweepable []string     `json:"name_addressable"`
+	Scorecard []scoutBoard `json:"scout_boards"`
 }
 
 func fetchWork(ctx context.Context, cfg config) (workList, error) {
@@ -236,95 +351,6 @@ func recordMiss(ctx context.Context, cfg config, employer, reason string) {
 	}
 }
 
-// --- the tools -------------------------------------------------------------
-
-type outcome struct{ added, refused int }
-
-// probe is a variable so the loop can be driven in tests without the network.
-var probe = probeBoard
-
-// probeBoard reads a board with the same provider code the poller uses, so
-// what the scout sees is what the app would store.
-func probeBoard(ctx context.Context, provider, slug string) map[string]any {
-	fetch, known := providers.All[provider]
-	if !known {
-		return map[string]any{"error": "no such provider: " + provider}
-	}
-	if strings.TrimSpace(slug) == "" {
-		return map[string]any{"error": "slug is required"}
-	}
-	probe, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-	jobs, err := fetch(probe, slug)
-	if err != nil {
-		return map[string]any{"found": false, "why": err.Error()}
-	}
-	reachable, titles, places := 0, []string{}, []string{}
-	for _, j := range jobs {
-		if match.Reachable(j.Location) {
-			reachable++
-		}
-		if len(titles) < 5 {
-			titles = append(titles, j.Title)
-			places = append(places, j.Location)
-		}
-	}
-	return map[string]any{
-		"found": true, "postings": len(jobs), "reachable_postings": reachable,
-		"sample_titles": titles, "sample_locations": places,
-	}
-}
-
-// findBoards sweeps every sensible spelling of an employer's name across every
-// system it could be on, at once. This is the work the models would not do:
-// both of them probed one spelling six times and stopped.
-func findBoards(ctx context.Context, providerNames []string, employer string) map[string]any {
-	variants := slugVariants(employer)
-	type hit struct {
-		Provider  string   `json:"provider"`
-		Slug      string   `json:"slug"`
-		Postings  int      `json:"postings"`
-		Reachable int      `json:"reachable_postings"`
-		Titles    []string `json:"sample_titles"`
-		Locations []string `json:"sample_locations"`
-	}
-
-	var (
-		mu   sync.Mutex
-		hits []hit
-		wg   sync.WaitGroup
-	)
-	gate := make(chan struct{}, 8) // polite, and enough to finish in seconds
-	for _, provider := range providerNames {
-		for _, slug := range variants {
-			wg.Add(1)
-			go func(provider, slug string) {
-				defer wg.Done()
-				gate <- struct{}{}
-				defer func() { <-gate }()
-				answer := probe(ctx, provider, slug)
-				if found, _ := answer["found"].(bool); !found {
-					return
-				}
-				n, _ := answer["reachable_postings"].(int)
-				total, _ := answer["postings"].(int)
-				titles, _ := answer["sample_titles"].([]string)
-				places, _ := answer["sample_locations"].([]string)
-				mu.Lock()
-				hits = append(hits, hit{provider, slug, total, n, titles, places})
-				mu.Unlock()
-			}(provider, slug)
-		}
-	}
-	wg.Wait()
-	sort.Slice(hits, func(i, j int) bool { return hits[i].Reachable > hits[j].Reachable })
-	return map[string]any{
-		"spellings_tried": variants,
-		"systems_tried":   providerNames,
-		"hits":            hits,
-	}
-}
-
 // proposeBoard hands the guess to the server, which probes it again and
 // decides. Its answer is returned verbatim so the model reads its own verdict.
 func proposeBoard(ctx context.Context, cfg config, provider, slug, employer, reason string,
@@ -357,398 +383,6 @@ func proposeBoard(ctx context.Context, cfg config, provider, slug, employer, rea
 	return answer
 }
 
-func toolSpecs(providerNames []string) []map[string]any {
-	sort.Strings(providerNames)
-	return []map[string]any{
-		{"type": "function", "function": map[string]any{
-			"name":        "find_boards",
-			"description": "Search every hiring system for an employer, trying the usual spellings of their name. Start here. If it finds nothing, try again with a shorter or more common form of the name — 'Halian | Managed Services, Recruitment Agency' is really just 'Halian'.",
-			"parameters": map[string]any{"type": "object", "properties": map[string]any{
-				"employer": map[string]any{"type": "string", "description": "the employer's name, as plainly as you can write it"},
-			}, "required": []string{"employer"}},
-		}},
-		{"type": "function", "function": map[string]any{
-			"name":        "find_hiring_system",
-			"description": "Open every plausible careers page for an employer at once and report which hiring systems they name. Use this when find_boards comes up empty: large employers run systems addressed by a tenant address rather than their name, and their careers page gives it away.",
-			"parameters": map[string]any{"type": "object", "properties": map[string]any{
-				"employer": map[string]any{"type": "string"},
-			}, "required": []string{"employer"}},
-		}},
-		{"type": "function", "function": map[string]any{
-			"name":        "read_careers_page",
-			"description": "Open a company's careers page and report which hiring system it uses. Use this when find_boards comes up empty: big employers run systems addressed by a tenant address rather than their name, and the page gives it away. Try careers.<company>.com, www.<company>.com/careers, or a link this tool suggested.",
-			"parameters": map[string]any{"type": "object", "properties": map[string]any{
-				"url": map[string]any{"type": "string", "description": "the page to open, with https://"},
-			}, "required": []string{"url"}},
-		}},
-		{"type": "function", "function": map[string]any{
-			"name":        "probe_board",
-			"description": "Read an employer's job board on one applicant tracking system. Says how many postings it has and how many are somewhere this job hunt can reach.",
-			"parameters": map[string]any{"type": "object", "properties": map[string]any{
-				"provider": map[string]any{"type": "string", "enum": providerNames},
-				"slug":     map[string]any{"type": "string", "description": "the employer's id on that system, usually its name lowercased without spaces"},
-			}, "required": []string{"provider", "slug"}},
-		}},
-		{"type": "function", "function": map[string]any{
-			"name":        "propose_board",
-			"description": "Offer a board for JobPulse to watch. The server checks it again and may refuse; its answer tells you what happened. Only worth calling after probe_board showed reachable postings.",
-			"parameters": map[string]any{"type": "object", "properties": map[string]any{
-				"provider": map[string]any{"type": "string", "enum": providerNames},
-				"slug":     map[string]any{"type": "string"},
-				"employer": map[string]any{"type": "string"},
-				"reason":   map[string]any{"type": "string", "description": "what you saw that justifies watching it"},
-			}, "required": []string{"provider", "slug", "employer", "reason"}},
-		}},
-	}
-}
-
-const systemPrompt = `You find job boards for a job hunt in the Gulf and India.
-
-Given an employer, work out whether they publish jobs on a hiring system this
-app can read, and propose it if they do.
-
-How to work:
-- Call find_boards first with the employer's name. It searches the systems that
-  are addressed by a company's name and tries the usual spellings, so one call
-  does most of the work.
-- If that finds nothing, call find_hiring_system with the employer's name. It
-  opens their careers pages and reports the hiring system each one names. Large
-  employers run systems addressed by a tenant address rather than their name, so
-  this is the only way to reach them: every spelling of "Etihad" missed, while
-  their careers page said "EtihadAirways5" — ninety-eight postings, half of them
-  in Abu Dhabi.
-- Whatever it reports, probe it before proposing it.
-- read_careers_page opens one specific page, for following a link another tool
-  suggested.
-- If it finds nothing, the name may be the problem rather than the employer.
-  Company names in job postings carry taglines and legal wrappers:
-  "Halian | Managed Services, Recruitment Agency" is Halian, and
-  "Bespin Global MEA, an e& enterprise company" is Bespin Global. Try again with
-  the plain name. Two attempts is usually enough.
-- A board can exist and still belong to someone else entirely. Read the sample
-  titles and locations: if they do not look like the employer you were asked
-  about, it is not them, however many postings there are.
-- Postings nobody on this hunt could take are worth nothing, whatever the count.
-- Propose at most one board, and only one that was actually found.
-- If nothing turns up, say so plainly and stop. Plenty of employers have no
-  readable board, and a guess is worse than nothing.`
-
-// --- the loop --------------------------------------------------------------
-
-type chatMessage struct {
-	Role string `json:"role"`
-	// Never omitempty: an assistant turn that is only tool calls has empty
-	// content, and a server that receives the field missing rather than empty
-	// answers "invalid message content type: <nil>" on the next request.
-	Content    string     `json:"content"`
-	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-}
-
-type toolCall struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Function struct {
-		Name      string `json:"name"`
-		Arguments string `json:"arguments"`
-	} `json:"function"`
-}
-
-func hunt(ctx context.Context, cfg config, work workList, t target, brief ...string) (outcome, error) {
-	var result outcome
-	skip := map[string]bool{}
-	for _, j := range work.Skip {
-		skip[j.Provider+":"+j.Slug] = true
-	}
-
-	// Every board this employer was actually found on, so a proposal can be
-	// bound to evidence the loop gathered rather than to what the model
-	// remembers. A 3B model found smartrecruiters:namshi, then called
-	// propose_board twice without the slug and signed off saying it had
-	// proposed the board. Neither the claim nor the omission survives this.
-	probed := map[string]map[string]any{}
-	proposedAlready := map[string]bool{}
-	nudged := false
-
-	opening := fmt.Sprintf(
-		"Find the job board for: %s\n(%d of this reader's matches come from this employer, but only through an aggregator, which means they arrive hours late.)",
-		t.Employer, t.Matches)
-	if len(brief) > 0 && brief[0] != "" {
-		opening = brief[0]
-	}
-	messages := []chatMessage{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: opening},
-	}
-	tools := toolSpecs(work.Providers)
-
-	for turn := 0; turn < cfg.maxTurns; turn++ {
-		reply, err := ask(ctx, cfg, messages, tools)
-		if err != nil {
-			return result, err
-		}
-		messages = append(messages, reply)
-		if len(reply.ToolCalls) == 0 {
-			// A small model will describe the action instead of taking it: it
-			// found ashby:leantech, said "the job board has been proposed for
-			// monitoring", and called nothing. One nudge, because the decision
-			// is still the model's — it may have looked at the postings and
-			// concluded they belong to a different company, and that judgement
-			// is the part worth keeping.
-			if only, ok := solePending(probed, proposedAlready); ok && !nudged {
-				nudged = true
-				messages = append(messages, chatMessage{Role: "user", Content: fmt.Sprintf(
-					"You did not call propose_board. If %s:%s is really %s, call propose_board for it now. If it is not them, say which part of what you saw says so.",
-					only.provider, only.slug, t.Employer)})
-				continue
-			}
-			slog.Info("done with employer", "employer", t.Employer,
-				"said", firstLine(reply.Content))
-			return result, nil
-		}
-		for _, call := range reply.ToolCalls {
-			args := map[string]string{}
-			_ = json.Unmarshal([]byte(call.Function.Arguments), &args)
-			var answer map[string]any
-
-			switch call.Function.Name {
-			case "find_boards":
-				name := args["employer"]
-				if strings.TrimSpace(name) == "" {
-					name = t.Employer
-				}
-				answer = findBoards(ctx, work.sweep(), name)
-				// Record the hits so a proposal can be bound to one of them.
-				encoded, _ := json.Marshal(answer["hits"])
-				var hits []map[string]any
-				_ = json.Unmarshal(encoded, &hits)
-				for _, h := range hits {
-					if n, _ := h["reachable_postings"].(float64); n > 0 {
-						provider, _ := h["provider"].(string)
-						slug, _ := h["slug"].(string)
-						probed[provider+":"+slug] = h
-					}
-				}
-			case "find_hiring_system":
-				name := args["employer"]
-				if strings.TrimSpace(name) == "" {
-					name = t.Employer
-				}
-				answer = findHiringSystem(ctx, name)
-			case "read_careers_page":
-				answer = readCareersPage(ctx, args["url"], t.Employer)
-			case "probe_board":
-				if skip[args["provider"]+":"+args["slug"]] {
-					// Already judged once. Saying so is cheaper than probing,
-					// and it is what stops a tireless scout re-probing the same
-					// dead board every week.
-					answer = map[string]any{"skipped": "this board has already been judged"}
-				} else {
-					answer = probe(ctx, args["provider"], args["slug"])
-					if found, _ := answer["found"].(bool); found {
-						if n, _ := answer["reachable_postings"].(int); n > 0 {
-							probed[args["provider"]+":"+args["slug"]] = answer
-						}
-					}
-				}
-			case "propose_board":
-				provider, slug := args["provider"], args["slug"]
-				// A dropped argument is the commonest small-model failure, and
-				// an unbound proposal is the most dangerous. If exactly one
-				// board was found for this employer, that is the one being
-				// proposed; anything else has to name a board actually probed.
-				if only, ok := soleProbe(probed, provider, slug); ok {
-					provider, slug = only.provider, only.slug
-				}
-				if _, seen := probed[provider+":"+slug]; !seen {
-					answer = map[string]any{"error": "propose only a board you probed and " +
-						"found reachable postings on; you have found " + strings.Join(names(probed), ", ")}
-					break
-				}
-				proposedAlready[provider+":"+slug] = true
-				answer = proposeBoard(ctx, cfg, provider, slug,
-					args["employer"], args["reason"])
-				switch answer["status"] {
-				case "watching":
-					result.added++
-				case "refused":
-					result.refused++
-				}
-				skip[args["provider"]+":"+args["slug"]] = true
-			default:
-				answer = map[string]any{"error": "no such tool: " + call.Function.Name}
-			}
-
-			encoded, _ := json.Marshal(answer)
-			slog.Info("tool", "employer", t.Employer, "call", call.Function.Name,
-				"args", call.Function.Arguments, "answer", truncate(string(encoded), 160))
-			messages = append(messages, chatMessage{
-				Role: "tool", ToolCallID: call.ID, Content: string(encoded),
-			})
-		}
-	}
-	slog.Warn("ran out of turns", "employer", t.Employer)
-	return result, nil
-}
-
-// chase works out where a dead board's postings went. Same tools and the same
-// gate as looking for a new one — what differs is the question, and that the
-// employer's name is already known.
-func chase(ctx context.Context, cfg config, work workList, a ailing) (outcome, error) {
-	employer := a.Employer
-	if employer == "" {
-		employer = a.Slug
-	}
-
-	// Sweep first, and if the sweep answers plainly, act on it. A company that
-	// has moved systems usually keeps its name, so a board on another system
-	// bearing this employer's name and carrying reachable postings is the
-	// answer — ClickHouse left Greenhouse for Ashby under the same slug. The
-	// model was handed exactly that on its first turn and wandered off to a
-	// different company's board instead, twice.
-	if best, ok := bestSweepHit(findBoards(ctx, work.sweep(), employer), employer); ok {
-		slog.Info("the sweep answered plainly", "board", best.provider+":"+best.slug,
-			"replacing", a.Provider+":"+a.Slug)
-		answer := proposeBoard(ctx, cfg, best.provider, best.slug, employer,
-			fmt.Sprintf("%s:%s stopped answering; this board carries the same employer's postings",
-				a.Provider, a.Slug),
-			a.Provider+":"+a.Slug)
-		var result outcome
-		switch answer["status"] {
-		case "watching":
-			result.added++
-		case "refused":
-			result.refused++
-		}
-		slog.Info("proposed a replacement", "answer", answer)
-		return result, nil
-	}
-
-	return hunt(ctx, cfg, work, target{Employer: employer}, fmt.Sprintf(
-		`The board %s:%s has stopped answering. It was %s, it still holds %d postings we can no longer refresh, and the error is: %s
-
-Work out where their postings went. A slug can be renamed, a company can move to another hiring system, and a company can stop hiring altogether — those are three different answers and only the first two have something to propose. If they have moved, propose the board they moved to. If they are simply gone, say so and stop.`,
-		a.Provider, a.Slug, employer, a.PostingsHeld, truncate(a.Error, 160)))
-}
-
-func ask(ctx context.Context, cfg config, messages []chatMessage, tools []map[string]any) (chatMessage, error) {
-	payload, err := json.Marshal(map[string]any{
-		"model": cfg.model, "messages": messages, "tools": tools,
-		"temperature": 0, "stream": false,
-	})
-	if err != nil {
-		return chatMessage{}, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.modelURL,
-		bytes.NewReader(payload))
-	if err != nil {
-		return chatMessage{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if cfg.modelKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.modelKey)
-	}
-	client := &http.Client{Timeout: 10 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		return chatMessage{}, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return chatMessage{}, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return chatMessage{}, fmt.Errorf("model answered %s: %s",
-			resp.Status, truncate(strings.TrimSpace(string(body)), 200))
-	}
-	var out struct {
-		Choices []struct {
-			Message chatMessage `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return chatMessage{}, fmt.Errorf("decoding the model's answer: %w", err)
-	}
-	if len(out.Choices) == 0 {
-		return chatMessage{}, fmt.Errorf("the model returned no choices")
-	}
-	return out.Choices[0].Message, nil
-}
-
-type pair struct{ provider, slug string }
-
-// bestSweepHit is the one board a sweep found that plainly belongs to this
-// employer and has postings worth having. More than one, or none, is a
-// judgement call and goes to the model.
-func bestSweepHit(sweep map[string]any, employer string) (pair, bool) {
-	encoded, err := json.Marshal(sweep["hits"])
-	if err != nil {
-		return pair{}, false
-	}
-	var hits []map[string]any
-	if err := json.Unmarshal(encoded, &hits); err != nil {
-		return pair{}, false
-	}
-	var found []pair
-	for _, h := range hits {
-		reachable, _ := h["reachable_postings"].(float64)
-		provider, _ := h["provider"].(string)
-		slug, _ := h["slug"].(string)
-		if reachable > 0 && resemblesEmployer(provider, slug, employer) {
-			found = append(found, pair{provider, slug})
-		}
-	}
-	if len(found) == 1 {
-		return found[0], true
-	}
-	return pair{}, false
-}
-
-// solePending is the one board that was found and not yet offered, if there is
-// exactly one. Anything else is a judgement call and stays with the model.
-func solePending(probed map[string]map[string]any, proposed map[string]bool) (pair, bool) {
-	var only pair
-	count := 0
-	for key := range probed {
-		if proposed[key] {
-			continue
-		}
-		p, s, _ := strings.Cut(key, ":")
-		only = pair{provider: p, slug: s}
-		count++
-	}
-	return only, count == 1
-}
-
-// soleProbe answers the case where the model left the board underspecified and
-// there is only one it could mean.
-func soleProbe(probed map[string]map[string]any, provider, slug string) (pair, bool) {
-	if provider != "" && slug != "" {
-		return pair{}, false
-	}
-	if len(probed) != 1 {
-		return pair{}, false
-	}
-	for key := range probed {
-		p, s, _ := strings.Cut(key, ":")
-		return pair{provider: p, slug: s}, true
-	}
-	return pair{}, false
-}
-
-func names(probed map[string]map[string]any) []string {
-	out := make([]string, 0, len(probed))
-	for key := range probed {
-		out = append(out, key)
-	}
-	if len(out) == 0 {
-		return []string{"nothing yet"}
-	}
-	sort.Strings(out)
-	return out
-}
-
 func env(key, fallback string) string {
 	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
@@ -763,9 +397,93 @@ func truncate(s string, n int) string {
 	return s[:n] + "…"
 }
 
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
+// sweep is the list to try spellings against, falling back to everything the
+// server will accept if an older deployment does not send one.
+func (w workList) sweep() []string {
+	if len(w.Sweepable) > 0 {
+		return w.Sweepable
 	}
-	return truncate(s, 120)
+	return w.Providers
+}
+
+// --- boards ----------------------------------------------------------------
+
+// probeResult is what reading a board said.
+type probeResult struct {
+	Found     bool
+	Why       string
+	Postings  int
+	Reachable int
+	Titles    []string
+	Places    []string
+}
+
+// board is a candidate: where it is, and what reading it said.
+type board struct {
+	Provider string
+	Slug     string
+	probeResult
+}
+
+func (b board) key() string { return b.Provider + ":" + b.Slug }
+
+// probe is a variable so the run can be tested without the network.
+var probe = probeBoard
+
+// probeBoard reads a board with the same provider code the poller uses, so
+// what the scout sees is what the app would store.
+func probeBoard(ctx context.Context, provider, slug string) probeResult {
+	fetch, known := providers.All[provider]
+	if !known {
+		return probeResult{Why: "no such provider: " + provider}
+	}
+	if strings.TrimSpace(slug) == "" {
+		return probeResult{Why: "slug is required"}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	jobs, err := fetch(probeCtx, slug)
+	if err != nil {
+		return probeResult{Why: err.Error()}
+	}
+	r := probeResult{Found: true, Postings: len(jobs)}
+	for _, j := range jobs {
+		if match.Reachable(j.Location) {
+			r.Reachable++
+		}
+		if len(r.Titles) < 6 {
+			r.Titles = append(r.Titles, j.Title)
+			r.Places = append(r.Places, j.Location)
+		}
+	}
+	return r
+}
+
+// findBoards tries every spelling of the employer on every name-addressed
+// system at once, and returns what answered, most reachable postings first.
+func findBoards(ctx context.Context, providerNames []string, employer string) []board {
+	var (
+		mu   sync.Mutex
+		hits []board
+		wg   sync.WaitGroup
+	)
+	gate := make(chan struct{}, 8) // polite, and enough to finish in seconds
+	for _, provider := range providerNames {
+		for _, slug := range slugVariants(employer) {
+			wg.Add(1)
+			go func(provider, slug string) {
+				defer wg.Done()
+				gate <- struct{}{}
+				defer func() { <-gate }()
+				if r := probe(ctx, provider, slug); r.Found {
+					mu.Lock()
+					hits = append(hits, board{Provider: provider, Slug: slug, probeResult: r})
+					mu.Unlock()
+				}
+			}(provider, slug)
+		}
+	}
+	wg.Wait()
+	sort.Slice(hits, func(i, j int) bool { return hits[i].Reachable > hits[j].Reachable })
+	return hits
 }

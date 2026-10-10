@@ -3,265 +3,225 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
-// scriptedModel answers each request with the next canned reply, so the loop
-// can be tested without a model and without the network.
-func scriptedModel(t *testing.T, replies []chatMessage) *httptest.Server {
-	t.Helper()
-	turn := 0
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if turn >= len(replies) {
-			t.Errorf("the loop asked for turn %d; the script has %d", turn+1, len(replies))
-			http.Error(w, "off the end of the script", http.StatusInternalServerError)
-			return
-		}
-		reply := replies[turn]
-		turn++
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"choices": []map[string]any{{"message": reply}},
-		})
-	}))
-}
-
-// withProbe swaps the board reader for a canned one, so the loop is tested
+// withProbe swaps the board reader for a canned one, so a run is tested
 // without touching a job board.
-func withProbe(t *testing.T, answers map[string]map[string]any) {
+func withProbe(t *testing.T, boards map[string]probeResult) {
 	t.Helper()
 	original := probe
-	probe = func(_ context.Context, provider, slug string) map[string]any {
-		if a, ok := answers[provider+":"+slug]; ok {
-			return a
+	probe = func(_ context.Context, provider, slug string) probeResult {
+		if r, ok := boards[provider+":"+slug]; ok {
+			return r
 		}
-		return map[string]any{"found": false, "why": "404"}
+		return probeResult{Why: "404"}
 	}
 	t.Cleanup(func() { probe = original })
 }
 
-func found(reachable int) map[string]any {
-	return map[string]any{"found": true, "postings": reachable, "reachable_postings": reachable}
-}
-
-func call(name, args string) toolCall {
-	var c toolCall
-	c.ID, c.Type = "call-"+name, "function"
-	c.Function.Name, c.Function.Arguments = name, args
-	return c
-}
-
-// A proposal is the server's decision, not the scout's. The scout counts what
-// it is told and carries on.
-func TestARefusedProposalIsCountedAndFedBack(t *testing.T) {
-	var seenBody map[string]string
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&seenBody)
-		w.WriteHeader(http.StatusUnprocessableEntity)
+// judgeServer is a model that answers "not the same" for any prompt naming one
+// of the given boards, and "the same" otherwise. fail makes it answer 500.
+func judgeServer(t *testing.T, namesakes []string, fail bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fail {
+			http.Error(w, "model is down", http.StatusInternalServerError)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		same := true
+		for _, n := range namesakes {
+			if strings.Contains(string(body), "Candidate board: "+n) {
+				same = false
+			}
+		}
+		content := `<think>weighing it up</think>{"same_company": true, "reason": "the work matches"}`
+		if !same {
+			content = "```json\n{\"same_company\": false, \"reason\": \"a fitness app, not a data firm\"}\n```"
+		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status": "refused", "reason": "the board answered with no postings this hunt can reach",
-			"postings": 36, "reachable": 0,
+			"choices": []map[string]any{{"message": map[string]string{"content": content}}},
 		})
 	}))
+}
+
+// apiServer records what the scout sends the JobPulse server.
+type apiServer struct {
+	*httptest.Server
+	mu        sync.Mutex
+	proposals []map[string]string
+	misses    []map[string]string
+}
+
+func newAPIServer(t *testing.T) *apiServer {
+	t.Helper()
+	a := &apiServer{}
+	a.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&in)
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		switch r.URL.Path {
+		case "/api/boards":
+			a.proposals = append(a.proposals, in)
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "watching"})
+		case "/api/discovery/misses":
+			a.misses = append(a.misses, in)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	return a
+}
+
+func newScout(model, api string) scout {
+	return scout{
+		cfg:  config{api: api, modelURL: model, model: "test", maxPages: 0},
+		work: workList{Sweepable: []string{"greenhouse", "ashby"}, Providers: []string{"greenhouse", "ashby"}},
+		skip: map[string]bool{},
+	}
+}
+
+// "Future Data" sweeps to greenhouse:future, a fitness app. The judge says no,
+// so it is never proposed, and the real board is.
+func TestOnlyAJudgedYesIsProposed(t *testing.T) {
+	withProbe(t, map[string]probeResult{
+		"greenhouse:future": {Found: true, Postings: 9, Reachable: 9, Titles: []string{"Health Coach"}, Places: []string{"Remote"}},
+		"ashby:futuredata":  {Found: true, Postings: 4, Reachable: 3, Titles: []string{"Data Engineer"}, Places: []string{"Dubai"}},
+	})
+	model := judgeServer(t, []string{"greenhouse:future"}, false)
+	defer model.Close()
+	api := newAPIServer(t)
 	defer api.Close()
 
-	withProbe(t, map[string]map[string]any{"greenhouse:air": found(4)})
-	model := scriptedModel(t, []chatMessage{
-		{Role: "assistant", ToolCalls: []toolCall{call("probe_board",
-			`{"provider":"greenhouse","slug":"air"}`)}},
-		{Role: "assistant", ToolCalls: []toolCall{call("propose_board",
-			`{"provider":"greenhouse","slug":"air","employer":"Air Arabia","reason":"resolves"}`)}},
-		{Role: "assistant", Content: "That board is not Air Arabia. Nothing to propose."},
-	})
-	defer model.Close()
+	s := newScout(model.URL, api.URL)
+	s.place(t.Context(), target{Employer: "Future Data", Known: []string{"Data Analyst — Dubai"}}, "")
 
-	cfg := config{api: api.URL, modelURL: model.URL, model: "test", maxTurns: 5}
-	got, err := hunt(context.Background(), cfg,
-		workList{Providers: []string{"greenhouse"}}, target{Employer: "Air Arabia"})
-	if err != nil {
-		t.Fatalf("hunt: %v", err)
+	if len(api.proposals) != 1 || api.proposals[0]["slug"] != "futuredata" {
+		t.Fatalf("proposals = %v, want only ashby:futuredata", api.proposals)
 	}
-	if got.refused != 1 || got.added != 0 {
-		t.Errorf("outcome = %+v, want one refusal and no additions", got)
-	}
-	if seenBody["slug"] != "air" {
-		t.Errorf("the server was sent %q", seenBody["slug"])
+	if s.added != 1 || s.rejected != 1 || len(api.misses) != 0 {
+		t.Errorf("added=%d rejected=%d misses=%v, want 1, 1, none", s.added, s.rejected, api.misses)
 	}
 }
 
-func TestAnAcceptedProposalIsCounted(t *testing.T) {
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"status": "watching", "postings": 6, "reachable": 6,
-		})
-	}))
+// Every candidate a namesake: nothing proposed, and the employer rests.
+func TestAnEmployerWithOnlyNamesakesRests(t *testing.T) {
+	withProbe(t, map[string]probeResult{
+		"greenhouse:future": {Found: true, Postings: 9, Reachable: 9, Titles: []string{"Health Coach"}},
+	})
+	model := judgeServer(t, []string{"greenhouse:future"}, false)
+	defer model.Close()
+	api := newAPIServer(t)
 	defer api.Close()
-	withProbe(t, map[string]map[string]any{"smartrecruiters:namshi": found(6)})
-	model := scriptedModel(t, []chatMessage{
-		{Role: "assistant", ToolCalls: []toolCall{call("probe_board",
-			`{"provider":"smartrecruiters","slug":"namshi"}`)}},
-		{Role: "assistant", ToolCalls: []toolCall{call("propose_board",
-			`{"provider":"smartrecruiters","slug":"namshi","employer":"Namshi","reason":"six Gulf postings"}`)}},
-		{Role: "assistant", Content: "Proposed."},
+
+	s := newScout(model.URL, api.URL)
+	s.place(t.Context(), target{Employer: "Future"}, "")
+	if len(api.proposals) != 0 {
+		t.Errorf("a namesake was proposed: %v", api.proposals)
+	}
+	if len(api.misses) != 1 || !strings.Contains(api.misses[0]["reason"], "greenhouse:future") {
+		t.Errorf("misses = %v, want one naming the rejected board", api.misses)
+	}
+}
+
+// A judge that cannot answer is not a yes, and not a miss: the question was
+// never settled, so the employer stays on tomorrow's list.
+func TestAFailedJudgeIsNeitherAYesNorAMiss(t *testing.T) {
+	withProbe(t, map[string]probeResult{
+		"ashby:analog": {Found: true, Postings: 22, Reachable: 22, Titles: []string{"Data Engineer"}},
 	})
+	model := judgeServer(t, nil, true)
 	defer model.Close()
-
-	cfg := config{api: api.URL, modelURL: model.URL, model: "test", maxTurns: 5}
-	got, err := hunt(context.Background(), cfg,
-		workList{Providers: []string{"smartrecruiters"}}, target{Employer: "Namshi"})
-	if err != nil {
-		t.Fatalf("hunt: %v", err)
-	}
-	if got.added != 1 {
-		t.Errorf("outcome = %+v, want one addition", got)
-	}
-}
-
-// The refusals are the point of remembering them: a board already judged is not
-// probed again, however tireless the scout is.
-func TestAnAlreadyJudgedBoardIsNotProbed(t *testing.T) {
-	model := scriptedModel(t, []chatMessage{
-		{Role: "assistant", ToolCalls: []toolCall{call("probe_board",
-			`{"provider":"teamtailor","slug":"dubizzle"}`)}},
-		{Role: "assistant", Content: "Already judged; nothing to do."},
-	})
-	defer model.Close()
-
-	cfg := config{api: "http://127.0.0.1:1", modelURL: model.URL, model: "test", maxTurns: 5}
-	work := workList{
-		Providers: []string{"teamtailor"},
-		Skip:      []judged{{Provider: "teamtailor", Slug: "dubizzle", Verdict: "refused"}},
-	}
-	if _, err := hunt(context.Background(), cfg, work, target{Employer: "Dubizzle"}); err != nil {
-		t.Fatalf("hunt: %v", err)
-	}
-	// Reaching here without a network probe is the assertion: the api URL above
-	// is unroutable, and teamtailor was never fetched.
-}
-
-// A model that keeps calling tools must not run forever.
-func TestTheLoopStopsAtTheTurnLimit(t *testing.T) {
-	forever := make([]chatMessage, 4)
-	for i := range forever {
-		forever[i] = chatMessage{Role: "assistant", ToolCalls: []toolCall{
-			call("probe_board", `{"provider":"lever","slug":"seen"}`)}}
-	}
-	model := scriptedModel(t, forever)
-	defer model.Close()
-
-	cfg := config{api: "http://127.0.0.1:1", modelURL: model.URL, model: "test", maxTurns: 3}
-	work := workList{Providers: []string{"lever"},
-		Skip: []judged{{Provider: "lever", Slug: "seen", Verdict: "refused"}}}
-	if _, err := hunt(context.Background(), cfg, work, target{Employer: "Loop"}); err != nil {
-		t.Fatalf("hunt: %v", err)
-	}
-}
-
-func TestUnknownToolsAreReportedRatherThanFatal(t *testing.T) {
-	model := scriptedModel(t, []chatMessage{
-		{Role: "assistant", ToolCalls: []toolCall{call("delete_everything", `{}`)}},
-		{Role: "assistant", Content: "Sorry."},
-	})
-	defer model.Close()
-	cfg := config{api: "http://127.0.0.1:1", modelURL: model.URL, model: "test", maxTurns: 4}
-	if _, err := hunt(context.Background(), cfg, workList{}, target{Employer: "X"}); err != nil {
-		t.Fatalf("an invented tool name should not end the run: %v", err)
-	}
-}
-
-func TestModelErrorsSurfaceWithTheirBody(t *testing.T) {
-	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, `{"error":"rate limit reached"}`, http.StatusTooManyRequests)
-	}))
-	defer model.Close()
-	cfg := config{api: "http://127.0.0.1:1", modelURL: model.URL, model: "test", maxTurns: 2}
-	_, err := hunt(context.Background(), cfg, workList{}, target{Employer: "X"})
-	if err == nil || !strings.Contains(err.Error(), "rate limit") {
-		t.Fatalf("want the provider's own words in the error, got %v", err)
-	}
-}
-
-// The model found a board and then called propose_board without the slug,
-// twice, and signed off claiming it had proposed it. One board was found, so
-// that is unambiguously the one meant — and it gets proposed.
-func TestADroppedSlugIsFilledFromTheOneBoardFound(t *testing.T) {
-	withProbe(t, map[string]map[string]any{"smartrecruiters:namshi": found(6)})
-	var proposed map[string]string
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewDecoder(r.Body).Decode(&proposed)
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "watching"})
-	}))
+	api := newAPIServer(t)
 	defer api.Close()
-	model := scriptedModel(t, []chatMessage{
-		{Role: "assistant", ToolCalls: []toolCall{call("probe_board",
-			`{"provider":"smartrecruiters","slug":"namshi"}`)}},
-		{Role: "assistant", ToolCalls: []toolCall{call("propose_board",
-			`{"provider":"smartrecruiters","employer":"Namshi","reason":"looks right"}`)}},
-		{Role: "assistant", Content: "Done."},
-	})
-	defer model.Close()
 
-	cfg := config{api: api.URL, modelURL: model.URL, model: "test", maxTurns: 5}
-	got, err := hunt(context.Background(), cfg,
-		workList{Providers: []string{"smartrecruiters"}}, target{Employer: "Namshi"})
-	if err != nil {
-		t.Fatalf("hunt: %v", err)
-	}
-	if got.added != 1 || proposed["slug"] != "namshi" {
-		t.Errorf("added=%d proposed=%v; want the probed board proposed", got.added, proposed)
+	s := newScout(model.URL, api.URL)
+	s.place(t.Context(), target{Employer: "Analog"}, "")
+	if len(api.proposals) != 0 || len(api.misses) != 0 {
+		t.Errorf("proposals=%v misses=%v, want neither", api.proposals, api.misses)
 	}
 }
 
-// A board nobody probed never reaches the server, whatever the model believes.
-func TestAnUnprobedProposalNeverReachesTheServer(t *testing.T) {
-	withProbe(t, map[string]map[string]any{})
-	called := false
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{"status": "watching"})
-	}))
-	defer api.Close()
-	model := scriptedModel(t, []chatMessage{
-		{Role: "assistant", ToolCalls: []toolCall{call("propose_board",
-			`{"provider":"greenhouse","slug":"airarabia","employer":"Air Arabia","reason":"major company"}`)}},
-		{Role: "assistant", Content: "Understood."},
+// A board judged before is not judged again.
+func TestAnAlreadyJudgedBoardIsNotACandidate(t *testing.T) {
+	withProbe(t, map[string]probeResult{
+		"ashby:analog": {Found: true, Postings: 22, Reachable: 22},
 	})
-	defer model.Close()
-
-	cfg := config{api: api.URL, modelURL: model.URL, model: "test", maxTurns: 4}
-	got, err := hunt(context.Background(), cfg,
-		workList{Providers: []string{"greenhouse"}}, target{Employer: "Air Arabia"})
-	if err != nil {
-		t.Fatalf("hunt: %v", err)
+	s := newScout("", "")
+	s.skip["ashby:analog"] = true
+	if got := s.sweep(t.Context(), "Analog"); len(got) != 0 {
+		t.Errorf("sweep offered %v, which was judged before", got)
 	}
-	if called || got.added != 0 {
-		t.Errorf("an unprobed guess reached the server (called=%v, added=%d)", called, got.added)
+}
+
+// A replacement for a dead board is proposed as one, and a dead board's
+// employer never rests: it is retried while the board stays broken.
+func TestAReplacementNamesTheBoardItReplaces(t *testing.T) {
+	withProbe(t, map[string]probeResult{
+		"ashby:clickhouse": {Found: true, Postings: 30, Reachable: 5},
+	})
+	model := judgeServer(t, nil, false)
+	defer model.Close()
+	api := newAPIServer(t)
+	defer api.Close()
+
+	s := newScout(model.URL, api.URL)
+	s.place(t.Context(), target{Employer: "ClickHouse"}, "greenhouse:clickhouse")
+	if len(api.proposals) != 1 || api.proposals[0]["replaces"] != "greenhouse:clickhouse" {
+		t.Errorf("proposals = %v, want one replacing greenhouse:clickhouse", api.proposals)
+	}
+}
+
+// Reasoning models think out loud and small ones wrap the answer; the verdict
+// is the last object naming same_company, wherever it sits.
+func TestVerdictsAreReadOutOfWhateverWrapsThem(t *testing.T) {
+	cases := map[string]bool{
+		`{"same_company": true, "reason": "r"}`:                                                       true,
+		"<think>maybe {\"same_company\": true}</think>\n{\"same_company\": false, \"reason\": \"r\"}": false,
+		"Sure.\n```json\n{\"same_company\": true, \"reason\": \"r\"}\n```":                            true,
+		`first {"same_company": true} then {"same_company": false, "reason": "x"}`:                    false,
+	}
+	for answer, want := range cases {
+		v, err := parseVerdict(answer)
+		if err != nil || v.Same != want {
+			t.Errorf("parseVerdict(%q) = %v, %v; want same=%v", answer, v, err, want)
+		}
+	}
+	if _, err := parseVerdict("I think it is probably them."); err == nil {
+		t.Error("an answer with no verdict should be an error, not a guess")
+	}
+}
+
+// The judge sees what decides the question: who the employer is known to be,
+// and what the board actually posts.
+func TestThePromptCarriesTheEvidence(t *testing.T) {
+	p := evidence{
+		Employer: "Lean Technologies", Known: []string{"Staff DevOps Engineer — Riyadh"},
+		Board: board{Provider: "ashby", Slug: "leantech", probeResult: probeResult{
+			Postings: 3, Titles: []string{"Senior Compliance Manager"}, Places: []string{"Riyadh, Saudi Arabia"}}},
+	}.prompt()
+	for _, want := range []string{"Lean Technologies", "Staff DevOps Engineer — Riyadh", "ashby:leantech", "Senior Compliance Manager — Riyadh, Saudi Arabia"} {
+		if !strings.Contains(p, want) {
+			t.Errorf("prompt lacks %q:\n%s", want, p)
+		}
 	}
 }
 
 // An employer searched and not placed is reported, so the work list can rest
 // them: before this, the same unfindable names topped the list every day.
 func TestAMissIsReportedToTheServer(t *testing.T) {
-	var got struct{ path, auth, employer, reason string }
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var in map[string]string
-		_ = json.NewDecoder(r.Body).Decode(&in)
-		got.path, got.auth = r.URL.Path, r.Header.Get("Authorization")
-		got.employer, got.reason = in["employer"], in["reason"]
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-
-	recordMiss(t.Context(), config{api: srv.URL, token: "t0k"}, "Amazon", "no board found")
-	if got.path != "/api/discovery/misses" || got.auth != "Bearer t0k" {
-		t.Errorf("posted to %q with %q", got.path, got.auth)
-	}
-	if got.employer != "Amazon" || got.reason != "no board found" {
-		t.Errorf("sent employer=%q reason=%q", got.employer, got.reason)
+	api := newAPIServer(t)
+	defer api.Close()
+	recordMiss(t.Context(), config{api: api.URL, token: "t0k"}, "Amazon", "no board found")
+	if len(api.misses) != 1 || api.misses[0]["employer"] != "Amazon" || api.misses[0]["reason"] != "no board found" {
+		t.Errorf("misses = %v", api.misses)
 	}
 }

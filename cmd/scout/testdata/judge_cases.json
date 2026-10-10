@@ -1,0 +1,591 @@
+[
+ {
+  "employer": "Jobgether",
+  "known": [
+   "Software Engineer (Front and Back end) — Saudi Arabia",
+   "Software Engineer (Front and Back end) — United Arab Emirates",
+   "Trenches / Web3 Frontend Developer — Saudi Arabia",
+   "Trenches / Web3 Frontend Developer — United Arab Emirates"
+  ],
+  "provider": "lever",
+  "slug": "jobgether",
+  "postings": 3933,
+  "titles": [
+   ".NET Backend Developer Pleno",
+   ".Net Developer",
+   ".Net Developer",
+   ".Net Developer",
+   ".Net Developer",
+   ".Net Developer"
+  ],
+  "places": [
+   "Brazil",
+   "Australia",
+   "Brazil",
+   "Italy",
+   "Brazil",
+   "France"
+  ],
+  "same": true,
+  "note": "real: the job platform itself — identity is right; the server's size gate is what refuses it"
+ },
+ {
+  "employer": "REACH Group",
+  "known": [
+   "Data & Analytics Product Manager — Abu Dhabi Emirate, United Arab Emirates",
+   "Senior Data Product Manager — Abu Dhabi Emirate, United Arab Emirates"
+  ],
+  "provider": "ashby",
+  "slug": "reach",
+  "postings": 6,
+  "titles": [
+   "Staff Software Engineer (Backend)",
+   "Senior Staff Software Engineer (Data Platform)",
+   "Senior Staff Software Engineer (Integrations)",
+   "Senior Staff Security Researcher",
+   "Principal Support Engineer - Endpoint",
+   "Principal Support Engineer - Network"
+  ],
+  "places": [
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "Remote",
+   "Remote"
+  ],
+  "same": false,
+  "note": "real: Abu Dhabi data firm vs a San Francisco startup called Reach"
+ },
+ {
+  "employer": "REACH Energy",
+  "known": [
+   "Data Product Manager (Arabic speaker) — Abu Dhabi Emirate, United Arab Emirates",
+   "Sr Data Product Manager (Emirati) — Abu Dhabi, Abu Dhabi Emirate, United Arab Emirates"
+  ],
+  "provider": "ashby",
+  "slug": "reach",
+  "postings": 6,
+  "titles": [
+   "Staff Software Engineer (Backend)",
+   "Senior Staff Software Engineer (Data Platform)",
+   "Senior Staff Software Engineer (Integrations)",
+   "Senior Staff Security Researcher",
+   "Principal Support Engineer - Endpoint",
+   "Principal Support Engineer - Network"
+  ],
+  "places": [
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "Remote",
+   "Remote"
+  ],
+  "same": false,
+  "note": "real: the scout added this on 2026-10-03 — a false positive"
+ },
+ {
+  "employer": "Artefact",
+  "known": [
+   "Junior Backend Engineer — Dubai, Dubai, United Arab Emirates"
+  ],
+  "provider": "greenhouse",
+  "slug": "artefact",
+  "postings": 136,
+  "titles": [
+   "Account Manager - Retail Media",
+   "AI & Agentic Engineer, Senior",
+   "AI Consultant",
+   "AI Engineer",
+   "AI Engineer Manager - Casablanca",
+   "Business Driver"
+  ],
+  "places": [
+   "17th Floor, 5 Aldermanbury Square, London, EC2V 7HR",
+   "Montréal, Quebec, Canada",
+   "Kuala Lumpur, Kuala Lumpur, Malaysia",
+   "Kuala Lumpur, Kuala Lumpur, Malaysia",
+   "Capital Tower, Boulevard Mly Youssef, Casablanca, Maroc",
+   "Zürich, Switzerland"
+  ],
+  "same": true,
+  "note": "real: global data consultancy with a Dubai office"
+ },
+ {
+  "employer": "BBI",
+  "known": [
+   "Front-End Engineer / Full Stack — Dubai"
+  ],
+  "provider": "teamtailor",
+  "slug": "bbi",
+  "postings": 37,
+  "titles": [
+   "Data Science Lead",
+   "Scrum Master",
+   "Data Scientist",
+   "Data Annotation Specialist",
+   "Solution Architect & Lead SE Engineer",
+   "ML Engineer"
+  ],
+  "places": [
+   "Dubai, United Arab Emirates",
+   "Dubai, United Arab Emirates",
+   "Dubai, United Arab Emirates",
+   "Dubai, United Arab Emirates",
+   "Dubai, United Arab Emirates",
+   "Dubai, United Arab Emirates"
+  ],
+  "same": true,
+  "note": "real"
+ },
+ {
+  "employer": "Binance",
+  "known": [
+   "DevOps Engineer, Blockchain Infra (Fully Remote) — Dubai, Dubai, United Arab Emirates"
+  ],
+  "provider": "lever",
+  "slug": "binance",
+  "postings": 33,
+  "titles": [
+   "Binance Accelerator Program -  AI Supportability Engineer",
+   "Binance Accelerator Program -  Web3 Operations (for current university students)",
+   "Binance Accelerator Program - AI Agent Engineer",
+   "Binance Accelerator Program - AI Agent Engineer",
+   "Binance Accelerator Program - Global Swag",
+   "Binance Accelerator Program - QA (Web3)"
+  ],
+  "places": [
+   "Asia",
+   "Asia",
+   "Asia",
+   "Asia",
+   "Hong Kong",
+   "Asia"
+  ],
+  "same": true,
+  "note": "real"
+ },
+ {
+  "employer": "Capco",
+  "known": [
+   "Business Analyst - Digital Assets — Dubai"
+  ],
+  "provider": "greenhouse",
+  "slug": "capco",
+  "postings": 720,
+  "titles": [
+   "Accounts BA",
+   "Aduaneiro | Híbrido - Macaé/RJ",
+   "AI Architect",
+   "AI Architect",
+   "AI Architect",
+   "AI Architect"
+  ],
+  "places": [
+   "India",
+   "Brazil - Sao Paulo",
+   "Slovakia - Kosice",
+   "Slovakia - Bratislava",
+   "Czech Republic; Czech Republic - Brno; Czech Republic - Prague",
+   "Germany - Berlin; Germany - Frankfurt am Main"
+  ],
+  "same": true,
+  "note": "real"
+ },
+ {
+  "employer": "Future Data",
+  "known": [
+   "Full-Stack Software Developer (.NET / Java / Python) — Dubai"
+  ],
+  "provider": "greenhouse",
+  "slug": "future",
+  "postings": 9,
+  "titles": [
+   "Applied AI Engineer",
+   "Full-Stack Growth Engineer",
+   "Health Coach",
+   "Health Coach",
+   "Health Coach Manager",
+   "Lead Android Engineer"
+  ],
+  "places": [
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote "
+  ],
+  "same": false,
+  "note": "real: Future Data swept to a fitness app"
+ },
+ {
+  "employer": "Lean Technologies",
+  "known": [
+   "Staff DevOps Engineer — Dubai, United Arab Emirates"
+  ],
+  "provider": "ashby",
+  "slug": "leantech",
+  "postings": 3,
+  "titles": [
+   "Senior Compliance Manager",
+   "Staff DevOps Engineer",
+   "Internal Auditor – Risk & Regulatory Assurance"
+  ],
+  "places": [
+   "Riyadh, Saudi Arabia",
+   "Dubai, United Arab Emirates",
+   "Riyadh, Saudi Arabia"
+  ],
+  "same": true,
+  "note": "real"
+ },
+ {
+  "employer": "Q1 Technologies, Inc.",
+  "known": [
+   "Business Analyst — Dubai, United Arab Emirates"
+  ],
+  "provider": "smartrecruiters",
+  "slug": "q1",
+  "postings": 2,
+  "titles": [
+   "Develop",
+   "test qa"
+  ],
+  "places": [
+   "London, England, United Kingdom",
+   "Alipur, Punjab, Pakistan"
+  ],
+  "same": false,
+  "note": "real: a stranger's two-posting board"
+ },
+ {
+  "employer": "SellAnyCar.com",
+  "known": [
+   "Software Engineer - Backend PHP — Dubai, Dubai, United Arab Emirates"
+  ],
+  "provider": "smartrecruiters",
+  "slug": "sellanycarcom",
+  "postings": 3,
+  "titles": [
+   "Software Engineer - Backend (PHP)",
+   "Business Development & Partnerships Executive- Vehicle Sourcing",
+   "Sourcing Inspector/ Car Buyer"
+  ],
+  "places": [
+   "Dubai, Dubai, United Arab Emirates",
+   "Riyadh, Riyadh Province, Saudi Arabia",
+   "Dubai, Dubai, United Arab Emirates"
+  ],
+  "same": true,
+  "note": "real"
+ },
+ {
+  "employer": "ValueLabs",
+  "known": [
+   "Senior Solution Architect(Node Js,React JS and Banking Domain is mandate) - 12+ YOE - Onsite Dubai - Immediate Joiners Preferable — Dubai, United Arab Emirates"
+  ],
+  "provider": "smartrecruiters",
+  "slug": "valuelabs",
+  "postings": 1,
+  "titles": [
+   "System Administrator"
+  ],
+  "places": [
+   "Hyderabad, , India"
+  ],
+  "same": true,
+  "note": "real: Hyderabad-headquartered IT firm"
+ },
+ {
+  "employer": "VAM SYSTEMS",
+  "known": [
+   "Finacle Techno-Functional Consultant — Dubai"
+  ],
+  "provider": "smartrecruiters",
+  "slug": "vamsystems",
+  "postings": 10,
+  "titles": [
+   "IT Support",
+   "Dot Net Developer",
+   "Cyber Security Analyst",
+   "Data Quality, Data Management, Data Governance - Banking",
+   "Finacle Techno-Functional Consultant",
+   "MNC Business Analyst - Banking"
+  ],
+  "places": [
+   "Doha, , Qatar",
+   "Doha, , Qatar",
+   "Doha, , Qatar",
+   "Doha, , Qatar",
+   "Dubai, , United Arab Emirates",
+   "Doha, , Qatar"
+  ],
+  "same": true,
+  "note": "real: Gulf IT services firm"
+ },
+ {
+  "employer": "Analog Devices",
+  "known": [
+   "Analog IC Design Engineer — Bangalore, India",
+   "Field Applications Engineer — Bengaluru, India"
+  ],
+  "provider": "ashby",
+  "slug": "analog",
+  "postings": 24,
+  "titles": [
+   "Senior iOS Engineer",
+   "Senior Backend Engineer",
+   "Data Engineer",
+   "DevOps/Platform Engineer",
+   "Senior Frontend Engineer",
+   "Senior Graphic Designer"
+  ],
+  "places": [
+   "Abu Dhabi",
+   "Abu Dhabi",
+   "Abu Dhabi",
+   "Abu Dhabi",
+   "Abu Dhabi",
+   "Abu Dhabi"
+  ],
+  "same": false,
+  "note": "namesake: semiconductor giant vs an Abu Dhabi software firm"
+ },
+ {
+  "employer": "Lean Construction Gulf",
+  "known": [
+   "Site Engineer — Abu Dhabi, United Arab Emirates",
+   "Quantity Surveyor — Dubai, United Arab Emirates"
+  ],
+  "provider": "ashby",
+  "slug": "leantech",
+  "postings": 3,
+  "titles": [
+   "Senior Compliance Manager",
+   "Staff DevOps Engineer",
+   "Internal Auditor – Risk & Regulatory Assurance"
+  ],
+  "places": [
+   "Riyadh, Saudi Arabia",
+   "Dubai, United Arab Emirates",
+   "Riyadh, Saudi Arabia"
+  ],
+  "same": false,
+  "note": "namesake: shares the word Lean"
+ },
+ {
+  "employer": "Future Pipe Industries",
+  "known": [
+   "Mechanical Engineer — Dubai, United Arab Emirates",
+   "Production Supervisor — Dubai, United Arab Emirates"
+  ],
+  "provider": "greenhouse",
+  "slug": "future",
+  "postings": 9,
+  "titles": [
+   "Applied AI Engineer",
+   "Full-Stack Growth Engineer",
+   "Health Coach",
+   "Health Coach",
+   "Health Coach Manager",
+   "Lead Android Engineer"
+  ],
+  "places": [
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote "
+  ],
+  "same": false,
+  "note": "namesake"
+ },
+ {
+  "employer": "Reach Digital Media",
+  "known": [
+   "Media Buyer — Dubai, United Arab Emirates",
+   "Social Media Executive — Dubai, United Arab Emirates"
+  ],
+  "provider": "ashby",
+  "slug": "reach",
+  "postings": 6,
+  "titles": [
+   "Staff Software Engineer (Backend)",
+   "Senior Staff Software Engineer (Data Platform)",
+   "Senior Staff Software Engineer (Integrations)",
+   "Senior Staff Security Researcher",
+   "Principal Support Engineer - Endpoint",
+   "Principal Support Engineer - Network"
+  ],
+  "places": [
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "San Francisco Bay Area",
+   "Remote",
+   "Remote"
+  ],
+  "same": false,
+  "note": "namesake"
+ },
+ {
+  "employer": "Callsign Security Services",
+  "known": [
+   "Security Guard — Dubai, United Arab Emirates",
+   "Security Supervisor — Sharjah, United Arab Emirates"
+  ],
+  "provider": "workable",
+  "slug": "callsign",
+  "postings": 8,
+  "titles": [
+   "Agile Release Manager",
+   "Experience Engineer (FTC)",
+   "Senior Experience Engineer (FTC)",
+   "Senior Software Engineer (Telco & Comms)",
+   "Software Engineer (Full Stack)",
+   "Software Engineer (Full Stack)"
+  ],
+  "places": [
+   "Abu Dhabi, Abu Dhabi, United Arab Emirates",
+   "London, England, United Kingdom",
+   "London, England, United Kingdom",
+   "Abu Dhabi, Abu Dhabi, United Arab Emirates",
+   "Abu Dhabi, Abu Dhabi, United Arab Emirates",
+   "London, England, United Kingdom"
+  ],
+  "same": false,
+  "note": "namesake: guarding firm vs an identity-tech company"
+ },
+ {
+  "employer": "Callsign",
+  "known": [
+   "Senior Software Engineer (Telco & Comms) — Abu Dhabi, United Arab Emirates"
+  ],
+  "provider": "workable",
+  "slug": "callsign",
+  "postings": 8,
+  "titles": [
+   "Agile Release Manager",
+   "Experience Engineer (FTC)",
+   "Senior Experience Engineer (FTC)",
+   "Senior Software Engineer (Telco & Comms)",
+   "Software Engineer (Full Stack)",
+   "Software Engineer (Full Stack)"
+  ],
+  "places": [
+   "Abu Dhabi, Abu Dhabi, United Arab Emirates",
+   "London, England, United Kingdom",
+   "London, England, United Kingdom",
+   "Abu Dhabi, Abu Dhabi, United Arab Emirates",
+   "Abu Dhabi, Abu Dhabi, United Arab Emirates",
+   "London, England, United Kingdom"
+  ],
+  "same": true,
+  "note": "same employer, known posting appears on the board"
+ },
+ {
+  "employer": "AlixPartners",
+  "known": [
+   "Director, Turnaround & Restructuring — Dubai, United Arab Emirates"
+  ],
+  "provider": "greenhouse",
+  "slug": "alixpartners",
+  "postings": 116,
+  "titles": [
+   "Administrative Senior Professional (Part Time)",
+   "AI & Data – Intern",
+   "AI & Data - Vice President",
+   "AI & Machine Learning Consultant",
+   "AI & Machine Learning Director",
+   "AI & Machine Learning Senior Vice President"
+  ],
+  "places": [
+   "London",
+   "Paris",
+   "Paris",
+   "Buenos Aires",
+   "United States",
+   "United States"
+  ],
+  "same": true,
+  "note": "global consultancy, Dubai office"
+ },
+ {
+  "employer": "Agoda",
+  "known": [],
+  "provider": "greenhouse",
+  "slug": "agoda",
+  "postings": 319,
+  "titles": [
+   "2026 - People - Rewards Senior Specialist/ Principal Specialist (Bangkok-based, Relocation Provided)",
+   "2026 Support Associate - Korean&English(Seoul)",
+   "Account Executive-Seoul",
+   "Account Executive (Tokyo) - New Partner Acquisition",
+   "Accounting Manager (Bangkok Based - Relocation Provided)",
+   "Account Manager, B2B (Hong Kong)"
+  ],
+  "places": [
+   "Bangkok",
+   "Seoul",
+   "Seoul, South Korea",
+   "Tokyo, Japan",
+   "Bangkok, Thailand",
+   "Hong Kong"
+  ],
+  "same": true,
+  "note": "no known postings; distinctive name, Bangkok-based board"
+ },
+ {
+  "employer": "Bybit",
+  "known": [],
+  "provider": "greenhouse",
+  "slug": "bybit",
+  "postings": 160,
+  "titles": [
+   "AI Development Engineer Intern",
+   "AI Engineering Productivity Expert",
+   "AML Expert, Process Excellence",
+   "Animator Intern",
+   "Backend Development Engineer",
+   "Big Data Development Engineer"
+  ],
+  "places": [
+   "Hong Kong SAR",
+   "Kuala Lumpur, Malaysia",
+   "Vilnius, Lithuania",
+   "Abu Dhabi, UAE; APAC - Remote",
+   "Kuala Lumpur, Malaysia",
+   "Kuala Lumpur, Malaysia"
+  ],
+  "same": true,
+  "note": "no known postings; distinctive name"
+ },
+ {
+  "employer": "Future Data",
+  "known": [],
+  "provider": "greenhouse",
+  "slug": "future",
+  "postings": 9,
+  "titles": [
+   "Applied AI Engineer",
+   "Full-Stack Growth Engineer",
+   "Health Coach",
+   "Health Coach",
+   "Health Coach Manager",
+   "Lead Android Engineer"
+  ],
+  "places": [
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote ",
+   "Remote "
+  ],
+  "same": false,
+  "note": "no known postings; generic slug, unrelated work"
+ }
+]

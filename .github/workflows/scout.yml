@@ -3,14 +3,19 @@
 # aggregator. Those jobs are reaching this reader hours late — jobspipe's median
 # lag measured twenty-one hours — and a direct board turns that into minutes.
 #
+# Code finds candidate boards; a model judges whether each one really belongs
+# to the employer; the server probes and decides. See cmd/scout/main.go.
+#
 # It runs here rather than on the backend for two reasons: this repository is
 # public, so GitHub's standard runners are free and have four cores against
-# the backend's tenth of one; and an agent has no business sharing a process
+# the backend's tenth of one; and none of it has any business sharing a process
 # with the poller that has to survive.
 #
-# The model runs on the runner and costs nothing. If GROQ_API_KEY is set as a
-# secret it uses Groq's free tier instead, which is a far more capable model —
-# either way the scout only proposes. The server verifies every proposal itself.
+# The judge is gemma4:12b on the runner, with reasoning off. Chosen on a
+# 23-case exam of real candidates (cmd/scout/testdata/judge_cases.json, run
+# with -tags judgeeval) under the runner's limits: 22 of 23 right and no wrong
+# yes, where the previous qwen2.5:7b answered no to everything. Reasoning left
+# on cost over five minutes a question on four CPUs; off, about a minute.
 name: scout
 on:
   schedule:
@@ -23,8 +28,8 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: how many employers to look for
-        default: "8"
+        description: how many employers to sweep
+        default: "100"
 
 jobs:
   scout:
@@ -61,7 +66,7 @@ jobs:
         if: steps.work.outputs.targets != '0'
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          SCOUT_LOCAL_MODEL: qwen2.5:7b
+          SCOUT_LOCAL_MODEL: gemma4:12b
         run: |
           if [ -n "$GROQ_API_KEY" ]; then
             echo "Groq key present; no local model needed"
@@ -80,7 +85,10 @@ jobs:
           JOBPULSE_API: ${{ secrets.JOBPULSE_URL }}
           POLL_TOKEN: ${{ secrets.JOBPULSE_POLL_TOKEN }}
           # Groq's free tier if a key is present, the runner's own model if not.
+          # Groq dropped llama-3.3-70b from its free tier; gpt-oss-120b is the
+          # large free model there now, and accepts low but not none.
           SCOUT_MODEL_URL: ${{ secrets.GROQ_API_KEY && 'https://api.groq.com/openai/v1/chat/completions' || 'http://localhost:11434/v1/chat/completions' }}
-          SCOUT_MODEL: ${{ secrets.GROQ_API_KEY && 'llama-3.3-70b-versatile' || 'qwen2.5:7b' }}
+          SCOUT_MODEL: ${{ secrets.GROQ_API_KEY && 'openai/gpt-oss-120b' || 'gemma4:12b' }}
+          SCOUT_MODEL_REASONING: ${{ secrets.GROQ_API_KEY && 'low' || 'none' }}
           SCOUT_MODEL_KEY: ${{ secrets.GROQ_API_KEY }}
-        run: go run ./cmd/scout -targets ${{ inputs.targets || 8 }} -turns 12
+        run: go run ./cmd/scout -targets ${{ inputs.targets || 100 }}
