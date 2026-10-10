@@ -467,6 +467,50 @@ func Cycle(ctx context.Context, pool *pgxpool.Pool, notifier *notify.Notifier) (
 		stats.Retired += n
 	}
 
+	// Review. A discovered board can deliver for ever and still be worth
+	// nothing: Agoda, AlixPartners and Artefact are real employers, found
+	// correctly, whose openings are in Bangkok, London and Prague. Probation
+	// keeps them, because they produce. So a board is marked the first time it
+	// holds a posting in the market or one that matched a saved search, and a
+	// board that has not earned that mark by the end of its review is retired
+	// the same way — stamped first, so a board that qualifies today is never
+	// retired today.
+	if _, err := pool.Exec(ctx, `
+		update companies c set reached_at = now()
+		where c.origin = 'agent' and c.reached_at is null
+		  and exists (
+			select 1 from jobs j
+			where j.provider = c.provider and j.slug = c.slug
+			  and (j.location ~* any($1)
+			       or exists (select 1 from matches m where m.job_id = j.id)))`,
+		match.ReachablePatterns()); err != nil {
+		return stats, err
+	}
+	var unreached int64
+	err = pool.QueryRow(ctx, `
+		with retired as (
+			update companies set active = false
+			where origin = 'agent' and active
+			  and added_at < now() - $1::interval
+			  and reached_at is null
+			returning provider, slug
+		), labelled as (
+			update board_candidates c set verdict = 'retired',
+			       reason = 'delivered nothing in the market during review', decided_at = now()
+			from retired r
+			where r.provider = c.provider and r.slug = c.slug
+		)
+		select count(*) from retired`,
+		ReviewPeriod.String()).Scan(&unreached)
+	if err != nil {
+		return stats, err
+	}
+	if unreached > 0 {
+		slog.Info("discovered boards retired for delivering nothing usable", "count", unreached,
+			"after", ReviewPeriod.String())
+		stats.Retired += unreached
+	}
+
 	// Matches are derived data, so every cycle re-derives them: editing the
 	// alias dictionary is meant to fix what a profile finds, and without this
 	// it would only affect jobs arriving afterwards while the stale matches sat
@@ -847,6 +891,12 @@ func WouldStore(provider string, jobs []providers.Job) int {
 // the only honest test is what it actually delivers, and the currency is
 // postings stored.
 const ProbationPeriod = 14 * 24 * time.Hour
+
+// ReviewPeriod is how long a discovered board has to deliver something this
+// hunt can use — a posting in the market, or a match on a saved search —
+// before it is retired. Longer than probation, because a small employer may
+// post one relevant role a month.
+const ReviewPeriod = 21 * 24 * time.Hour
 
 // aggregator names the providers whose boards are a query across many employers
 // rather than one employer's own board.

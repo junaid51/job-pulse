@@ -84,7 +84,8 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 		aggregators := poll.AggregatorProviders()
 
 		rows, err := pool.Query(r.Context(), `
-			select j.company, count(distinct m.job_id) as matches
+			select j.company, count(distinct m.job_id) as matches,
+			       (array_agg(distinct j.title || coalesce(' — ' || nullif(j.location, ''), '')))[1:4]
 			from matches m
 			join jobs j on j.id = m.job_id
 			where j.provider = any($1)
@@ -121,11 +122,15 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 		type target struct {
 			Employer string `json:"employer"`
 			Matches  int    `json:"matches"`
+			// A few of the employer's postings as the aggregator carried
+			// them: the scout's judge compares these with what a candidate
+			// board posts, which is how a namesake gives itself away.
+			Known []string `json:"known"`
 		}
 		targets := []target{}
 		for rows.Next() {
 			var t target
-			if err := rows.Scan(&t.Employer, &t.Matches); err != nil {
+			if err := rows.Scan(&t.Employer, &t.Matches, &t.Known); err != nil {
 				serverError(w, "reading discovery targets", err)
 				return
 			}
@@ -218,12 +223,19 @@ func discoveryTargets(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		scorecard, err := scoutScorecard(r.Context(), pool)
+		if err != nil {
+			serverError(w, "scoring discovered boards", err)
+			return
+		}
+
 		writeJSON(w, http.StatusOK, map[string]any{
 			"targets":          targets,
 			"ailing":           broken,
 			"do_not_try":       skip,
 			"providers":        discoverable(),
 			"name_addressable": sweepable(),
+			"scout_boards":     scorecard,
 		})
 	}
 }
@@ -283,6 +295,58 @@ func isDiscoverable(provider string) bool {
 }
 
 // addBoard verifies a proposal and, if it holds up, starts polling it.
+// scoutBoard is one board discovery added, and what it has delivered since.
+type scoutBoard struct {
+	Board    string    `json:"board"`
+	Employer string    `json:"employer"`
+	AddedAt  time.Time `json:"added_at"`
+	Active   bool      `json:"active"`
+	Postings int       `json:"postings"`
+	InMarket int       `json:"in_market"`
+	Matched  int       `json:"matched"`
+	Verdict  string    `json:"verdict"`
+	Reason   string    `json:"reason"`
+}
+
+// scoutScorecard is the review of the scout's work: for every board it added,
+// what is held, how much of it this hunt could take, and how much matched a
+// saved search. The scout prints it on each run, so whether discovery earns
+// its keep is answered by postings rather than by its own account.
+func scoutScorecard(ctx context.Context, pool *pgxpool.Pool) ([]scoutBoard, error) {
+	rows, err := pool.Query(ctx, `
+		select c.provider || ':' || c.slug, c.name, c.added_at, c.active,
+		       coalesce(bc.verdict, ''), coalesce(bc.reason, ''),
+		       coalesce((select array_agg(j.location) from jobs j
+		                 where j.provider = c.provider and j.slug = c.slug), '{}'),
+		       (select count(distinct m.job_id) from matches m join jobs j on j.id = m.job_id
+		         where j.provider = c.provider and j.slug = c.slug)
+		from companies c
+		left join board_candidates bc on bc.provider = c.provider and bc.slug = c.slug
+		where c.origin = 'agent'
+		order by c.added_at desc`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []scoutBoard{}
+	for rows.Next() {
+		var b scoutBoard
+		var locations []string
+		if err := rows.Scan(&b.Board, &b.Employer, &b.AddedAt, &b.Active, &b.Verdict, &b.Reason,
+			&locations, &b.Matched); err != nil {
+			return nil, err
+		}
+		b.Postings = len(locations)
+		for _, l := range locations {
+			if l != "" && match.Reachable(l) {
+				b.InMarket++
+			}
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
 // recordMiss is the scout saying it searched for an employer and could not
 // place a board, so the work list can rest them and move on. Idempotent: a
 // repeat refreshes the date.

@@ -137,14 +137,16 @@ jobs:
       - name: probation keeps a board that has delivered
         run: |
           psql "$DATABASE_URL" -q -c "delete from companies where origin='agent'; delete from board_candidates;
+            insert into companies (provider, slug, name, origin, added_at, produced_at, reached_at)
+            values ('greenhouse','ci-delivered','Delivered','agent', now() - interval '22 days', now() - interval '18 days', now() - interval '18 days');
             insert into companies (provider, slug, name, origin, added_at, produced_at)
-            values ('greenhouse','ci-delivered','Delivered','agent', now() - interval '21 days', now() - interval '18 days');
+            values ('greenhouse','ci-elsewhere','Elsewhere','agent', now() - interval '22 days', now() - interval '18 days');
             insert into companies (provider, slug, name, origin, added_at)
             values ('greenhouse','ci-never','Never','agent', now() - interval '21 days');
             insert into companies (provider, slug, name, origin, added_at, produced_at, active)
             values ('greenhouse','ci-off','Switched off','agent', now() - interval '21 days', now() - interval '18 days', false);
             insert into board_candidates (provider, slug, verdict) values
-              ('greenhouse','ci-never','added'), ('greenhouse','ci-off','added');"
+              ('greenhouse','ci-never','added'), ('greenhouse','ci-off','added'), ('greenhouse','ci-elsewhere','added');"
           curl -sf -X POST "$API/api/poll" > /dev/null
           sleep 10
           delivered=$(psql "$DATABASE_URL" -t -A -c "select active from companies where slug='ci-delivered';")
@@ -154,7 +156,13 @@ jobs:
           echo "delivered board active: $delivered (want t); never-delivered: $never (want f)"
           # Retiring one board must not relabel another that was already off.
           echo "never-delivered verdict: $never_verdict (want retired); already-off: $off_verdict (want added)"
-          [ "$delivered" = "t" ] && [ "$never" = "f" ] && [ "$never_verdict" = "retired" ] && [ "$off_verdict" = "added" ]
+          # Review: a board that produced, but never anything in the market or
+          # matching a search, is retired once its review is over.
+          elsewhere=$(psql "$DATABASE_URL" -t -A -c "select active from companies where slug='ci-elsewhere';")
+          elsewhere_why=$(psql "$DATABASE_URL" -t -A -c "select reason from board_candidates where slug='ci-elsewhere';")
+          echo "produced-but-never-reached active: $elsewhere (want f), reason: $elsewhere_why"
+          [ "$delivered" = "t" ] && [ "$never" = "f" ] && [ "$never_verdict" = "retired" ] && [ "$off_verdict" = "added" ] \
+            && [ "$elsewhere" = "f" ] && [ "$elsewhere_why" = "delivered nothing in the market during review" ]
 
       - name: keep the evidence
         if: failure()
