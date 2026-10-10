@@ -30,12 +30,7 @@ export interface Profile {
 
 export type JobSort = 'posted' | 'matched' | 'applied'
 
-export interface JobPage {
-  jobs: Job[]
-  next: string | null
-}
-
-export interface Board {
+interface Board {
   provider: string
   slug: string
   name: string

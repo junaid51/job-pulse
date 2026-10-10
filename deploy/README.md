@@ -92,7 +92,7 @@ So:
 - **Redeploy only for backend changes.** Service → Build options → Advanced
   build settings → path rules, as an allow-list:
 
-      cmd/
+      cmd/jobpulse/
       internal/
       migrations/
       go.mod
@@ -100,8 +100,9 @@ So:
       Dockerfile
       companies.txt
 
-  Web, docs and workflow commits then leave the running deployment — and its
-  address — alone.
+  Web, docs, workflow and scout commits then leave the running deployment —
+  and its address — alone. `cmd/jobpulse/`, not `cmd/`: the scout lives in
+  `cmd/scout/`, runs on GitHub's runners, and never needs the server rebuilt.
 - **After a backend deploy, ask the server where it now sends from:**
 
       curl -H "Authorization: Bearer $POLL_TOKEN" https://<service>.code.run/api/egress

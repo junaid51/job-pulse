@@ -74,7 +74,7 @@ export type FeedRow = {
   applied_at: string | null
 }
 
-export type Item<T> =
+type Item<T> =
   | { kind: 'header'; key: string; label: string }
   | { kind: 'job'; key: string; job: T }
 
