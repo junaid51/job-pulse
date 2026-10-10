@@ -83,38 +83,55 @@ poller that has fallen behind.
 
 Once a day, `cmd/scout` looks for direct boards belonging to employers whose
 postings already match a saved search but only ever arrive through an
-aggregator. Those are the jobs reaching you a day late.
+aggregator. Those are the jobs reaching you late: aggregators deliver a posting
+a median of eleven hours after it goes up, a direct board about six minutes.
 
-It is an LLM with four tools (search the name-addressed hiring systems, read
-an employer's careers pages for the system they name, open one specific page,
-propose a board) and a hard rule: **it proposes, it never decides.**
-`POST /api/boards` probes every proposal with the same provider code the poller
-uses and refuses anything that does not independently answer with postings
-this hunt can reach. A 3B model once proposed a board it had itself just found
-empty, reasoning that the company was large and probably had openings; the
-gate refused it on the numbers. A confident wrong answer costs nothing.
+**Code finds, a model judges, the server decides.** The scout sweeps every
+eligible employer's spellings across the hiring systems addressed by a company's
+name, and reads careers pages for the ones addressed by a tenant instead. Each
+candidate board then goes to a model as one question — *does this board belong
+to this employer?* — with what the board posts beside what the employer is known
+to post. Only a yes is proposed, and `POST /api/boards` probes it again with the
+poller's own code and refuses anything without postings this hunt can reach.
 
-What the model is for turned out to be narrow, and it took measuring to find
-out. Turning "Lean Technologies" into the slug `leantech` is a string
-transformation, and both a 3B and a 7B model failed it identically, so the
-spelling sweep is code. What the model does well is read an employer name like
-"Halian | Managed Services, Recruitment Agency & Contract Staffing", know the
-employer is Halian, and look at what a probe returned to judge whether it is
-really them. When the sweep answers plainly, the replacement is proposed
-without a model turn at all, in about two seconds.
+It was an agent first, and measuring it is why it is not one now. Over 89 hunts
+every board it added had come from the name sweep; the model's own exploration
+found none, and 79% of the careers pages it opened were addresses it had made
+up. It took two and a half minutes an employer, so a day reached eight of 170.
+The sweep alone covered a hundred in three minutes. What the sweep cannot do is
+tell a company from a namesake — "Future Data" swept to a fitness app hiring
+health coaches — and that judgment is the one job the model is good at.
 
-It runs in GitHub Actions on a free public-repository runner, with a model on
-the runner (or Groq's free tier if a key is set), and touches nothing the
-poller depends on. If it is broken, rate-limited or hallucinating, the app
-behaves exactly as it does without it. Daily rather than weekly because the
-work list has a half-life: aggregator postings age out after seven days and
-take their matches with them.
+The judge is `gemma4:12b` with reasoning off, chosen on a 23-case exam of real
+candidates under the runner's limits (four CPUs, 16 GB):
+
+| Model | Right | Wrong yes | Per case |
+|---|---|---|---|
+| **gemma4:12b** | **22 / 23** | 0 | 58 s |
+| qwen3.5:9b | 21 / 23 | 0 | 39 s |
+| gpt-oss:20b | 21 / 23 | 0 | 70 s, at the memory limit |
+| qwen3:8b | 20 / 23 | 0 | 14 s |
+| qwen3.5:4b | 16 / 23 | 0 | 27 s |
+| qwen2.5:7b (before) | 10 / 23 | 0 | 21 s, answered no to everything |
+
+Reasoning left on cost over five minutes a question on four CPUs. The exam is
+`cmd/scout/testdata/judge_cases.json`; rerun it for any model or prompt change
+with `SCOUT_MODEL=<model> go test -tags judgeeval -run TestJudgeExam ./cmd/scout/`.
+
+Its work is reviewed by outcome, not by another model. A discovered board that
+has held nothing in the market and matched no search within 21 days is retired,
+and every run prints a scorecard of what each discovered board has delivered on
+the workflow run's page.
+
+It runs in GitHub Actions on a free public-repository runner and touches
+nothing the poller depends on. If it is broken or wrong, the app behaves exactly
+as it does without it.
 
 ```bash
-# against a local backend, with a model on your own machine and no keys at all
+# against a local backend, with the model on your own machine and no keys at all
 docker run -d -p 11434:11434 -v ollama-models:/root/.ollama ollama/ollama
-docker exec ollama ollama pull qwen2.5:7b
-go run ./cmd/scout -targets 3
+docker exec ollama ollama pull gemma4:12b
+SCOUT_MODEL_REASONING=none go run ./cmd/scout -targets 20
 ```
 
 `scout -list` answers "is there anything to do" without a model, so a quiet

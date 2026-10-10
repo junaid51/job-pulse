@@ -500,7 +500,7 @@ provider and refetches. Never trust a notification body as data you then store.
 ```
 job-pulse/
   cmd/jobpulse/main.go          flags, wiring, ticker + server
-  cmd/scout/                    the daily discovery agent
+  cmd/scout/                    daily board discovery: sweep, judge, propose
   internal/api/                 router.go + one file per area
   internal/db/                  pgx pool + migration runner
   internal/providers/           providers.go + one file per provider
